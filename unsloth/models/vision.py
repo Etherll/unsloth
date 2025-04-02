@@ -456,7 +456,7 @@ class FastBaseModel:
         # Post patches
         model = FastBaseModel.post_patch_model(
             model,
-            use_gradient_checkpointing = use_gradient_checkpointing,
+            use_gradient_checkpointing = use_gradient_checkpointing,use_model_config=use_model_config,
         )
         # Clear deleted GPU items
         for _ in range(3):
@@ -487,6 +487,7 @@ class FastBaseModel:
         use_rslora                 = False,
         modules_to_save            = None,
         init_lora_weights          = True,
+        use_model_config           = True,
         loftq_config               = {},
         task_type                = TaskType.CAUSAL_LM,
         temporary_location         = "_unsloth_temporary_saved_buffers",
@@ -546,7 +547,7 @@ class FastBaseModel:
         # Enable gradients on modules which are trainable
         requires_grad_for_gradient_checkpointing(model)
 
-        model = FastBaseModel.post_patch_model(model, use_gradient_checkpointing)
+        model = FastBaseModel.post_patch_model(model, use_gradient_checkpointing,use_model_config=use_model_config)
         model.max_seq_length = max_seq_length
 
         # Clear deleted GPU items
@@ -567,13 +568,15 @@ class FastBaseModel:
     def post_patch_model(
         model,
         use_gradient_checkpointing = True,
+        use_model_config = True,
     ):
         full_finetuning = os.environ.get("UNSLOTH_ENABLE_FULL_FINETUNING", "0") == "1"
 
         float32_mixed_precision = True
-        if _get_dtype(model.config.torch_dtype) == torch.bfloat16 and full_finetuning:
-            # Use bfloat16 precision for full finetuning
-            float32_mixed_precision = False
+        if use_model_config:
+            if _get_dtype(model.config.torch_dtype) == torch.bfloat16 and full_finetuning:
+                # Use bfloat16 precision for full finetuning
+                float32_mixed_precision = False
 
         model = prepare_model_for_training(
             model,
