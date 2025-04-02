@@ -577,7 +577,7 @@ class FastBaseModel:
             if _get_dtype(model.config.torch_dtype) == torch.bfloat16 and full_finetuning:
                 # Use bfloat16 precision for full finetuning
                 float32_mixed_precision = False
-
+        model.config.torch_dtype = torch.float16
         model = prepare_model_for_training(
             model,
             use_gradient_checkpointing = use_gradient_checkpointing,
