@@ -448,7 +448,7 @@ class FastBaseModel:
 
         # Patch generate
         if os.environ.get("UNSLOTH_DISABLE_FAST_GENERATION", "0") == "0":
-            if model.generate.__name__ != "unsloth_base_fast_generate":
+            if model.generate.__name__ != "unsloth_base_fast_generate" and use_model_config:
                 model._old_generate = model.generate
                 unsloth_base_fast_generate.__doc__ = model._old_generate.__doc__
                 model.generate = types.MethodType(unsloth_base_fast_generate, model)
