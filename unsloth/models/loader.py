@@ -469,6 +469,8 @@ class FastModel(FastBaseModel):
         return_logits              = False, # Return logits
         fullgraph                  = True, # No graph breaks
         auto_model                 = None,
+        processor                  = False,
+        use_model_config           = True,
         whisper_language           = None,
         whisper_task               = None,
         use_exact_model_name       = False,
@@ -542,32 +544,37 @@ class FastModel(FastBaseModel):
 
         autoconfig_error = None
         peft_error = None
-        try:
-            model_config = AutoConfig.from_pretrained(
-                model_name,
-                token = token,
-                revision = revision,
-                trust_remote_code = trust_remote_code,
-            )
-            is_model = True
-        except Exception as error:
-            autoconfig_error = str(error)
-            is_model = False
-        try:
-            peft_config = PeftConfig.from_pretrained(
-                model_name,
-                token = token,
-                revision = revision,
-                trust_remote_code = trust_remote_code,
-            )
-            is_peft = True
-        except Exception as error:
-            peft_error = str(error)
-            is_peft = False
-        pass
-
+        if use_model_config:
+            try:
+                model_config = AutoConfig.from_pretrained(
+                    model_name,
+                    token = token,
+                    revision = revision,
+                    trust_remote_code = trust_remote_code,
+                )
+                is_model = True
+            except Exception as error:
+                autoconfig_error = str(error)
+                is_model = False
+            try:
+                peft_config = PeftConfig.from_pretrained(
+                    model_name,
+                    token = token,
+                    revision = revision,
+                    trust_remote_code = trust_remote_code,
+                )
+                is_peft = True
+            except Exception as error:
+                peft_error = str(error)
+                is_peft = False
+            pass
+        else:
+            is_model = None 
+            is_peft = None
+            
         # Both config.json and adapter_config.json should not exist!
-
+        
+        
         # Old transformers versions check
         both_exist = (is_model and is_peft) and not SUPPORTS_LLAMA32
 
@@ -596,7 +603,7 @@ class FastModel(FastBaseModel):
                 "Please separate the LoRA and base models to 2 repos."
             )
 
-        elif not is_model and not is_peft:
+        elif not is_model and not is_peft and use_model_config:
             error = autoconfig_error or peft_error
             # Old transformers version
             if "rope_scaling" in error.lower() and not SUPPORTS_LLAMA31:
@@ -636,14 +643,16 @@ class FastModel(FastBaseModel):
             redirector = contextlib.nullcontext()
         else:
             redirector = contextlib.redirect_stdout(open(os.devnull, "w"))
-
         # Get model types like Gemma3 etc
-        model_types = get_transformers_model_type(
-            model_name        = model_name,
-            token             = token,
-            revision          = revision,
-            trust_remote_code = trust_remote_code,
-        )
+        if use_model_config:
+            model_types = get_transformers_model_type(
+                    model_name        = model_name,
+                    token             = token,
+                    revision          = revision,
+                    trust_remote_code = trust_remote_code,
+                )
+        else:
+            model_types=[]
         model_types = ["siglip"] + model_types
 
         # Set forced float32 env flag
@@ -710,10 +719,11 @@ class FastModel(FastBaseModel):
         pass
 
         # Check if VLM
-        is_vlm = any(x.endswith("ForConditionalGeneration") for x in model_config.architectures)
-        is_vlm = is_vlm or hasattr(model_config, "vision_config")
-        if not auto_model:
-            auto_model = AutoModelForVision2Seq if is_vlm else AutoModelForCausalLM
+        if use_model_config:
+            is_vlm = any(x.endswith("ForConditionalGeneration") for x in model_config.architectures)
+            is_vlm = is_vlm or hasattr(model_config, "vision_config")
+            if not auto_model:
+                auto_model = AutoModelForVision2Seq if is_vlm else AutoModelForCausalLM
 
         model, tokenizer = FastBaseModel.from_pretrained(
             model_name        = model_name,
@@ -729,6 +739,7 @@ class FastModel(FastBaseModel):
             model_types       = model_types,
             tokenizer_name    = tokenizer_name,
             auto_model        = auto_model,
+            processor         = processor,
             use_gradient_checkpointing = use_gradient_checkpointing,
             supports_sdpa     = supports_sdpa,
             whisper_language  = whisper_language,
