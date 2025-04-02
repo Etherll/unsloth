@@ -740,6 +740,7 @@ class FastModel(FastBaseModel):
             tokenizer_name    = tokenizer_name,
             auto_model        = auto_model,
             processor         = processor,
+            use_model_config  = use_model_config,
             use_gradient_checkpointing = use_gradient_checkpointing,
             supports_sdpa     = supports_sdpa,
             whisper_language  = whisper_language,
