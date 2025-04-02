@@ -540,11 +540,11 @@ class FastBaseModel:
             bias            = bias,
             task_type       = task_type,
         )
-        
-        model = prepare_model_for_kbit_training(
-            model,
-            use_gradient_checkpointing = use_gradient_checkpointing,
-        )
+        if use_model_config:
+            model = prepare_model_for_kbit_training(
+                model,
+                use_gradient_checkpointing = use_gradient_checkpointing,
+            )
         model = _get_peft_model(model, lora_config)
         # Enable gradients on modules which are trainable
         requires_grad_for_gradient_checkpointing(model)
