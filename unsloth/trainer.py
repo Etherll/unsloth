@@ -155,8 +155,8 @@ def _backwards_compatible_trainer(trainer_class, config_class):
             training_args = kwargs.pop("args", None)
 
             # Get parameters that Trainer.__init__ actually expects
-            trainer_params.remove('self')
-            trainer_params.remove('args')
+            trainer_params.discard('self')
+            trainer_params.discard('args')
 
             # Get fields that should be passed to Config init
             config_fields = {
