@@ -417,9 +417,10 @@ class FastBaseModel:
         model = post_patch_loss_function(model)
 
         # Log Unsloth version for future fastpaths for inference
-        if hasattr(model, "config"):
-            model.config.update({"unsloth_version" : __version__})
-        pass
+        if use_model_config:
+            if hasattr(model, "config"):
+                model.config.update({"unsloth_version" : __version__})
+            pass
         patch_saving_functions(model, vision = True)
         if use_model_config:
             patch_saving_functions(tokenizer, vision = True)
