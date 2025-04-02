@@ -234,6 +234,7 @@ class FastBaseModel:
         model_types       = None,
         tokenizer_name    = None,
         auto_model        = AutoModelForVision2Seq,
+        use_model_config  = True,
         use_gradient_checkpointing = "unsloth",
         supports_sdpa     = True,
         processor         = None,
@@ -356,38 +357,40 @@ class FastBaseModel:
         # Check if using forced float32 - we load it in bfloat16, then cast to float16!
         torch_dtype = dtype
         if do_forced_float32: torch_dtype = torch.bfloat16
-
-        model = auto_model.from_pretrained(
-            model_name,
-            device_map              = device_map,
-            torch_dtype             = torch_dtype,
-            # quantization_config   = bnb_config,
-            token                   = token,
-            trust_remote_code       = trust_remote_code,
-            # attn_implementation   = attn_implementation,
-            **kwargs,
-        )
-        # Return old flag
         os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = old_hf_transfer
+        model = auto_model.from_pretrained(
+                model_name,
+                device_map              = device_map,
+                torch_dtype             = torch_dtype,
+                # quantization_config   = bnb_config,
+                token                   = token,
+                trust_remote_code       = trust_remote_code,
+                # attn_implementation   = attn_implementation,
+                **kwargs,
+            )
+        if use_model_config:
 
-        # Counteract saved tokenizers
-        tokenizer_name = model_name if tokenizer_name is None else tokenizer_name
-        auto_processor = AutoProcessor if (auto_model is AutoModelForVision2Seq ) or (whisper_language and whisper_task) or processor else AutoTokenizer
-        if whisper_language and whisper_task:
-           tokenizer = auto_processor.from_pretrained(
-                tokenizer_name,
-                padding_side = "right",
-                token        = token,
-                language     = whisper_language,
-                task         = whisper_task,
-            )
-        else:
+            # Return old flag
+            # Counteract saved tokenizers
+            tokenizer_name = model_name if tokenizer_name is None else tokenizer_name
+            auto_processor = AutoProcessor if (auto_model is AutoModelForVision2Seq ) or (whisper_language and whisper_task) or processor else AutoTokenizer
+            if whisper_language and whisper_task:
             tokenizer = auto_processor.from_pretrained(
-                tokenizer_name,
-                padding_side = "right",
-                token        = token,
-            )
-        if hasattr(tokenizer, "tokenizer"):
+                    tokenizer_name,
+                    padding_side = "right",
+                    token        = token,
+                    language     = whisper_language,
+                    task         = whisper_task,
+                )
+            else:
+                tokenizer = auto_processor.from_pretrained(
+                    tokenizer_name,
+                    padding_side = "right",
+                    token        = token,
+                )
+        else:
+            tokenizer = None
+        if tokenizer is not None and hasattr(tokenizer, "tokenizer"):
             __tokenizer = tokenizer.tokenizer
             # Add padding side as well
             __tokenizer.padding_side = "right"
@@ -403,14 +406,15 @@ class FastBaseModel:
                 tokenizer.pad_token_id = __tokenizer.pad_token_id
         pass
         # Fix other stuff like BnB compute data types
-        model, tokenizer = patch_model_and_tokenizer(
-            model,
-            tokenizer,
-            downcast_rope = False,
-            fix_embeddings = False,
-            do_forced_float32 = do_forced_float32,
-        )
-        model, tokenizer = patch_tokenizer(model, tokenizer)
+        if use_model_config:
+            model, tokenizer = patch_model_and_tokenizer(
+                model,
+                tokenizer,
+                downcast_rope = False,
+                fix_embeddings = False,
+                do_forced_float32 = do_forced_float32,
+            )
+            model, tokenizer = patch_tokenizer(model, tokenizer)
         model = post_patch_loss_function(model)
 
         # Log Unsloth version for future fastpaths for inference
@@ -418,16 +422,17 @@ class FastBaseModel:
             model.config.update({"unsloth_version" : __version__})
         pass
         patch_saving_functions(model, vision = True)
-        patch_saving_functions(tokenizer, vision = True)
+        if use_model_config:
+            patch_saving_functions(tokenizer, vision = True)
 
         # Fix gradient accumulation
         from transformers.trainer import Trainer
         patch_gradient_accumulation_fix(Trainer)
-
-        # Save tokenizer for inference purposes
-        tokenizer.padding_side = "left" # Force inference
-        if hasattr(tokenizer, "tokenizer"):
-            tokenizer.tokenizer.padding_side = "left" # Force inference
+        if use_model_config:
+            # Save tokenizer for inference purposes
+            tokenizer.padding_side = "left" # Force inference
+            if hasattr(tokenizer, "tokenizer"):
+                tokenizer.tokenizer.padding_side = "left" # Force inference
         m = model
         while hasattr(m, "model"):
             m.max_seq_length = max_seq_length
