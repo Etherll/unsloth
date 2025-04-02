@@ -539,6 +539,7 @@ class FastBaseModel:
             lora_dropout    = lora_dropout,
             bias            = bias,
             task_type       = task_type,
+            **kwargs
         )
         if use_model_config:
             model = prepare_model_for_kbit_training(
