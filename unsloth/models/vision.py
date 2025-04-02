@@ -454,10 +454,11 @@ class FastBaseModel:
                 model.generate = types.MethodType(unsloth_base_fast_generate, model)
         pass
         # Post patches
-        model = FastBaseModel.post_patch_model(
-            model,
-            use_gradient_checkpointing = use_gradient_checkpointing,use_model_config=use_model_config,
-        )
+        if use_model_config:
+            model = FastBaseModel.post_patch_model(
+                model,
+                use_gradient_checkpointing = use_gradient_checkpointing,use_model_config=use_model_config,
+            )
         # Clear deleted GPU items
         for _ in range(3):
             gc.collect()
@@ -539,6 +540,7 @@ class FastBaseModel:
             bias            = bias,
             task_type       = task_type,
         )
+        
         model = prepare_model_for_kbit_training(
             model,
             use_gradient_checkpointing = use_gradient_checkpointing,
@@ -578,7 +580,6 @@ class FastBaseModel:
                 # Use bfloat16 precision for full finetuning
                 float32_mixed_precision = False
         model.config.torch_dtype = torch.float16
-        model.named_parameters = lambda: []
         model = prepare_model_for_training(
             model,
             use_gradient_checkpointing = use_gradient_checkpointing,
