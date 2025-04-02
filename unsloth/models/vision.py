@@ -369,13 +369,12 @@ class FastBaseModel:
                 **kwargs,
             )
         if use_model_config:
-
             # Return old flag
             # Counteract saved tokenizers
             tokenizer_name = model_name if tokenizer_name is None else tokenizer_name
             auto_processor = AutoProcessor if (auto_model is AutoModelForVision2Seq ) or (whisper_language and whisper_task) or processor else AutoTokenizer
             if whisper_language and whisper_task:
-            tokenizer = auto_processor.from_pretrained(
+                tokenizer = auto_processor.from_pretrained(
                     tokenizer_name,
                     padding_side = "right",
                     token        = token,
