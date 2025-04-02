@@ -236,6 +236,7 @@ class FastBaseModel:
         auto_model        = AutoModelForVision2Seq,
         use_gradient_checkpointing = "unsloth",
         supports_sdpa     = True,
+        processor         = None,
         whisper_language  = None,
         whisper_task      = None,
         **kwargs,
@@ -371,7 +372,7 @@ class FastBaseModel:
 
         # Counteract saved tokenizers
         tokenizer_name = model_name if tokenizer_name is None else tokenizer_name
-        auto_processor = AutoProcessor if (auto_model is AutoModelForVision2Seq ) or (whisper_language and whisper_task) else AutoTokenizer
+        auto_processor = AutoProcessor if (auto_model is AutoModelForVision2Seq ) or (whisper_language and whisper_task) or processor else AutoTokenizer
         if whisper_language and whisper_task:
            tokenizer = auto_processor.from_pretrained(
                 tokenizer_name,
