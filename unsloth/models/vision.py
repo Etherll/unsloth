@@ -548,8 +548,12 @@ class FastBaseModel:
         model = _get_peft_model(model, lora_config)
         # Enable gradients on modules which are trainable
         requires_grad_for_gradient_checkpointing(model)
-
-        model = FastBaseModel.post_patch_model(model, use_gradient_checkpointing,use_model_config=use_model_config)
+        if use_model_config:
+            model = FastBaseModel.post_patch_model(
+                model,
+                use_gradient_checkpointing=use_gradient_checkpointing,
+                use_model_config=use_model_config,
+            )
         model.max_seq_length = max_seq_length
 
         # Clear deleted GPU items
