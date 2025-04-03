@@ -531,7 +531,8 @@ class FastBaseModel:
             gc.collect()
             torch.cuda.empty_cache()
         pass
-        max_seq_length = model.max_seq_length
+        if use_model_config:
+            max_seq_length = model.max_seq_length
         lora_config = LoraConfig(
             r               = r,
             lora_alpha      = lora_alpha,
