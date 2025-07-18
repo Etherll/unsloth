@@ -420,7 +420,12 @@ class FastBaseModel:
         # Check if using forced float32 - we load it in bfloat16, then cast to float16!
         torch_dtype = dtype
         if do_forced_float32: torch_dtype = torch.bfloat16
-
+        
+        model_kwargs = kwargs.copy()
+        model_kwargs.pop("use_processor", None)
+        model_kwargs.pop("whisper_language", None)
+        model_kwargs.pop("whisper_task", None)
+        
         raise_handler = RaiseUninitialized()
         model = auto_model.from_pretrained(
             model_name,
@@ -430,7 +435,7 @@ class FastBaseModel:
             token                   = token,
             trust_remote_code       = trust_remote_code,
             # attn_implementation   = attn_implementation,
-            **kwargs,
+            **model_kwargs,
         )
         raise_handler.remove()
         # Return old flag
