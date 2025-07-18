@@ -260,6 +260,7 @@ class FastBaseModel:
         supports_sdpa     = True,
         whisper_language  = None,
         whisper_task      = None,
+        use_processor     = False,
         **kwargs,
     ):
         if model_types is None:
@@ -452,7 +453,7 @@ class FastBaseModel:
         tokenizer_name = model_name if tokenizer_name is None else tokenizer_name
         is_vlm = (auto_model is AutoModelForVision2Seq)
         is_whisper = (whisper_language is not None and whisper_task is not None)
-        auto_processor = AutoProcessor if (is_vlm or is_whisper) else AutoTokenizer
+        auto_processor = AutoProcessor if (is_vlm or is_whisper or use_processor) else AutoTokenizer
         if (whisper_language and whisper_task) or auto_model.__name__.endswith("ForConditionalGeneration"):
            tokenizer = auto_processor.from_pretrained(
                 tokenizer_name,
