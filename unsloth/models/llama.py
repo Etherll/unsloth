@@ -86,11 +86,13 @@ from triton import __version__ as triton_version
 HAS_XFORMERS = xformers is not None
 BlockDiagonalCausalMask = xformers.attn_bias.BlockDiagonalCausalMask if HAS_XFORMERS else None
 
-def clean_gpu_cache():
-    if DEVICE_TYPE == "xpu":
-        torch.xpu.empty_cache()
-    else:
-        torch.cuda.empty_cache()
+if DEVICE_TYPE == "xpu":
+    clean_gpu_cache = torch.xpu.empty_cache
+    get_current_device = torch.xpu.current_device
+else:
+    clean_gpu_cache = torch.cuda.empty_cache
+    get_current_device = torch.cuda.current_device
+pass
 
 def original_apply_qkv(self, X):
     Q = self.q_proj(X)
@@ -342,9 +344,9 @@ def LlamaAttention_fast_forward_inference(
         A = torch_matmul(A, Vnn, out = Qn)
     else:
         if SDPA_HAS_GQA:
-            A = scaled_dot_product_attention(Qn, Knn, Vnn, attn_mask = attention_mask, is_causal = False, enable_gqa = True)
+            A = scaled_dot_product_attention(Qn, Knn, Vnn, attn_mask = attention_mask, is_causal = is_causal, enable_gqa = True)
         else:
-            A = scaled_dot_product_attention(Qn, Knn, Vnn, attn_mask = attention_mask, is_causal = False)
+            A = scaled_dot_product_attention(Qn, Knn, Vnn, attn_mask = attention_mask, is_causal = is_causal)
     pass
     A = A.transpose(1, 2)
     A = A.reshape(bsz, 1, attention_size)
@@ -497,6 +499,8 @@ def LlamaAttention_fast_forward(
     #     else inplace_rope_embedding(Q, K, cos, sin, position_ids)
     # )
     Q, K = fast_rope_embedding(Q, K, cos, sin)
+    # synchronize before cat to avoid race condition
+    torch.cuda.current_stream(Q.device).synchronize()
 
     if past_key_value is not None:
         K = torch.cat([past_key_value[0], K], dim = 2)
@@ -778,7 +782,7 @@ def LlamaModel_fast_forward(
     # Fix up attention mask by setting elements to 0
     # Specifically for DPO
     if getattr(self, "_has_no_labels", False) is True and (attention_mask is not None) and (past_key_values is None) and \
-        (not train_embed_tokens):
+        (not train_embed_tokens) and self.training:
         # Careful for inference the attention_mask is size (1, kv_seq_len)
         # Whilst the input_embeds is size (1, 1, 4096)
         inputs_requires_grad = inputs_embeds.requires_grad
@@ -863,21 +867,21 @@ def LlamaModel_fast_forward(
 
             # https://github.com/pytorch/pytorch/issues/103749
             # Need to convert to float and not using bool
-            attention_mask = (1.0 - attention_mask.float()) * torch.finfo(inputs_embeds.dtype).min
+            # attention_mask = (1.0 - attention_mask.float()) * torch.finfo(inputs_embeds.dtype).min
             dynamic_SWA_mask = _prepare_4d_causal_attention_mask_for_sdpa(
                 attention_mask,
                 (batch_size, seq_length),
                 inputs_embeds,
                 past_key_values_length,
                 sliding_window = self.config.sliding_window,
-            )[0][0]
+            )
             dynamic_GA_mask = _prepare_4d_causal_attention_mask_for_sdpa(
                 attention_mask,
                 (batch_size, seq_length),
                 inputs_embeds,
                 past_key_values_length,
                 sliding_window = None,
-            )[0][0]
+            )
             use_static_mask = False
 
         elif not hasattr(self, "SWA_mask"):
@@ -951,7 +955,7 @@ def LlamaModel_fast_forward(
         else:
             layer_outputs = decoder_layer(
                 hidden_states,
-                causal_mask=mask,
+                causal_mask         = mask,
                 attention_mask      = attention_mask,
                 position_ids        = position_ids,
                 past_key_value      = past_key_value,
@@ -1365,8 +1369,8 @@ class LlamaRotaryEmbedding(torch.nn.Module):
             self._set_cos_sin_cache(seq_len=self.current_rope_size, device=torch.device(device_idx), dtype=torch.get_default_dtype())
 
         # dummy so that patch_utils doesn't fail for now
-        self.cos_cached = torch.empty(1, device=torch.cuda.current_device(), dtype=torch.get_default_dtype())
-        self.sin_cached = torch.empty(1, device=torch.cuda.current_device(), dtype=torch.get_default_dtype())
+        self.cos_cached = torch.empty(1, device=get_current_device(), dtype=torch.get_default_dtype())
+        self.sin_cached = torch.empty(1, device=get_current_device(), dtype=torch.get_default_dtype())
     pass
 
     def _set_cos_sin_cache(self, seq_len, device, dtype):
@@ -1402,7 +1406,7 @@ class LlamaRotaryEmbedding(torch.nn.Module):
 
     def get_cached(self, seq_len = None, device_index = None):
         if device_index is None:
-            device_index = torch.cuda.current_device()
+            device_index = get_current_device()
         return self.multi_gpu_cos_cached[device_index], self.multi_gpu_sin_cached[device_index]
     pass
 
@@ -1484,8 +1488,8 @@ class LlamaExtendedRotaryEmbedding(torch.nn.Module):
             self._set_cos_sin_cache(seq_len=self.current_rope_size, device=torch.device(device_idx), dtype=torch.get_default_dtype())
 
         # dummy so that patch_utils doesn't fail for now
-        self.cos_cached = torch.empty(1, device=torch.cuda.current_device(), dtype=torch.get_default_dtype())
-        self.sin_cached = torch.empty(1, device=torch.cuda.current_device(), dtype=torch.get_default_dtype())
+        self.cos_cached = torch.empty(1, device=get_current_device(), dtype=torch.get_default_dtype())
+        self.sin_cached = torch.empty(1, device=get_current_device(), dtype=torch.get_default_dtype())
     pass
 
     def _set_cos_sin_cache(self, seq_len, device, dtype):
@@ -1518,7 +1522,7 @@ class LlamaExtendedRotaryEmbedding(torch.nn.Module):
 
     def get_cached(self, seq_len = None, device_index = None):
         if device_index is None:
-            device_index = torch.cuda.current_device()
+            device_index = get_current_device()
         return self.multi_gpu_cos_cached[device_index], self.multi_gpu_sin_cached[device_index]
     pass
 
@@ -1631,10 +1635,10 @@ class LongRopeRotaryEmbedding(torch.nn.Module):
             self.multi_gpu_short_sin_cached[device_idx] = sin_cached
 
         # dummy so that patch_utils doesn't fail for now
-        self.short_cos_cached = torch.empty(1, device=torch.cuda.current_device(), dtype=torch.get_default_dtype())
-        self.short_sin_cached = torch.empty(1, device=torch.cuda.current_device(), dtype=torch.get_default_dtype())
-        self.long_cos_cached = torch.empty(1, device=torch.cuda.current_device(), dtype=torch.get_default_dtype())
-        self.long_sin_cached = torch.empty(1, device=torch.cuda.current_device(), dtype=torch.get_default_dtype())
+        self.short_cos_cached = torch.empty(1, device=get_current_device(), dtype=torch.get_default_dtype())
+        self.short_sin_cached = torch.empty(1, device=get_current_device(), dtype=torch.get_default_dtype())
+        self.long_cos_cached = torch.empty(1, device=get_current_device(), dtype=torch.get_default_dtype())
+        self.long_sin_cached = torch.empty(1, device=get_current_device(), dtype=torch.get_default_dtype())
     pass
 
     def _set_cos_sin_cache(self, seq_len, device, dtype):
@@ -1675,7 +1679,7 @@ class LongRopeRotaryEmbedding(torch.nn.Module):
 
     def get_cached(self, seq_len = None, device_index = None):
         if device_index is None:
-            device_index = torch.cuda.current_device()
+            device_index = get_current_device()
         if seq_len is not None and seq_len < self.original_max_position_embeddings:
             return self.multi_gpu_short_cos_cached[device_index], self.multi_gpu_short_sin_cached[device_index]
         return self.multi_gpu_long_cos_cached[device_index], self.multi_gpu_long_sin_cached[device_index]
