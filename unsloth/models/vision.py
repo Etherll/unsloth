@@ -665,6 +665,7 @@ class FastBaseModel:
             "use_rslora"        : use_rslora,
             "init_lora_weights" : init_lora_weights,
             "loftq_config"      : loftq_config,
+            "modules_to_save"   : modules_to_save,
         }
         lora_config = LoraConfig(
             **{k:v for k,v in lora_config_dict.items() if k in LoraConfig.__doc__},
