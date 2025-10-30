@@ -25,8 +25,6 @@ from .granite import FastGraniteModel
 from .llama   import FastLlamaModel, logger
 from .mistral import FastMistralModel
 from .qwen2   import FastQwen2Model
-from .qwen3   import FastQwen3Model
-from .qwen3_moe import FastQwen3MoeModel
 from .cohere  import FastCohereModel
 from transformers import AutoConfig
 from transformers import __version__ as transformers_version
@@ -78,6 +76,9 @@ pass
 if SUPPORTS_FALCON_H1:
     from .falcon_h1 import FastFalconH1Model
 pass
+if SUPPORTS_QWEN3:
+  from .qwen3   import FastQwen3Model
+  from .qwen3_moe import FastQwen3MoeModel
 import torch
 from ._utils import (
     patch_compiling_bitsandbytes,
