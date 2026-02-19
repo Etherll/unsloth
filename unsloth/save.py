@@ -257,6 +257,7 @@ def unsloth_save_model(
     # Our functions
     temporary_location: str = "_unsloth_temporary_saved_buffers",
     maximum_memory_usage: float = 0.9,
+    datasets: Optional[List[str]] = None,
 ):
     if token is None:
         token = get_token()
@@ -289,6 +290,7 @@ def unsloth_save_model(
         "save_method",
         "temporary_location",
         "maximum_memory_usage",
+        "datasets",
     ):
         del save_pretrained_settings[deletion]
 
@@ -366,6 +368,7 @@ def unsloth_save_model(
             file_location = None,
             old_username = None,
             private = private,
+            datasets = datasets,
         )
 
         getattr(model, "original_push_to_hub", model.push_to_hub)(
@@ -475,6 +478,7 @@ def unsloth_save_model(
                 file_location = None,
                 old_username = None,
                 private = private,
+                datasets = datasets,
             )
 
         if tokenizer is not None:
@@ -737,6 +741,7 @@ def unsloth_save_model(
             file_location = None,
             old_username = username,
             private = private,
+            datasets = datasets,
         )
 
     # First check if we're pushing to an organization!
@@ -1257,6 +1262,16 @@ def save_to_gguf(
                     "Please check disk space and try again."
                 )
 
+    # Move initial GGUF files into a dedicated _gguf directory
+    gguf_directory = f"{model_directory}_gguf"
+    os.makedirs(gguf_directory, exist_ok = True)
+    moved_files = []
+    for fpath in initial_files:
+        dst = os.path.join(gguf_directory, os.path.basename(fpath))
+        shutil.move(fpath, dst)
+        moved_files.append(dst)
+    initial_files = moved_files
+
     print(f"Unsloth: Initial conversion completed! Files: {initial_files}")
 
     # Step 4: Additional quantizations using llama-quantize
@@ -1276,8 +1291,9 @@ def save_to_gguf(
                 print(
                     f"Unsloth: [2] Converting GGUF {first_conversion_dtype} into {quant_method}. This might take 10 minutes..."
                 )
-                output_location = f"{model_name}.{quant_method.upper()}.gguf"
-
+                output_location = os.path.join(
+                    gguf_directory, f"{model_name}.{quant_method.upper()}.gguf"
+                )
                 try:
                     # Use the quantize_gguf function we created
                     quantized_file = quantize_gguf(
@@ -1316,7 +1332,7 @@ def save_to_gguf(
         print("Unsloth: Model files cleanup...")
         if quants_created:
             all_saved_locations.remove(base_gguf)
-            Path(base_gguf).unlink()
+            Path(base_gguf).unlink(missing_ok = True)
 
             # flip the list to get [text_model, mmproj] order. for text models stays the same.
             all_saved_locations.reverse()
@@ -1351,6 +1367,7 @@ def unsloth_save_pretrained_merged(
     tags: List[str] = None,
     temporary_location: str = "_unsloth_temporary_saved_buffers",
     maximum_memory_usage: float = 0.75,
+    datasets: Optional[List[str]] = None,
 ):
     """
     Same as .save_pretrained(...) except 4bit weights are auto
@@ -1392,6 +1409,7 @@ def unsloth_push_to_hub_merged(
     tags: Optional[List[str]] = None,
     temporary_location: str = "_unsloth_temporary_saved_buffers",
     maximum_memory_usage: float = 0.75,
+    datasets: Optional[List[str]] = None,
 ):
     """
     Same as .push_to_hub(...) except 4bit weights are auto
@@ -1469,10 +1487,11 @@ def create_huggingface_repo(
     save_directory,
     token = None,
     private = False,
+    datasets = None,
 ):
     if token is None:
         token = get_token()
-    save_directory, username = _determine_username(save_directory, "", token)
+    save_directory, username = _determine_username(save_directory, None, token)
 
     from huggingface_hub import create_repo
 
@@ -1496,9 +1515,22 @@ def create_huggingface_repo(
             extra = "unsloth",
         )
         card = ModelCard(content)
+        if datasets:
+            card.data.datasets = datasets
         card.push_to_hub(save_directory, token = token)
     except:
-        pass
+        # Repo already exists — update datasets metadata separately
+        if datasets:
+            try:
+                from huggingface_hub import metadata_update
+
+                metadata_update(
+                    save_directory, {"datasets": datasets}, overwrite = True, token = token
+                )
+            except Exception as e:
+                logger.warning_once(
+                    f"Unsloth: Could not update datasets metadata for {save_directory}: {e}"
+                )
     hf_api = HfApi(token = token)
     return save_directory, hf_api
 
@@ -1513,6 +1545,7 @@ def upload_to_huggingface(
     old_username = None,
     private = None,
     create_config = True,
+    datasets = None,
 ):
     save_directory, username = _determine_username(save_directory, old_username, token)
 
@@ -1538,9 +1571,22 @@ def upload_to_huggingface(
             extra = extra,
         )
         card = ModelCard(content)
+        if datasets:
+            card.data.datasets = datasets
         card.push_to_hub(save_directory, token = token)
     except:
-        pass
+        # Repo already exists — update datasets metadata separately
+        if datasets:
+            try:
+                from huggingface_hub import metadata_update
+
+                metadata_update(
+                    save_directory, {"datasets": datasets}, overwrite = True, token = token
+                )
+            except Exception as e:
+                logger.warning_once(
+                    f"Unsloth: Could not update datasets metadata for {save_directory}: {e}"
+                )
 
     if file_location is not None:
         # Now upload file
@@ -1996,6 +2042,7 @@ def unsloth_save_pretrained_gguf(
             raise RuntimeError(f"Unsloth: GGUF conversion failed: {e}")
 
     # Step 9: Create Ollama modelfile
+    gguf_directory = f"{save_directory}_gguf"
     modelfile_location = None
     ollama_success = False
     if all_file_locations:
@@ -2004,13 +2051,12 @@ def unsloth_save_pretrained_gguf(
                 modelfile = create_ollama_modelfile(tokenizer, base_model_name, ".")
             else:
                 modelfile = create_ollama_modelfile(
-                    tokenizer, base_model_name, all_file_locations[0]
+                    tokenizer,
+                    base_model_name,
+                    os.path.basename(all_file_locations[0]),
                 )
             if modelfile is not None:
-                if is_vlm_update:
-                    modelfile_location = os.path.join(save_directory, "Modelfile")
-                else:
-                    modelfile_location = os.path.join(os.getcwd(), "Modelfile")
+                modelfile_location = os.path.join(gguf_directory, "Modelfile")
                 with open(modelfile_location, "w", encoding = "utf-8") as file:
                     file.write(modelfile)
                 ollama_success = True
@@ -2027,28 +2073,25 @@ def unsloth_save_pretrained_gguf(
     if is_vlm_update:
         print("\n")
         print(
-            f"Unsloth: example usage for Multimodal LLMs: llama-mtmd-cli -m {all_file_locations[0]} --mmproj {all_file_locations[-1]}"
+            f"Unsloth: example usage for Multimodal LLMs: llama.cpp/llama-mtmd-cli -m {all_file_locations[0]} --mmproj {all_file_locations[-1]}"
         )
         print("Unsloth: load image inside llama.cpp runner: /image test_image.jpg")
         print("Unsloth: Prompt model to describe the image")
     else:
         print(
-            f'Unsloth: example usage for text only LLMs: llama-cli --model {all_file_locations[0]} -p "why is the sky blue?"'
+            f'Unsloth: example usage for text only LLMs: llama.cpp/llama-cli --model {all_file_locations[0]} -p "why is the sky blue?"'
         )
-    if ollama_success and is_vlm_update:
+
+    if ollama_success:
         print(f"Unsloth: Saved Ollama Modelfile to {modelfile_location}")
         print(
-            "Unsloth: convert model to ollama format by running - ollama create model_name -f ./Modelfile - inside save directory."
-        )
-    if ollama_success and not is_vlm_update:
-        print("Unsloth: Saved Ollama Modelfile to current directory")
-        print(
-            "Unsloth: convert model to ollama format by running - ollama create model_name -f ./Modelfile - inside current directory."
+            f"Unsloth: convert model to ollama format by running - ollama create model_name -f {modelfile_location}"
         )
 
     # Return a dict with all needed info for push_to_hub
     return {
         "save_directory": save_directory,
+        "gguf_directory": gguf_directory,
         "gguf_files": all_file_locations,
         "modelfile_location": modelfile_location,
         "want_full_precision": want_full_precision,
@@ -2075,6 +2118,7 @@ def unsloth_push_to_hub_gguf(
     tags: Optional[List[str]] = None,
     temporary_location: str = "_unsloth_temporary_saved_buffers",
     maximum_memory_usage: float = 0.85,
+    datasets: Optional[List[str]] = None,
 ):
     """
     Same as .push_to_hub(...) except 4bit weights are auto
@@ -2148,10 +2192,11 @@ def unsloth_push_to_hub_gguf(
         if cleanup_temp:
             import shutil
 
-            try:
-                shutil.rmtree(save_directory)
-            except:
-                pass
+            for d in [save_directory, f"{save_directory}_gguf"]:
+                try:
+                    shutil.rmtree(d)
+                except:
+                    pass
         raise RuntimeError(f"Failed to convert model to GGUF: {e}")
 
     # Step 3: Upload to HuggingFace Hub
@@ -2329,19 +2374,33 @@ This model was finetuned and converted to GGUF format using [Unsloth](https://gi
         except:
             pass
 
+        if datasets:
+            try:
+                from huggingface_hub import metadata_update
+
+                metadata_update(
+                    full_repo_id, {"datasets": datasets}, overwrite = True, token = token
+                )
+            except Exception as e:
+                logger.warning_once(
+                    f"Unsloth: Could not update datasets metadata for {full_repo_id}: {e}"
+                )
+
     except Exception as e:
         raise RuntimeError(f"Failed to upload to Hugging Face Hub: {e}")
 
     finally:
         # Clean up temporary directory
-        if cleanup_temp and os.path.exists(save_directory):
+        if cleanup_temp:
             print("Unsloth: Cleaning up temporary files...")
             import shutil
 
-            try:
-                shutil.rmtree(save_directory)
-            except:
-                pass
+            for d in [save_directory, f"{save_directory}_gguf"]:
+                if os.path.exists(d):
+                    try:
+                        shutil.rmtree(d)
+                    except:
+                        pass
 
     return full_repo_id
 
@@ -2634,6 +2693,7 @@ def unsloth_generic_save(
     # Our functions
     temporary_location: str = "_unsloth_temporary_saved_buffers",
     maximum_memory_usage: float = 0.9,
+    datasets: Optional[List[str]] = None,
 ):
     if token is None and push_to_hub:
         token = get_token()
@@ -2661,6 +2721,20 @@ def unsloth_generic_save(
         low_disk_space_usage = True,
         use_temp_file = False,
     )
+
+    if push_to_hub and datasets:
+        try:
+            from huggingface_hub import metadata_update
+
+            save_dir, _ = _determine_username(save_directory, None, token)
+            metadata_update(
+                save_dir, {"datasets": datasets}, overwrite = True, token = token
+            )
+        except Exception as e:
+            logger.warning_once(
+                f"Unsloth: Could not update datasets metadata for {save_directory}: {e}"
+            )
+
     return
 
 
@@ -2681,6 +2755,7 @@ def unsloth_generic_save_pretrained_merged(
     tags: List[str] = None,
     temporary_location: str = "_unsloth_temporary_saved_buffers",
     maximum_memory_usage: float = 0.75,
+    datasets: Optional[List[str]] = None,
 ):
     """
     Same as .push_to_hub(...) except 4bit weights are auto
@@ -2722,6 +2797,7 @@ def unsloth_generic_push_to_hub_merged(
     tags: Optional[List[str]] = None,
     temporary_location: str = "_unsloth_temporary_saved_buffers",
     maximum_memory_usage: float = 0.75,
+    datasets: Optional[List[str]] = None,
 ):
     """
     Same as .push_to_hub(...) except 4bit weights are auto
