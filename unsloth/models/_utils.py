@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__version__ = "2026.2.1"
+__version__ = "2026.3.3"
 
 __all__ = [
     "SUPPORTS_BFLOAT16",
@@ -234,11 +234,16 @@ def prefer_flex_attn_if_supported(model_class, config):
             model_class, "_supports_flex_attn", False
         ):
             return None
-        # GPT-OSS uses eager attention during inference since flex attention
-        # returns incorrect results (likely due to left padding issues).
-        # Skip setting flex_attention to avoid BlockMask type errors.
+        # GPT-OSS, Mllama and Gemma3N use eager/sdpa attention during
+        # inference since flex attention returns incorrect results or errors out.
+        # GPT-OSS: left padding issues cause incorrect outputs.
+        # Mllama: _update_causal_mask uses make_flex_block_causal_mask which
+        # creates BlockMask with Q_LEN=KV_LEN=total_seq_len, but during
+        # decode q_len=1, causing ValueError. Needs transformers update.
+        # Gemma3N: timm vision wrappers (eg Gemma3nVisionConfig) do not
+        # support flex_attention.
         model_type = getattr(config, "model_type", "") if config else ""
-        if model_type == "gpt_oss":
+        if model_type in ("gpt_oss", "mllama") or str(model_type).startswith("gemma3n"):
             return None
         if config is not None:
             setattr(config, "_attn_implementation", "flex_attention")
@@ -1467,7 +1472,7 @@ BitsAndBytesConfig__init__ = BitsAndBytesConfig__init__.replace(
 )
 exec(BitsAndBytesConfig__init__, globals())
 
-if DEVICE_COUNT == 1:
+if DEVICE_COUNT == 1 and int(os.environ.get("WORLD_SIZE", "1")) <= 1:
     from accelerate.utils.dataclasses import DistributedType
 
     def _prepare_backend(self, *args, **kwargs):
@@ -2565,6 +2570,14 @@ def patch_hf_quantizer():
         FbgemmFp8HfQuantizer.is_qat_trainable = property(make_trainable)
     except Exception as e:
         logger.warning(f"Failed to patch FbgemmFp8HfQuantizer. Error {e}")
+
+    try:
+        from transformers.quantizers.quantizer_torchao import TorchAoHfQuantizer
+
+        TorchAoHfQuantizer.is_trainable = property(make_trainable)
+        TorchAoHfQuantizer.is_qat_trainable = property(make_trainable)
+    except Exception as e:
+        logger.warning(f"Failed to patch TorchAoHfQuantizer. Error {e}")
 
 
 patch_hf_quantizer()
