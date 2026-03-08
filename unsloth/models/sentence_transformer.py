@@ -574,7 +574,8 @@ def _patch_fused_pooling(st_model):
     return True
 
 
-_UNPAD_SUPPORTED_TYPES = {"bert", "modernbert", "roberta", "xlm-roberta", "albert", "electra", "mpnet"}
+# modernbert excluded — has native unpadding (indices, cu_seqlens args)
+_UNPAD_SUPPORTED_TYPES = {"bert", "roberta", "xlm-roberta", "albert", "electra", "mpnet"}
 _UNPAD_MIN_PADDING_RATIO = 0.15
 
 
@@ -793,8 +794,11 @@ def _patch_unpadded_encoder(st_model, model_type):
         if not actual_model.training:
             return _original_forward(features, **kwargs)
 
-        # Skip unpadding for compiled models (recompiles on every shape)
+        # Skip when compiled (recompiles on every shape) or when gradient
+        # checkpointing is active (config resets before checkpoint recompute)
         if hasattr(auto_model, "_orig_mod"):
+            return _original_forward(features, **kwargs)
+        if getattr(actual_model, "gradient_checkpointing", False):
             return _original_forward(features, **kwargs)
 
         B, S = attention_mask.shape
