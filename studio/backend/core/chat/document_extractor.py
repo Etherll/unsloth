@@ -31,6 +31,11 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Awaitable, Callable, Literal, List, Optional
 
 from .vlm_capability import VlmCapability, detect_loaded_vlm
+from utils.pdf_text import (
+    markdown_text_is_corrupted,
+    markdown_text_is_incomplete,
+    plain_pdf_text,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -533,6 +538,13 @@ def _extract_pdf(
                 "Encrypted PDF; provide a password before extracting it."
             )
         markdown = pymupdf4llm.to_markdown(doc, **_pymupdf4llm_markdown_kwargs())
+        # pymupdf4llm mangles RTL/Indic/math glyphs and can silently drop heavy-
+        # RTL text; trade its table reconstruction for PyMuPDF's logical-order
+        # text layer whenever the Markdown is corrupted or far shorter than that
+        # raw layer.
+        plain = plain_pdf_text(doc)
+        if markdown_text_is_corrupted(markdown) or markdown_text_is_incomplete(markdown, plain):
+            markdown = plain
 
         figures_out: list[ExtractedFigure] = []
         encoded_visuals = 0
@@ -654,12 +666,85 @@ def _extract_pdf(
             logger.debug("pymupdf doc.close() raised", exc_info = True)
 
 
+def _header_footer_text(container: Any) -> list[str]:
+    """Paragraph and table-cell text from a docx header/footer container.
+
+    Letterheads are often laid out as tables, so cells are walked too, not just
+    paragraphs.
+    """
+    texts: list[str] = []
+    for para in container.paragraphs:
+        if para.text.strip():
+            texts.append(para.text.strip())
+    for table in container.tables:
+        for row in table.rows:
+            # row.cells repeats the same cell once per spanned column; dedup by
+            # the underlying <w:tc> so a merged letterhead cell isn't doubled.
+            seen: set[int] = set()
+            cells: list[str] = []
+            for cell in row.cells:
+                if id(cell._tc) in seen:
+                    continue
+                seen.add(id(cell._tc))
+                text = cell.text.strip()
+                if text:
+                    cells.append(text)
+            if cells:
+                texts.append(" ".join(cells))
+    return texts
+
+
+def _with_docx_headers_footers(file_bytes: bytes, body_markdown: str) -> str:
+    """Prepend headers / append footers that mammoth omits (its API exposes the
+    body only, so this re-parses the bytes with python-docx to reach them).
+    python-docx is a hard studio dependency; if it is somehow missing or chokes
+    on the file, return the body unchanged rather than failing extraction.
+
+    Word keeps separate primary, first-page and even-page headers/footers; all
+    are collected (dedup'd) so a first-page-only letterhead isn't dropped.
+    """
+    try:
+        import docx  # python-docx
+    except Exception as exc:
+        logger.debug("python-docx unavailable; skipping headers/footers", exc_info = exc)
+        return body_markdown
+    try:
+        document = docx.Document(io.BytesIO(file_bytes))
+        headers: list[str] = []
+        footers: list[str] = []
+        for section in document.sections:
+            for header in (section.first_page_header, section.even_page_header, section.header):
+                headers += _header_footer_text(header)
+            for footer in (section.first_page_footer, section.even_page_footer, section.footer):
+                footers += _header_footer_text(footer)
+    except Exception as exc:  # corrupt/strict docx python-docx can't open
+        logger.debug("python-docx header/footer recovery failed", exc_info = exc)
+        return body_markdown
+
+    parts = list(dict.fromkeys(headers)) + [body_markdown] + list(dict.fromkeys(footers))
+    return "\n\n".join(part for part in parts if part).strip()
+
+
 def _extract_docx(file_bytes: bytes) -> tuple[str, list[ExtractedFigure], int, int, int]:
     _ensure_docx_backend()
     assert mammoth is not None  # for type-checkers
     stream = io.BytesIO(file_bytes)
-    result = mammoth.convert_to_markdown(stream)
-    markdown = result.value or ""
+    # mammoth's Markdown writer flattens tables to one cell per line; its HTML
+    # writer emits real <table> structure, so render HTML and reuse our table-
+    # aware html_to_markdown. Footnotes, endnotes and text boxes survive either
+    # path; headers/footers (body-only in mammoth) are recovered separately.
+    try:
+        from core.inference._html_to_md import html_to_markdown
+    except Exception as exc:
+        logger.warning(
+            "HTML-to-Markdown converter unavailable; using mammoth Markdown",
+            exc_info = exc,
+        )
+        markdown = mammoth.convert_to_markdown(stream).value or ""
+    else:
+        html = mammoth.convert_to_html(stream).value or ""
+        markdown = html_to_markdown(html)
+    markdown = _with_docx_headers_footers(file_bytes, markdown)
     return markdown, [], 0, 0, 0
 
 

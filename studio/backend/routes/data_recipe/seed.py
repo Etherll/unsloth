@@ -32,6 +32,11 @@ except ImportError:
 from core.data_recipe.jsonable import to_preview_jsonable
 from loggers import get_logger
 from utils.paths import ensure_dir, seed_uploads_root, unstructured_uploads_root
+from utils.pdf_text import (
+    markdown_text_is_corrupted,
+    markdown_text_is_incomplete,
+    plain_pdf_text,
+)
 from utils.utils import log_and_http_error
 from utils.upload_limits import (
     LOCAL_SEED_UPLOAD_MAX_BYTES,
@@ -398,15 +403,32 @@ def _extract_text_from_file(file_path: Path, ext: str) -> str:
     if ext in {".txt", ".md"}:
         raw = file_path.read_text(encoding = "utf-8", errors = "ignore")
     elif ext == ".pdf":
+        import pymupdf
         import pymupdf4llm
-        raw = pymupdf4llm.to_markdown(
-            str(file_path), write_images = False, show_progress = False, use_ocr = False
-        )
+        # pymupdf4llm mangles RTL/Indic/math glyphs and can silently drop heavy-RTL
+        # text; fall back to PyMuPDF's logical-order text so seeds aren't trained on
+        # mojibake or truncated documents.
+        with pymupdf.open(str(file_path)) as doc:
+            raw = pymupdf4llm.to_markdown(
+                doc, write_images = False, show_progress = False, use_ocr = False
+            )
+            plain = plain_pdf_text(doc)
+        if markdown_text_is_corrupted(raw) or markdown_text_is_incomplete(raw, plain):
+            raw = plain
     elif ext == ".docx":
         import mammoth
-        with open(str(file_path), "rb") as f:
-            result = mammoth.convert_to_markdown(f)
-            raw = result.value
+        # mammoth's Markdown writer flattens tables to one cell per line; render
+        # HTML and reuse the table-aware html_to_markdown so dataset seeds keep
+        # table structure (fall back to mammoth Markdown if it is unavailable).
+        try:
+            from core.inference._html_to_md import html_to_markdown
+        except Exception:
+            with open(str(file_path), "rb") as f:
+                raw = mammoth.convert_to_markdown(f).value or ""
+        else:
+            with open(str(file_path), "rb") as f:
+                html = mammoth.convert_to_html(f).value or ""
+            raw = html_to_markdown(html)
     else:
         raise ValueError(f"Unsupported file type: {ext}")
 
