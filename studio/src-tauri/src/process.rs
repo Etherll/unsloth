@@ -12,6 +12,764 @@ use tauri::{AppHandle, Emitter, Manager};
 
 const MAX_LOG_LINES: usize = 1000;
 
+#[cfg(windows)]
+const STUDIO_MANAGED_RUNTIME_MUTEX_PREFIX: &str = "Global\\UnslothStudioManagedEnvironment-";
+
+#[cfg(windows)]
+pub(crate) const STUDIO_RUNTIME_GATE_HANDOFF_ENV: &str = "_UNSLOTH_STUDIO_RUNTIME_GATE_HANDOFF";
+
+#[cfg(windows)]
+#[derive(Debug)]
+struct StudioManagedRuntimeLaunchGuard {
+    handle: windows_sys::Win32::Foundation::HANDLE,
+}
+
+#[cfg(windows)]
+impl Drop for StudioManagedRuntimeLaunchGuard {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = windows_sys::Win32::System::Threading::ReleaseMutex(self.handle);
+            let _ = windows_sys::Win32::Foundation::CloseHandle(self.handle);
+        }
+    }
+}
+
+#[cfg(windows)]
+fn acquire_named_studio_runtime_launch_guard(
+    name: &str,
+) -> Result<StudioManagedRuntimeLaunchGuard, String> {
+    const WAIT_OBJECT_0: u32 = 0x0000_0000;
+    const WAIT_ABANDONED: u32 = 0x0000_0080;
+    const WAIT_TIMEOUT: u32 = 0x0000_0102;
+
+    let wide_name: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+    let handle = unsafe {
+        windows_sys::Win32::System::Threading::CreateMutexW(std::ptr::null(), 0, wide_name.as_ptr())
+    };
+    if handle.is_null() {
+        return Err(format!(
+            "Could not create the Studio runtime lock: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+
+    let wait = unsafe { windows_sys::Win32::System::Threading::WaitForSingleObject(handle, 0) };
+    match wait {
+        WAIT_OBJECT_0 | WAIT_ABANDONED => Ok(StudioManagedRuntimeLaunchGuard { handle }),
+        WAIT_TIMEOUT => {
+            unsafe {
+                let _ = windows_sys::Win32::Foundation::CloseHandle(handle);
+            }
+            Err(
+                "Unsloth Studio installation is modifying the managed environment. Wait for it to finish, then start the backend again."
+                    .to_string(),
+            )
+        }
+        _ => {
+            let error = std::io::Error::last_os_error();
+            unsafe {
+                let _ = windows_sys::Win32::Foundation::CloseHandle(handle);
+            }
+            Err(format!(
+                "Could not acquire the Studio runtime lock: {error}"
+            ))
+        }
+    }
+}
+
+#[cfg(windows)]
+fn studio_runtime_mutex_name_for_sid(sid: &str) -> String {
+    format!("{STUDIO_MANAGED_RUNTIME_MUTEX_PREFIX}{sid}")
+}
+
+#[cfg(windows)]
+fn current_windows_user_sid() -> Result<String, String> {
+    use windows_sys::Win32::Security::{
+        GetSidIdentifierAuthority, GetSidSubAuthority, GetSidSubAuthorityCount,
+        GetTokenInformation, IsValidSid, TokenUser, TOKEN_QUERY, TOKEN_USER,
+    };
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    let mut token = std::ptr::null_mut();
+    if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } == 0 {
+        return Err(format!(
+            "Could not open the Windows user token for the Studio runtime lock: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+
+    let result = (|| -> Result<String, String> {
+        let mut required = 0_u32;
+        unsafe {
+            GetTokenInformation(token, TokenUser, std::ptr::null_mut(), 0, &mut required);
+        }
+        if required == 0 {
+            return Err(format!(
+                "Could not size the Windows user SID for the Studio runtime lock: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+
+        let word_size = std::mem::size_of::<usize>();
+        let mut buffer = vec![0_usize; (required as usize).div_ceil(word_size)];
+        if unsafe {
+            GetTokenInformation(
+                token,
+                TokenUser,
+                buffer.as_mut_ptr().cast(),
+                required,
+                &mut required,
+            )
+        } == 0
+        {
+            return Err(format!(
+                "Could not read the Windows user SID for the Studio runtime lock: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+
+        let token_user = unsafe { &*(buffer.as_ptr().cast::<TOKEN_USER>()) };
+        let sid = token_user.User.Sid;
+        if sid.is_null() || unsafe { IsValidSid(sid) } == 0 {
+            return Err("Windows returned an invalid user SID for the Studio runtime lock".into());
+        }
+
+        let authority_ptr = unsafe { GetSidIdentifierAuthority(sid) };
+        let count_ptr = unsafe { GetSidSubAuthorityCount(sid) };
+        if authority_ptr.is_null() || count_ptr.is_null() {
+            return Err(
+                "Could not inspect the Windows user SID for the Studio runtime lock".into(),
+            );
+        }
+        let authority = unsafe { (*authority_ptr).Value }
+            .iter()
+            .fold(0_u64, |value, byte| (value << 8) | u64::from(*byte));
+        let revision = unsafe { *sid.cast::<u8>() };
+        let count = unsafe { *count_ptr };
+        let mut sid_text = format!("S-{revision}-{authority}");
+        for index in 0..u32::from(count) {
+            let sub_authority = unsafe { GetSidSubAuthority(sid, index) };
+            if sub_authority.is_null() {
+                return Err(
+                    "Could not inspect the Windows user SID for the Studio runtime lock".into(),
+                );
+            }
+            sid_text.push_str(&format!("-{}", unsafe { *sub_authority }));
+        }
+        Ok(sid_text)
+    })();
+
+    unsafe {
+        let _ = windows_sys::Win32::Foundation::CloseHandle(token);
+    }
+    result
+}
+
+#[cfg(windows)]
+fn acquire_studio_runtime_launch_guard() -> Result<StudioManagedRuntimeLaunchGuard, String> {
+    let name = studio_runtime_mutex_name_for_sid(&current_windows_user_sid()?);
+    acquire_named_studio_runtime_launch_guard(&name)
+}
+
+/// Serialize creation of managed-environment children with install/repair.
+///
+/// The guard deliberately ends when the synchronous operation returns. The
+/// installer acquires the same mutex and then scans for managed processes, so
+/// keeping the gate through child creation closes the race without carrying a
+/// thread-owned Win32 mutex across an async wait.
+#[cfg(windows)]
+fn with_named_studio_runtime_launch_guard<T>(
+    name: &str,
+    operation: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let _runtime_launch_guard = acquire_named_studio_runtime_launch_guard(name)?;
+    operation()
+}
+
+pub(crate) fn with_studio_runtime_launch_guard<T>(
+    operation: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    #[cfg(windows)]
+    {
+        let name = studio_runtime_mutex_name_for_sid(&current_windows_user_sid()?);
+        return with_named_studio_runtime_launch_guard(&name, operation);
+    }
+    #[cfg(not(windows))]
+    operation()
+}
+
+#[cfg(windows)]
+fn normalized_existing_windows_path(path: &std::path::Path) -> Result<String, String> {
+    let resolved = std::fs::canonicalize(path)
+        .map_err(|error| format!("Could not resolve managed Studio path {:?}: {error}", path))?;
+    Ok(resolved
+        .to_string_lossy()
+        .trim_end_matches(['\\', '/'])
+        .replace('/', "\\")
+        .to_lowercase())
+}
+
+#[cfg(windows)]
+fn windows_path_is_within(candidate: &str, root: &str) -> bool {
+    candidate == root
+        || candidate
+            .strip_prefix(root)
+            .is_some_and(|remainder| remainder.starts_with('\\'))
+}
+
+#[cfg(windows)]
+fn process_image_path(process_id: u32) -> Option<std::path::PathBuf> {
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+        PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, process_id) };
+    if process.is_null() {
+        return None;
+    }
+    let mut buffer = vec![0_u16; 32_768];
+    let mut length = buffer.len() as u32;
+    let ok = unsafe {
+        QueryFullProcessImageNameW(
+            process,
+            PROCESS_NAME_WIN32,
+            buffer.as_mut_ptr(),
+            &mut length,
+        )
+    };
+    unsafe {
+        let _ = windows_sys::Win32::Foundation::CloseHandle(process);
+    }
+    if ok == 0 {
+        return None;
+    }
+    Some(std::path::PathBuf::from(std::ffi::OsString::from_wide(
+        &buffer[..length as usize],
+    )))
+}
+
+#[cfg(windows)]
+fn normalized_windows_path_spelling(path: &std::path::Path) -> Result<String, String> {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|error| format!("Could not resolve managed Studio path {:?}: {error}", path))?
+            .join(path)
+    };
+    Ok(absolute
+        .to_string_lossy()
+        .trim_end_matches(['\\', '/'])
+        .replace('/', "\\")
+        .to_lowercase())
+}
+
+#[cfg(windows)]
+fn windows_command_line_references_path(command_line: &str, path: &str) -> bool {
+    let normalized_line = command_line.replace('/', "\\").to_lowercase();
+    let normalized_path = path
+        .trim_end_matches(['\\', '/'])
+        .replace('/', "\\")
+        .to_lowercase();
+    let mut search_from = 0;
+    while search_from < normalized_line.len() {
+        let Some(relative_index) = normalized_line[search_from..].find(&normalized_path) else {
+            return false;
+        };
+        let match_index = search_from + relative_index;
+        let end_index = match_index + normalized_path.len();
+        let before = normalized_line[..match_index].chars().next_back();
+        let after = normalized_line[end_index..].chars().next();
+        let before_ok = before.is_none_or(|character| {
+            character.is_whitespace() || matches!(character, '"' | '\'' | '=')
+        });
+        let after_ok = after.is_none_or(|character| {
+            character.is_whitespace() || matches!(character, '\\' | '"' | '\'')
+        });
+        if before_ok && after_ok {
+            return true;
+        }
+        search_from = end_index;
+    }
+    false
+}
+
+#[cfg(windows)]
+fn windows_command_line_arguments(command_line: &str) -> Result<Vec<String>, String> {
+    use std::ffi::c_void;
+    use std::os::windows::ffi::OsStrExt;
+
+    #[link(name = "shell32")]
+    extern "system" {
+        fn CommandLineToArgvW(command_line: *const u16, argument_count: *mut i32) -> *mut *mut u16;
+    }
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn LocalFree(memory: *mut c_void) -> *mut c_void;
+    }
+
+    let wide: Vec<u16> = std::ffi::OsStr::new(command_line)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let mut argument_count = 0;
+    let arguments = unsafe { CommandLineToArgvW(wide.as_ptr(), &mut argument_count) };
+    if arguments.is_null() {
+        return Err(format!(
+            "Could not parse a running process command line: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    let result = (0..argument_count)
+        .map(|index| unsafe {
+            let argument = *arguments.add(index as usize);
+            let mut length = 0;
+            while *argument.add(length) != 0 {
+                length += 1;
+            }
+            String::from_utf16_lossy(std::slice::from_raw_parts(argument, length))
+        })
+        .collect();
+    unsafe {
+        let _ = LocalFree(arguments.cast());
+    }
+    Ok(result)
+}
+
+#[cfg(windows)]
+fn windows_process_command_lines() -> Result<Vec<(u32, String, String)>, String> {
+    use std::os::windows::process::CommandExt;
+
+    let script = concat!(
+        "$ErrorActionPreference='Stop';",
+        "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false);",
+        "$items=@(Get-CimInstance Win32_Process -ErrorAction Stop|",
+        "Select-Object ProcessId,Name,CommandLine);",
+        "[Console]::Out.Write(($items|ConvertTo-Json -Compress))"
+    );
+    let output = std::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|error| {
+            format!("Could not inspect process command lines before Studio update: {error}")
+        })?;
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!(
+            "Could not inspect process command lines before Studio update: {}",
+            if detail.is_empty() {
+                output.status.to_string()
+            } else {
+                detail
+            }
+        ));
+    }
+    let json_text = String::from_utf8_lossy(&output.stdout);
+    let value: serde_json::Value = serde_json::from_str(json_text.trim_start_matches('\u{feff}'))
+        .map_err(|error| {
+        format!("Could not decode process command lines before Studio update: {error}")
+    })?;
+    let entries = match value {
+        serde_json::Value::Array(entries) => entries,
+        serde_json::Value::Null => Vec::new(),
+        entry => vec![entry],
+    };
+    Ok(entries
+        .into_iter()
+        .filter_map(|entry| {
+            let process_id = entry.get("ProcessId")?.as_u64()? as u32;
+            let command_line = entry.get("CommandLine")?.as_str()?.to_string();
+            let name = entry
+                .get("Name")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("process")
+                .to_string();
+            Some((process_id, name, command_line))
+        })
+        .collect())
+}
+
+#[cfg(windows)]
+fn windows_process_working_directories() -> std::collections::HashMap<u32, std::path::PathBuf> {
+    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
+
+    let mut system = System::new();
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_cwd(UpdateKind::Always),
+    );
+    system
+        .processes()
+        .iter()
+        .filter_map(|(process_id, process)| {
+            process
+                .cwd()
+                .map(|cwd| (process_id.as_u32(), cwd.to_path_buf()))
+        })
+        .collect()
+}
+
+#[cfg(windows)]
+fn windows_command_line_references_managed_path(
+    command_line: &str,
+    root_spellings: &[String],
+    canonical_root: &str,
+    file_spellings: &[String],
+    canonical_files: &[String],
+    working_directory: Option<&std::path::Path>,
+) -> Result<bool, String> {
+    if root_spellings
+        .iter()
+        .chain(file_spellings)
+        .any(|path| windows_command_line_references_path(command_line, path))
+    {
+        return Ok(true);
+    }
+
+    for argument in windows_command_line_arguments(command_line)? {
+        let mut candidates = vec![argument.as_str()];
+        if let Some((_, value)) = argument.split_once('=') {
+            candidates.push(value);
+        }
+        for candidate in candidates {
+            let candidate = candidate.trim().trim_matches(['"', '\'']);
+            if candidate.is_empty() {
+                continue;
+            }
+            let path = std::path::Path::new(candidate);
+            let path_candidates = if path.is_absolute() {
+                vec![path.to_path_buf()]
+            } else if let Some(working_directory) = working_directory {
+                vec![working_directory.join(path)]
+            } else {
+                Vec::new()
+            };
+            for path_candidate in path_candidates {
+                if !path_candidate.exists() {
+                    continue;
+                }
+                let resolved = normalized_existing_windows_path(&path_candidate)?;
+                if windows_path_is_within(&resolved, canonical_root)
+                    || canonical_files.iter().any(|file| file == &resolved)
+                {
+                    return Ok(true);
+                }
+            }
+        }
+    }
+    Ok(false)
+}
+
+/// Reject an update when a process is already executing from or referencing the
+/// target venv or its supported Studio shim.
+///
+/// Callers must hold the runtime launch mutex before invoking this check and
+/// retain it through the complete mutation. That closes both sides of the
+/// check-to-lock race: older consumers are found here, and new guarded launches
+/// cannot start after the scan.
+pub(crate) fn ensure_managed_environment_is_idle(
+    managed_binary: &std::path::Path,
+) -> Result<(), String> {
+    #[cfg(not(windows))]
+    {
+        let _ = managed_binary;
+        return Ok(());
+    }
+
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Foundation::{
+            CloseHandle, GetLastError, ERROR_NO_MORE_FILES, INVALID_HANDLE_VALUE,
+        };
+        use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+            CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+            TH32CS_SNAPPROCESS,
+        };
+
+        let venv = managed_binary
+            .parent()
+            .and_then(std::path::Path::parent)
+            .ok_or_else(|| {
+                format!(
+                    "Could not determine the managed Studio environment for {:?}",
+                    managed_binary
+                )
+            })?;
+        let studio_home = venv.parent().ok_or_else(|| {
+            format!(
+                "Could not determine the managed Studio root for {:?}",
+                managed_binary
+            )
+        })?;
+        let canonical_root = normalized_existing_windows_path(venv)?;
+        let root_spellings = vec![
+            normalized_windows_path_spelling(venv)?,
+            canonical_root.clone(),
+        ];
+        let shim = studio_home.join("bin").join("unsloth.exe");
+        let mut file_spellings = vec![normalized_windows_path_spelling(&shim)?];
+        let mut canonical_files = Vec::new();
+        if shim.exists() {
+            let canonical_shim = normalized_existing_windows_path(&shim)?;
+            file_spellings.push(canonical_shim.clone());
+            canonical_files.push(canonical_shim);
+        }
+
+        let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+        if snapshot == INVALID_HANDLE_VALUE {
+            return Err(format!(
+                "Could not inspect running processes before Studio update: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+
+        let result = (|| {
+            let mut entry = PROCESSENTRY32W {
+                dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+                ..Default::default()
+            };
+            let mut has_entry = unsafe { Process32FirstW(snapshot, &mut entry) };
+            if has_entry == 0 {
+                let error = unsafe { GetLastError() };
+                if error == ERROR_NO_MORE_FILES {
+                    return Ok(());
+                }
+                return Err(format!(
+                    "Could not enumerate running processes before Studio update: {}",
+                    std::io::Error::from_raw_os_error(error as i32)
+                ));
+            }
+
+            loop {
+                if let Some(image) = process_image_path(entry.th32ProcessID) {
+                    if let Ok(image_key) = normalized_existing_windows_path(&image) {
+                        if windows_path_is_within(&image_key, &canonical_root)
+                            || canonical_files.iter().any(|file| file == &image_key)
+                        {
+                            let name_length = entry
+                                .szExeFile
+                                .iter()
+                                .position(|character| *character == 0)
+                                .unwrap_or(entry.szExeFile.len());
+                            let name = String::from_utf16_lossy(&entry.szExeFile[..name_length]);
+                            return Err(format!(
+                                "The managed Studio environment is in use by {} (PID {}). Stop that process, then retry the update.",
+                                name, entry.th32ProcessID
+                            ));
+                        }
+                    }
+                }
+
+                has_entry = unsafe { Process32NextW(snapshot, &mut entry) };
+                if has_entry == 0 {
+                    let error = unsafe { GetLastError() };
+                    if error == ERROR_NO_MORE_FILES {
+                        break;
+                    }
+                    return Err(format!(
+                        "Could not finish enumerating running processes before Studio update: {}",
+                        std::io::Error::from_raw_os_error(error as i32)
+                    ));
+                }
+            }
+
+            let working_directories = windows_process_working_directories();
+            for (process_id, name, command_line) in windows_process_command_lines()? {
+                if windows_command_line_references_managed_path(
+                    &command_line,
+                    &root_spellings,
+                    &canonical_root,
+                    &file_spellings,
+                    &canonical_files,
+                    working_directories
+                        .get(&process_id)
+                        .map(std::path::PathBuf::as_path),
+                )? {
+                    return Err(format!(
+                        "The managed Studio environment is in use by {} (PID {}). Stop that process, then retry the update.",
+                        name, process_id
+                    ));
+                }
+            }
+            Ok(())
+        })();
+
+        unsafe {
+            let _ = CloseHandle(snapshot);
+        }
+        result
+    }
+}
+
+#[cfg(all(test, windows))]
+mod studio_runtime_launch_guard_tests {
+    use super::*;
+
+    #[test]
+    fn blocks_a_second_launcher_until_the_first_releases_the_gate() {
+        let name = format!(
+            "Local\\UnslothStudioRuntimeGateTest-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let first = acquire_named_studio_runtime_launch_guard(&name).unwrap();
+        let contender_name = name.clone();
+        let error = std::thread::spawn(move || {
+            acquire_named_studio_runtime_launch_guard(&contender_name)
+                .err()
+                .expect("second launcher unexpectedly acquired the gate")
+        })
+        .join()
+        .unwrap();
+        assert!(error.contains("installation is modifying"));
+        drop(first);
+        acquire_named_studio_runtime_launch_guard(&name).unwrap();
+    }
+
+    #[test]
+    fn guarded_operation_is_skipped_while_busy_and_runs_after_release() {
+        let name = format!(
+            "Local\\UnslothStudioRuntimeGateOperationTest-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let first = acquire_named_studio_runtime_launch_guard(&name).unwrap();
+        let invoked = Arc::new(AtomicBool::new(false));
+        let contender_invoked = invoked.clone();
+        let contender_name = name.clone();
+        let error = std::thread::spawn(move || {
+            with_named_studio_runtime_launch_guard(&contender_name, || {
+                contender_invoked.store(true, Ordering::SeqCst);
+                Ok(())
+            })
+            .unwrap_err()
+        })
+        .join()
+        .unwrap();
+        assert!(error.contains("installation is modifying"));
+        assert!(!invoked.load(Ordering::SeqCst));
+
+        drop(first);
+        with_named_studio_runtime_launch_guard(&name, || {
+            invoked.store(true, Ordering::SeqCst);
+            Ok(())
+        })
+        .unwrap();
+        assert!(invoked.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn guarded_operation_releases_the_gate_after_an_operation_error() {
+        let name = format!(
+            "Local\\UnslothStudioRuntimeGateErrorTest-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let error = with_named_studio_runtime_launch_guard(&name, || {
+            Err::<(), _>("synthetic spawn failure".to_string())
+        })
+        .unwrap_err();
+        assert_eq!(error, "synthetic spawn failure");
+
+        with_named_studio_runtime_launch_guard(&name, || Ok(())).unwrap();
+    }
+
+    #[test]
+    fn managed_environment_scan_finds_a_process_inside_the_target_root() {
+        let current_exe = std::env::current_exe().unwrap();
+        let target_root = current_exe.parent().unwrap();
+        let managed_binary = target_root.join("Scripts").join("unsloth.exe");
+
+        let error = ensure_managed_environment_is_idle(&managed_binary).unwrap_err();
+        assert!(error.contains("managed Studio environment is in use"));
+    }
+
+    #[test]
+    fn windows_path_containment_requires_a_component_boundary() {
+        assert!(windows_path_is_within(
+            r"c:\\users\\pc\\.unsloth\\studio\\unsloth_studio\\scripts\\python.exe",
+            r"c:\\users\\pc\\.unsloth\\studio\\unsloth_studio"
+        ));
+        assert!(!windows_path_is_within(
+            r"c:\\users\\pc\\.unsloth\\studio\\unsloth_studio_old\\scripts\\python.exe",
+            r"c:\\users\\pc\\.unsloth\\studio\\unsloth_studio"
+        ));
+    }
+
+    #[test]
+    fn command_line_path_matching_requires_component_boundaries() {
+        let root = r"C:\Users\pc\.unsloth\studio\unsloth_studio";
+        assert!(windows_command_line_references_path(
+            &format!(r#"python.exe "{}\Lib\worker.py""#, root),
+            root
+        ));
+        assert!(!windows_command_line_references_path(
+            &format!(r#"python.exe "X{}\Lib\worker.py""#, root),
+            root
+        ));
+        assert!(!windows_command_line_references_path(
+            &format!(r#"python.exe "{}_backup\Lib\worker.py""#, root),
+            root
+        ));
+    }
+
+    #[test]
+    fn managed_environment_scan_finds_a_command_line_only_consumer() {
+        let unique = format!(
+            "unsloth-studio-command-line-scan-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let studio_home = std::env::temp_dir().join(unique);
+        let venv = studio_home.join("unsloth_studio");
+        let worker = venv.join("Lib").join("worker.ps1");
+        std::fs::create_dir_all(worker.parent().unwrap()).unwrap();
+        std::fs::write(&worker, "Start-Sleep -Seconds 30").unwrap();
+        let managed_binary = venv.join("Scripts").join("unsloth.exe");
+        let mut child = std::process::Command::new("powershell.exe")
+            .current_dir(worker.parent().unwrap())
+            .args(["-NoProfile", "-NonInteractive", "-File", "worker.ps1"])
+            .spawn()
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let result = ensure_managed_environment_is_idle(&managed_binary);
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = std::fs::remove_dir_all(&studio_home);
+
+        let error = result.unwrap_err();
+        assert!(error.contains(&child.id().to_string()));
+    }
+
+    #[test]
+    fn runtime_mutex_name_is_global_and_user_scoped() {
+        let first = studio_runtime_mutex_name_for_sid("S-1-5-21-111-222-333-1001");
+        let second = studio_runtime_mutex_name_for_sid("S-1-5-21-111-222-333-1002");
+        assert_eq!(
+            first,
+            "Global\\UnslothStudioManagedEnvironment-S-1-5-21-111-222-333-1001"
+        );
+        assert_ne!(first, second);
+        assert!(current_windows_user_sid().unwrap().starts_with("S-1-"));
+    }
+}
+
 #[allow(dead_code)]
 pub(crate) enum OwnedBackendHandle {
     Spawned {
@@ -556,6 +1314,9 @@ pub fn start_backend(
     shutdown: &ShutdownFlag,
     diagnostics_state: &DiagnosticsState,
 ) -> Result<u64, String> {
+    #[cfg(windows)]
+    let _runtime_launch_guard = acquire_studio_runtime_launch_guard()?;
+
     let bin = match resolve_backend_binary() {
         Ok(bin) => bin,
         Err(msg) => {
@@ -577,6 +1338,9 @@ pub fn start_backend(
     cmd.args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+
+    #[cfg(windows)]
+    cmd.env(STUDIO_RUNTIME_GATE_HANDOFF_ENV, "1");
 
     if let Some(native_state) = app.try_state::<crate::native_intents::NativeIntakeState>() {
         cmd.env(
