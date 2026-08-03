@@ -234,9 +234,13 @@ function Install-UnslothStudio {
         $envOverrideVar = "STUDIO_HOME"
         $envOverride = $env:STUDIO_HOME.Trim()
     }
+    $defaultProfile = $null
+    try { $defaultProfile = [Environment]::GetFolderPath("UserProfile") } catch {}
+    $tauriProfile = if ($defaultProfile) { $defaultProfile } else { $env:USERPROFILE }
 
-    # Custom Unsloth roots are not supported with --tauri (desktop app still
-    # resolves %USERPROFILE%\.unsloth\studio). Pass through if override == legacy.
+
+    # Custom Unsloth roots are not supported with --tauri (the desktop app uses
+    # the Windows profile folder). Pass through if the override is that same root.
     if ($TauriMode -and $envOverride) {
         $_tauriOverride = $envOverride
         if ($_tauriOverride -eq "~" -or $_tauriOverride -like "~/*" -or $_tauriOverride -like "~\*") {
@@ -245,7 +249,7 @@ function Install-UnslothStudio {
         try {
             $_tauriOverride = [System.IO.Path]::GetFullPath($_tauriOverride)
         } catch {}
-        $_legacyTauriRoot = Join-Path $env:USERPROFILE ".unsloth\studio"
+        $_legacyTauriRoot = Join-Path $tauriProfile ".unsloth\studio"
         try {
             $_legacyTauriRoot = [System.IO.Path]::GetFullPath($_legacyTauriRoot)
         } catch {}
@@ -258,15 +262,13 @@ function Install-UnslothStudio {
         $_legacyTauriRoot = $_legacyTauriRoot.TrimEnd($_trimSeps)
         if ($_tauriOverride -ne $_legacyTauriRoot) {
             Write-Host "ERROR: $envOverrideVar is not supported with --tauri." -ForegroundColor Red
-            Write-Host "       The desktop app still uses the legacy %USERPROFILE%\.unsloth\studio root." -ForegroundColor Red
+            Write-Host "       The desktop app uses the Windows profile .unsloth\studio root." -ForegroundColor Red
             Write-Host "       Run install.ps1 without --tauri for custom-root shell installs," -ForegroundColor Yellow
             Write-Host "       or unset the env var for default desktop installs." -ForegroundColor Yellow
             throw "$envOverrideVar is not supported with --tauri."
         }
     }
 
-    $defaultProfile = $null
-    try { $defaultProfile = [Environment]::GetFolderPath("UserProfile") } catch {}
 
     # LOCALAPPDATA may be unset in service / CI contexts; Join-Path would abort
     # under ErrorActionPreference=Stop without this guard.
@@ -1677,6 +1679,463 @@ exit 0
     $script:StudioVenvRollbackTarget = $VenvDir
     $script:StudioVenvRollbackActive = $false
 
+    function Enter-StudioNamedMutex {
+        param([Parameter(Mandatory = $true)][string]$Name)
+        $mutex = [System.Threading.Mutex]::new($false, $Name)
+        $acquired = $false
+        try {
+            $acquired = $mutex.WaitOne(0)
+        } catch [System.Threading.AbandonedMutexException] {
+            $acquired = $true
+        }
+        if (-not $acquired) {
+            $mutex.Dispose()
+            return $null
+        }
+        return $mutex
+    }
+
+    function Get-StudioFinalPath {
+        param([Parameter(Mandatory = $true)][string]$Path)
+        $fullPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
+        if (-not (Test-Path -LiteralPath $fullPath)) {
+            return $fullPath
+        }
+        if (-not ("UnslothStudioFinalPath" -as [type])) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32.SafeHandles;
+
+public static class UnslothStudioFinalPath
+{
+    private const uint FileShareRead = 0x00000001;
+    private const uint FileShareWrite = 0x00000002;
+    private const uint FileShareDelete = 0x00000004;
+    private const uint OpenExisting = 3;
+    private const uint FileFlagBackupSemantics = 0x02000000;
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern SafeFileHandle CreateFileW(
+        string fileName,
+        uint desiredAccess,
+        uint shareMode,
+        IntPtr securityAttributes,
+        uint creationDisposition,
+        uint flagsAndAttributes,
+        IntPtr templateFile);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint GetFinalPathNameByHandleW(
+        SafeFileHandle file,
+        StringBuilder path,
+        uint pathLength,
+        uint flags);
+
+    public static string Resolve(string path)
+    {
+        using (SafeFileHandle handle = CreateFileW(
+            path,
+            0,
+            FileShareRead | FileShareWrite | FileShareDelete,
+            IntPtr.Zero,
+            OpenExisting,
+            FileFlagBackupSemantics,
+            IntPtr.Zero))
+        {
+            if (handle.IsInvalid)
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+
+            StringBuilder buffer = new StringBuilder(512);
+            uint length = GetFinalPathNameByHandleW(
+                handle, buffer, (uint)buffer.Capacity, 0);
+            if (length == 0)
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            if (length >= buffer.Capacity)
+            {
+                buffer = new StringBuilder((int)length + 1);
+                length = GetFinalPathNameByHandleW(
+                    handle, buffer, (uint)buffer.Capacity, 0);
+                if (length == 0)
+                    throw new Win32Exception(Marshal.GetLastWin32Error());
+            }
+            if (length >= buffer.Capacity)
+                throw new InvalidOperationException("Final path exceeded the allocated buffer");
+            return buffer.ToString();
+        }
+  }
+}
+'@
+        }
+        $resolved = [UnslothStudioFinalPath]::Resolve($fullPath)
+        if ($resolved.StartsWith('\\?\UNC\', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $resolved = '\\' + $resolved.Substring(8)
+        } elseif ($resolved.StartsWith('\\?\', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $resolved = $resolved.Substring(4)
+        }
+        return $resolved.TrimEnd('\', '/')
+    }
+
+    function ConvertFrom-StudioWindowsCommandLine {
+        param([string]$CommandLine)
+        if (-not ("UnslothStudioCommandLineV1" -as [type])) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+
+public static class UnslothStudioCommandLineV1
+{
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr CommandLineToArgvW(
+        string commandLine,
+        out int argumentCount);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr LocalFree(IntPtr memory);
+
+    public static string[] Parse(string commandLine)
+    {
+        if (String.IsNullOrEmpty(commandLine))
+            return new string[0];
+        int count;
+        IntPtr arguments = CommandLineToArgvW(commandLine, out count);
+        if (arguments == IntPtr.Zero)
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        try
+        {
+            string[] result = new string[count];
+            for (int index = 0; index < count; index++)
+            {
+                IntPtr item = Marshal.ReadIntPtr(arguments, index * IntPtr.Size);
+                result[index] = Marshal.PtrToStringUni(item);
+            }
+            return result;
+        }
+        finally
+        {
+            LocalFree(arguments);
+        }
+  }
+}
+'@
+        }
+        return [UnslothStudioCommandLineV1]::Parse($CommandLine)
+    }
+
+    function Get-StudioPathHash {
+        param([Parameter(Mandatory = $true)][string]$Path)
+        $canonical = (Get-StudioFinalPath -Path $Path).ToUpperInvariant()
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($canonical)
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $digest = $sha256.ComputeHash($bytes)
+        } finally {
+            $sha256.Dispose()
+        }
+        $hex = -join ($digest | ForEach-Object { $_.ToString('x2') })
+        return $hex
+    }
+
+    function Test-StudioPathEqual {
+        param(
+            [Parameter(Mandatory = $true)][string]$Left,
+            [Parameter(Mandatory = $true)][string]$Right
+        )
+        try {
+            $leftFull = Get-StudioFinalPath -Path $Left
+            $rightFull = Get-StudioFinalPath -Path $Right
+        } catch {
+            Write-Host "[WARN] Could not resolve Studio path identity; using the runtime lock." -ForegroundColor Yellow
+            return $null
+        }
+        return [string]::Equals(
+            $leftFull, $rightFull, [System.StringComparison]::OrdinalIgnoreCase
+        )
+    }
+
+    function Get-StudioInstallMutexName {
+        param([Parameter(Mandatory = $true)][string]$Path)
+        return "Global\UnslothStudioInstall-$(Get-StudioPathHash -Path $Path)"
+    }
+
+    function Get-StudioRuntimeMutexNameForSid {
+        param([Parameter(Mandatory = $true)][string]$Sid)
+        return "Global\UnslothStudioManagedEnvironment-$Sid"
+    }
+
+    function Get-StudioRuntimePathHash {
+        param([Parameter(Mandatory = $true)][string]$Path)
+        # Keep the resolved spelling byte-for-byte. Cross-language Unicode case
+        # conversion is not stable (for example, .NET and Python differ on ß).
+        $canonical = Get-StudioFinalPath -Path $Path
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($canonical)
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $digest = $sha256.ComputeHash($bytes)
+        } finally {
+            $sha256.Dispose()
+        }
+        return (-join ($digest | ForEach-Object { $_.ToString('x2') }))
+    }
+
+    function Get-StudioRuntimeMutexNameForPath {
+        param([Parameter(Mandatory = $true)][string]$Path)
+        return "Global\UnslothStudioManagedEnvironmentPath-$(Get-StudioRuntimePathHash -Path $Path)"
+    }
+
+    function Get-StudioRuntimeMutexName {
+        $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        if ($null -eq $identity) {
+            throw "Could not determine the Windows user for the Studio runtime lock"
+        }
+        try {
+            $sid = if ($identity.User) { $identity.User.Value } else { $null }
+        } finally {
+            $identity.Dispose()
+        }
+        if ([string]::IsNullOrWhiteSpace($sid)) {
+            throw "Could not determine the Windows user SID for the Studio runtime lock"
+        }
+        return (Get-StudioRuntimeMutexNameForSid -Sid $sid)
+    }
+
+    function Get-StudioRuntimeMutexNames {
+        param(
+            [AllowNull()]$TauriRootMatch,
+            [Parameter(Mandatory = $true)][string]$Path
+        )
+        $names = @()
+        # true: confirmed Tauri default -> SID lock
+        # false: confirmed custom root -> path lock
+        # null: identity resolution failed -> take both and fail closed
+        if ($TauriRootMatch -ne $false) {
+            $names += Get-StudioRuntimeMutexName
+        }
+        if ($TauriRootMatch -ne $true) {
+            $names += Get-StudioRuntimeMutexNameForPath -Path $Path
+        }
+        return $names
+    }
+
+    function Enter-StudioInstallMutex {
+        param([Parameter(Mandatory = $true)][string]$Path)
+        return (Enter-StudioNamedMutex -Name (Get-StudioInstallMutexName -Path $Path))
+    }
+
+    function Exit-StudioInstallMutex {
+        param([System.Threading.Mutex]$Mutex)
+        if ($null -eq $Mutex) { return }
+        try { $Mutex.ReleaseMutex() } catch {} finally { $Mutex.Dispose() }
+    }
+
+    function Test-StudioProtectedPathMatch {
+        param(
+            [Parameter(Mandatory = $true)][string]$Candidate,
+            [Parameter(Mandatory = $true)][string]$ProtectedPath,
+            [switch]$Exact
+        )
+        $candidateKey = $Candidate.TrimEnd('\', '/')
+        $protectedKey = $ProtectedPath.TrimEnd('\', '/')
+        if ([string]::Equals(
+            $candidateKey, $protectedKey, [System.StringComparison]::OrdinalIgnoreCase
+        )) {
+            return $true
+        }
+        if ($Exact) { return $false }
+        $prefix = $protectedKey + [System.IO.Path]::DirectorySeparatorChar
+        return $candidateKey.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)
+    }
+
+    function Test-StudioRawCommandLinePathReference {
+        param(
+            [string]$CommandLine,
+            [Parameter(Mandatory = $true)][string]$Path
+        )
+        if (-not $CommandLine) { return $false }
+        # Windows accepts either separator in command-line paths. Normalize both
+        # before the literal search, then require boundaries on both sides.
+        $normalizedCommandLine = $CommandLine.Replace('/', '\')
+        $normalizedPath = $Path.TrimEnd('\', '/').Replace('/', '\')
+        $searchFrom = 0
+        while ($searchFrom -lt $normalizedCommandLine.Length) {
+            $matchIndex = $normalizedCommandLine.IndexOf(
+                $normalizedPath,
+                $searchFrom,
+                [System.StringComparison]::OrdinalIgnoreCase
+            )
+            if ($matchIndex -lt 0) { return $false }
+            $endIndex = $matchIndex + $normalizedPath.Length
+            $beforeMatches = $matchIndex -eq 0
+            if (-not $beforeMatches) {
+                $before = $normalizedCommandLine[$matchIndex - 1]
+                $beforeMatches = (
+                    $before -eq '"' -or $before -eq "'" -or $before -eq '=' -or
+                    [char]::IsWhiteSpace($before)
+                )
+            }
+            $afterMatches = $endIndex -ge $normalizedCommandLine.Length
+            if (-not $afterMatches) {
+                $after = $normalizedCommandLine[$endIndex]
+                $afterMatches = (
+                    $after -eq [System.IO.Path]::DirectorySeparatorChar -or
+                    $after -eq [System.IO.Path]::AltDirectorySeparatorChar -or
+                    $after -eq '"' -or $after -eq "'" -or [char]::IsWhiteSpace($after)
+                )
+            }
+            if ($beforeMatches -and $afterMatches) { return $true }
+            $searchFrom = $endIndex
+        }
+        return $false
+    }
+
+    function Get-StudioProcessWorkingDirectories {
+        param([Parameter(Mandatory = $true)][string]$VenvPath)
+        $python = Join-Path $VenvPath "Scripts\python.exe"
+        if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
+            return @{}
+        }
+        $pythonCode = @'
+import json
+import psutil
+
+working_directories = {}
+for process in psutil.process_iter():
+    try:
+        working_directories[str(process.pid)] = process.cwd()
+    except (psutil.AccessDenied, psutil.NoSuchProcess, OSError):
+        pass
+print(json.dumps(working_directories))
+'@
+        try {
+            $json = & $python -c $pythonCode 2>$null
+            if ($LASTEXITCODE -ne 0 -or -not $json) { return @{} }
+            $decoded = $json | ConvertFrom-Json -ErrorAction Stop
+        } catch {
+            return @{}
+        }
+        $result = @{}
+        foreach ($property in $decoded.PSObject.Properties) {
+            $result[[string]$property.Name] = [string]$property.Value
+        }
+        return $result
+    }
+
+    function Test-StudioCommandLinePathReference {
+        param(
+            [string]$CommandLine,
+            [Parameter(Mandatory = $true)][string[]]$PathSpellings,
+            [Parameter(Mandatory = $true)][string]$ResolvedPath,
+            [string]$WorkingDirectory,
+            [switch]$Exact
+        )
+        if (-not $CommandLine) { return $false }
+        foreach ($spelling in $PathSpellings) {
+            if (Test-StudioRawCommandLinePathReference -CommandLine $CommandLine -Path $spelling) {
+                return $true
+            }
+        }
+
+        # Resolve existing path arguments so a command line using a junction or
+        # symlink spelling still maps to the physical managed environment.
+        foreach ($token in @(ConvertFrom-StudioWindowsCommandLine -CommandLine $CommandLine)) {
+            $candidates = @($token)
+            $equalsIndex = $token.IndexOf('=')
+            if ($equalsIndex -ge 0) {
+                # Parse argv first so --script="C:\Alias Root\worker.py" stays
+                # one token, then split only the first attached option value.
+                $candidates += $token.Substring($equalsIndex + 1)
+            }
+            foreach ($candidate in $candidates) {
+                if (-not $candidate) { continue }
+                try {
+                    $isRooted = [System.IO.Path]::IsPathRooted($candidate)
+                } catch {
+                    continue
+                }
+                if ($isRooted) {
+                    $candidatePaths = @($candidate)
+                } elseif ($WorkingDirectory) {
+                    $candidatePaths = @(Join-Path $WorkingDirectory $candidate)
+                } else {
+                    $candidatePaths = @()
+                }
+                foreach ($candidatePath in $candidatePaths) {
+                    if (-not (Test-Path -LiteralPath $candidatePath)) { continue }
+                    try {
+                        $resolvedCandidate = Get-StudioFinalPath -Path $candidatePath
+                    } catch {
+                        continue
+                    }
+                    if (Test-StudioProtectedPathMatch -Candidate $resolvedCandidate -ProtectedPath $ResolvedPath -Exact:$Exact) {
+                        return $true
+                    }
+                }
+            }
+        }
+        return $false
+    }
+
+    function Get-RunningStudioVenvProcesses {
+        param(
+            [Parameter(Mandatory = $true)][string]$VenvPath,
+            [switch]$Exact
+        )
+        try {
+            $lexicalPath = [System.IO.Path]::GetFullPath($VenvPath).TrimEnd('\', '/')
+            $resolvedPath = (Get-StudioFinalPath -Path $lexicalPath).TrimEnd('\', '/')
+        } catch {
+            throw "Could not resolve managed Studio process path '$VenvPath': $($_.Exception.Message)"
+        }
+        $pathSpellings = @($lexicalPath, $resolvedPath | Select-Object -Unique)
+        $workingDirectories = Get-StudioProcessWorkingDirectories -VenvPath $VenvPath
+        $seenProcessIds = @{}
+        foreach ($process in @(Get-Process -ErrorAction SilentlyContinue)) {
+            $executable = $null
+            try { $executable = $process.Path } catch { continue }
+            if (-not $executable) { continue }
+            try { $executable = Get-StudioFinalPath -Path $executable } catch { continue }
+            if (Test-StudioProtectedPathMatch -Candidate $executable -ProtectedPath $resolvedPath -Exact:$Exact) {
+                $seenProcessIds[[string]$process.Id] = $true
+                [pscustomobject]@{
+                    ProcessName = $process.ProcessName
+                    Id = $process.Id
+                    Path = $executable
+                }
+            }
+        }
+
+        # Some launchers hand off to a base Python while their command line still
+        # references a script inside the managed environment. Failure to obtain
+        # the global snapshot is fatal because mutation cannot then be proven safe.
+        try {
+            $cimProcesses = @(Get-CimInstance Win32_Process -ErrorAction Stop)
+        } catch {
+            throw "Could not inspect process command lines before Studio installation: $($_.Exception.Message)"
+        }
+        foreach ($process in $cimProcesses) {
+            $processId = [string]$process.ProcessId
+            if ($seenProcessIds.ContainsKey($processId)) { continue }
+            $executableMatch = $false
+            if ($process.ExecutablePath) {
+                try {
+                    $candidateExecutable = Get-StudioFinalPath -Path $process.ExecutablePath
+                    $executableMatch = Test-StudioProtectedPathMatch -Candidate $candidateExecutable -ProtectedPath $resolvedPath -Exact:$Exact
+                } catch {}
+            }
+            $commandLineMatch = Test-StudioCommandLinePathReference -CommandLine $process.CommandLine -PathSpellings $pathSpellings -ResolvedPath $resolvedPath -WorkingDirectory $workingDirectories[$processId] -Exact:$Exact
+            if ($executableMatch -or $commandLineMatch) {
+                [pscustomobject]@{
+                    ProcessName = $process.Name
+                    Id = $process.ProcessId
+                    Path = if ($process.ExecutablePath) { $process.ExecutablePath } else { $process.CommandLine }
+                }
+            }
+        }
+    }
+
     function Start-StudioVenvRollback {
         param([Parameter(Mandatory = $true)][string]$ExistingDir)
         $stamp = Get-Date -Format "yyyyMMddHHmmss"
@@ -1801,6 +2260,94 @@ exit 0
         }
     }
 
+    try {
+        $studioInstallMutex = Enter-StudioInstallMutex -Path $StudioHome
+    } catch {
+        Write-Host "[ERROR] Could not create the Studio install lock: $($_.Exception.Message)" -ForegroundColor Red
+        return (Exit-InstallFailure "Could not create the Studio install lock")
+    }
+    if ($null -eq $studioInstallMutex) {
+        Write-Host "[ERROR] Another Unsloth Studio install or repair is already running." -ForegroundColor Red
+        Write-Host "        Wait for it to finish, then re-run install.ps1." -ForegroundColor Yellow
+        return (Exit-InstallFailure "Another Unsloth Studio install or repair is already running")
+    }
+
+    $studioRuntimeMutexes = @()
+    $tauriManagedStudioHome = if ($tauriProfile) {
+        Join-Path $tauriProfile ".unsloth\studio"
+    } else { $null }
+    $studioTauriRootMatch = if ($tauriManagedStudioHome) {
+        Test-StudioPathEqual -Left $StudioHome -Right $tauriManagedStudioHome
+    } else { $false }
+    $studioUsesTauriManagedRoot = ($studioTauriRootMatch -eq $true)
+    $studioNeedsRuntimeLock = $true
+    $studioUsesLegacyLayout = ($StudioRedirectMode -ne 'env') -or $studioUsesTauriManagedRoot
+    $studioAutoStartProcess = $null
+    try {
+        if ($studioNeedsRuntimeLock) {
+            try {
+                $studioRuntimeMutexNames = @(
+                    Get-StudioRuntimeMutexNames -TauriRootMatch $studioTauriRootMatch -Path $StudioHome
+                )
+                foreach ($studioRuntimeMutexName in $studioRuntimeMutexNames) {
+                    $mutex = Enter-StudioNamedMutex -Name $studioRuntimeMutexName
+                    if ($null -eq $mutex) {
+                        Write-Host "[ERROR] Unsloth Studio is starting or installation is already running." -ForegroundColor Red
+                        Write-Host "        Close Unsloth Studio completely, wait for the other operation, then re-run install.ps1." -ForegroundColor Yellow
+                        return (Exit-InstallFailure "The managed Studio environment is busy")
+                    }
+                    $studioRuntimeMutexes += $mutex
+                }
+            } catch {
+                Write-Host "[ERROR] Could not create the Studio runtime lock: $($_.Exception.Message)" -ForegroundColor Red
+                return (Exit-InstallFailure "Could not create the Studio runtime lock")
+            }
+        }
+
+        $protectedProcessPaths = @(
+            [pscustomobject]@{ Path = $VenvDir; Exact = $false }
+            [pscustomobject]@{ Path = (Join-Path $StudioHome "bin\unsloth.exe"); Exact = $true }
+        )
+        if ($studioUsesLegacyLayout) {
+            $protectedProcessPaths += [pscustomobject]@{
+                Path = (Join-Path $StudioHome ".venv")
+                Exact = $false
+            }
+            $protectedProcessPaths += [pscustomobject]@{
+                Path = (Join-Path $env:USERPROFILE "unsloth_studio")
+                Exact = $false
+            }
+        }
+        $runningVenvProcessesById = @{}
+        foreach ($candidate in $protectedProcessPaths) {
+            foreach ($process in @(
+                Get-RunningStudioVenvProcesses -VenvPath $candidate.Path -Exact:$candidate.Exact
+            )) {
+                $processId = [string]$process.Id
+                if (-not $runningVenvProcessesById.ContainsKey($processId)) {
+                    $runningVenvProcessesById[$processId] = $process
+                }
+            }
+        }
+        $runningVenvProcesses = @($runningVenvProcessesById.Values)
+        if ($runningVenvProcesses.Count -gt 0) {
+            $runningSummary = ($runningVenvProcesses | ForEach-Object { "$($_.ProcessName) (PID $($_.Id))" }) -join ", "
+            Write-Host "[ERROR] Unsloth Studio is using the managed Python environment." -ForegroundColor Red
+            Write-Host "        Active processes: $runningSummary" -ForegroundColor Yellow
+            Write-Host "        Close Unsloth Studio completely, including its tray process, then re-run install.ps1." -ForegroundColor Yellow
+            return (Exit-InstallFailure "The managed Python environment is still in use")
+        }
+
+        if (-not $TauriMode -and $studioUsesLegacyLayout) {
+            $runningDesktopApps = @(Get-Process -Name "unsloth-studio" -ErrorAction SilentlyContinue)
+            if ($runningDesktopApps.Count -gt 0) {
+                $desktopSummary = ($runningDesktopApps | ForEach-Object { "PID $($_.Id)" }) -join ", "
+                Write-Host "[ERROR] The Unsloth Studio desktop app is still running ($desktopSummary)." -ForegroundColor Red
+                Write-Host "        Close the app completely, including its tray process, then re-run install.ps1." -ForegroundColor Yellow
+                return (Exit-InstallFailure "The Unsloth Studio desktop app is still running")
+            }
+        }
+
     $studioVenvReplacementCommitted = $false
     try {
     if (Test-Path -LiteralPath $VenvPython) {
@@ -1828,12 +2375,13 @@ exit 0
             return (Exit-InstallFailure "Could not prepare existing environment for reinstall")
         }
     } elseif (
-        $StudioRedirectMode -ne 'env' `
+        $studioUsesLegacyLayout `
         -and (Test-Path -LiteralPath (Join-Path $StudioHome ".venv\Scripts\python.exe"))
     ) {
         # Old layout (~/.unsloth/studio/.venv) exists -- validate before migrating.
-        # Skip in env-mode so we don't blow away an unrelated .venv at the
-        # workspace root (e.g. user's existing project Python venv).
+        # Skip custom-root env-mode installs so we do not replace an unrelated
+        # project .venv. An explicit override of the managed default root keeps
+        # legacy migration enabled.
         $OldVenv = Join-Path $StudioHome ".venv"
         $OldPy = Join-Path $OldVenv "Scripts\python.exe"
         substep "found legacy Unsloth environment, validating..."
@@ -1859,12 +2407,12 @@ exit 0
             Move-Item -LiteralPath $OldVenv -Destination $invalidVenv -Force -ErrorAction SilentlyContinue
         }
     } elseif (
-        $StudioRedirectMode -ne 'env' `
+        $studioUsesLegacyLayout `
         -and (Test-Path -LiteralPath (Join-Path $env:USERPROFILE "unsloth_studio\Scripts\python.exe"))
     ) {
         # CWD-relative venv from old install.ps1 -> migrate to absolute path.
-        # Skip in env-mode so we don't relocate the default-install venv into
-        # the workspace root.
+        # Skip custom-root env-mode installs so we do not relocate the old
+        # default-install venv into a workspace root.
         $CwdVenv = Join-Path $env:USERPROFILE "unsloth_studio"
         substep "found CWD-relative Unsloth environment, migrating to $VenvDir..."
         Move-Item -LiteralPath $CwdVenv -Destination $VenvDir -Force
@@ -3107,7 +3655,22 @@ exit 0
         Write-Host ""
         $reply = Read-Host "  Start Unsloth Studio now? [Y/n]"
         if ([string]::IsNullOrWhiteSpace($reply) -or $reply -match '^[Yy]') {
-            & $UnslothExe studio -p 8888
+            # Keep both locks until Windows has created the process. A second
+            # installer can then acquire the locks, but its process scan sees
+            # the new Studio process before it can mutate the environment.
+            $_runtimeGateHandoff = $env:_UNSLOTH_STUDIO_RUNTIME_GATE_HANDOFF
+            try {
+                $env:_UNSLOTH_STUDIO_RUNTIME_GATE_HANDOFF = "1"
+                $studioAutoStartProcess = Start-Process -FilePath $UnslothExe `
+                    -ArgumentList @("studio", "-p", "8888") `
+                    -NoNewWindow -PassThru
+            } finally {
+                if ($null -eq $_runtimeGateHandoff) {
+                    Remove-Item Env:_UNSLOTH_STUDIO_RUNTIME_GATE_HANDOFF -ErrorAction SilentlyContinue
+                } else {
+                    $env:_UNSLOTH_STUDIO_RUNTIME_GATE_HANDOFF = $_runtimeGateHandoff
+                }
+            }
         } else {
             step "launch" "to start later, run:"
             substep "unsloth studio -p 8888"
@@ -3135,6 +3698,15 @@ exit 0
         substep "(add -H 0.0.0.0 for LAN / cloud access; exposes the raw port only, not a public URL)"
         substep "(add -H 0.0.0.0 --cloudflare for a public Cloudflare HTTPS link, or --secure to keep the raw port private; anyone with the API key can run code)"
         Write-Host ""
+    }
+    } finally {
+        for ($i = $studioRuntimeMutexes.Count - 1; $i -ge 0; $i--) {
+            Exit-StudioInstallMutex -Mutex $studioRuntimeMutexes[$i]
+        }
+        Exit-StudioInstallMutex -Mutex $studioInstallMutex
+    }
+    if ($null -ne $studioAutoStartProcess) {
+        $studioAutoStartProcess.WaitForExit()
     }
 }
 
