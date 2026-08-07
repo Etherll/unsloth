@@ -46,6 +46,7 @@ import {
 } from "../model-config/per-model-config";
 import { ModelConfigPage } from "./model-config-page";
 import { HubModelPicker, hasDownloadedModels } from "./model-selector/pickers";
+import type { CommunityModelPolicy } from "./model-selector/audio-picker-policy";
 import type { CatalogGroup } from "./model-selector/model-catalog";
 import { PillTabs } from "./model-selector/pill-tabs";
 import {
@@ -130,6 +131,11 @@ export type {
 
 interface ModelSelectorProps {
   models: ModelOption[];
+  /** Models a task-specific runtime confirms are locally loadable even when
+   * their specialized cache layout is absent from the generic Hub inventory. */
+  additionalOnDeviceModels?: ModelOption[];
+  /** Task-owned runtime residency when it is separate from Chat's main slot. */
+  loadedModelIdOverride?: string;
   loraModels?: LoraModelOption[];
   externalModels?: ExternalModelOption[];
   value?: string;
@@ -158,6 +164,9 @@ interface ModelSelectorProps {
   task?: HfTaskFilter;
   /** Canonical model groups (Images / Video pages): collapses a model's artifact repos into one row with a format second level and device-aware routing. Undefined (chat) changes nothing. */
   catalog?: CatalogGroup[];
+  /** Also list community (non-unsloth) models for `task`. Opt-in: only pages
+   *  whose runtime loads arbitrary publishers. */
+  communityModelPolicy?: CommunityModelPolicy;
   /** Trigger text when nothing is loaded. Defaults to "Select model"; task pages name what they pick so it reads as separate from the chat model. */
   placeholder?: string;
 }
@@ -299,10 +308,12 @@ function saveLastHubSection(section: HubSection): void {
   }
 }
 // Default the Hub section: the last tab clicked; first time, On Device with downloads else Recommended.
-function defaultHubSection(): HubSection {
+function defaultHubSection(hasAdditionalOnDeviceModels = false): HubSection {
   return (
     loadLastHubSection() ??
-    (hasDownloadedModels() ? "downloaded" : "recommended")
+    (hasDownloadedModels() || hasAdditionalOnDeviceModels
+      ? "downloaded"
+      : "recommended")
   );
 }
 
@@ -322,6 +333,8 @@ const HUB_SECTION_TABS: { value: string; label: string; icon?: ReactNode }[] = [
 function ModelSelectorContent({
   open,
   models,
+  additionalOnDeviceModels,
+  loadedModelIdOverride,
   loraModels,
   externalModels,
   value,
@@ -341,9 +354,12 @@ function ModelSelectorContent({
   dataTour,
   task,
   catalog,
+  communityModelPolicy,
 }: {
   open: boolean;
   models: ModelOption[];
+  additionalOnDeviceModels?: ModelOption[];
+  loadedModelIdOverride?: string;
   loraModels: LoraModelOption[];
   externalModels: ExternalModelOption[];
   value?: string;
@@ -363,6 +379,7 @@ function ModelSelectorContent({
   dataTour?: string;
   task?: HfTaskFilter;
   catalog?: CatalogGroup[];
+  communityModelPolicy?: CommunityModelPolicy;
 }) {
   const t = useT();
   const hasSelection = Boolean(value);
@@ -416,8 +433,12 @@ function ModelSelectorContent({
   // Open on Connected when the active model comes from a connected provider.
   const wantsConnectedDefault =
     (chatOnly ? chatOnlyTabsDefault : studioTabsDefault) === "external";
+  const hasAdditionalOnDeviceModels =
+    (additionalOnDeviceModels?.length ?? 0) > 0;
   const [hubSection, setHubSection] = useState<HubSection>(() =>
-    wantsConnectedDefault ? "connected" : defaultHubSection(),
+    wantsConnectedDefault
+      ? "connected"
+      : defaultHubSection(hasAdditionalOnDeviceModels),
   );
   // Connected is only valid while external providers exist; fall back otherwise.
   const effectiveHubSection: HubSection =
@@ -434,7 +455,11 @@ function ModelSelectorContent({
     if (open && !wasOpen.current) {
       setActiveTab(chatOnly ? chatOnlyTabsDefault : studioTabsDefault);
       // Connected when an external model is active, else On Device with downloads, else their last section.
-      setHubSection(wantsConnectedDefault ? "connected" : defaultHubSection());
+      setHubSection(
+        wantsConnectedDefault
+          ? "connected"
+          : defaultHubSection(hasAdditionalOnDeviceModels),
+      );
     }
     if (!open && wasOpen.current) {
       setConfigTarget(null);
@@ -446,6 +471,7 @@ function ModelSelectorContent({
     chatOnlyTabsDefault,
     studioTabsDefault,
     wantsConnectedDefault,
+    hasAdditionalOnDeviceModels,
   ]);
 
   function focusActiveModelOption(root: HTMLElement): boolean {
@@ -596,6 +622,8 @@ function ModelSelectorContent({
             {effectiveTab === "hub" ? (
               <HubModelPicker
                 models={models}
+                additionalOnDeviceModels={additionalOnDeviceModels}
+                loadedModelIdOverride={loadedModelIdOverride}
                 loraModels={fineTunedModels}
                 externalModels={externalModels}
                 value={value}
@@ -608,6 +636,7 @@ function ModelSelectorContent({
                 onEject={hasSelection && onEject ? onEject : undefined}
                 task={task}
                 catalog={catalog}
+                communityModelPolicy={communityModelPolicy}
                 section={effectiveHubSection}
                 sectionToggle={
                   <PillTabs
@@ -668,6 +697,8 @@ function ModelSelectorContent({
 
 export function ModelSelector({
   models,
+  additionalOnDeviceModels = [],
+  loadedModelIdOverride,
   loraModels = [],
   externalModels = [],
   value,
@@ -694,6 +725,7 @@ export function ModelSelector({
   showCloudIndicator = false,
   task,
   catalog,
+  communityModelPolicy = "none",
   placeholder,
 }: ModelSelectorProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
@@ -810,6 +842,8 @@ export function ModelSelector({
       <ModelSelectorContent
         open={open}
         models={models}
+        additionalOnDeviceModels={additionalOnDeviceModels}
+        loadedModelIdOverride={loadedModelIdOverride}
         loraModels={loraModels}
         externalModels={externalModels}
         value={selected}
@@ -822,14 +856,18 @@ export function ModelSelector({
         onEject={onEject ? handleEject : undefined}
         onFoldersChange={onFoldersChange}
         onPickLocalModel={onPickLocalModel ? handlePickLocalModel : undefined}
-        // The image tab (the only caller passing `task`) is a self-contained curated + on-device picker, so it omits the "Search Hub" button.
-        onBrowseHub={task ? undefined : handleBrowseHub}
+        // A curated task picker (Images / Video) is self-contained, so it omits this.
+        // A community-enabled one (Audio) already lists past unsloth, so it keeps it.
+        onBrowseHub={
+          task && communityModelPolicy === "none" ? undefined : handleBrowseHub
+        }
         onModelsChange={onModelsChange}
         deleteDisabled={deleteDisabled}
         className={contentClassName}
         dataTour={contentDataTour}
         task={task}
         catalog={catalog}
+        communityModelPolicy={communityModelPolicy}
       />
     </Popover>
   );
