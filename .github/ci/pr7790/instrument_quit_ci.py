@@ -56,6 +56,10 @@ fn quit_ci_response(kind: &str) -> Option<bool> {
     let response = match selected {
         "confirm" => true,
         "cancel" => false,
+        "panic" => {
+            quit_ci_log(&format!("response {kind} panic"));
+            panic!("CI-injected quit confirmation panic");
+        }
         _ => return None,
     };
     if let Ok(delay) = std::env::var("UNSLOTH_QUIT_CI_DELAY_MS") {
@@ -387,13 +391,13 @@ extern "C-unwind" fn application_should_terminate(''',
         )
         main = replace_once(
             main,
-            """                |event| {
-                    let _ = app.emit(event, ());
-                },""",
-            """                |event| {
-                    quit_ci_log(&format!("renderer event {event}"));
-                    let _ = app.emit(event, ());
-                },""",
+            """                    |event| {
+                        let _ = app.emit(event, ());
+                    },""",
+            """                    |event| {
+                        quit_ci_log(&format!("renderer event {event}"));
+                        let _ = app.emit(event, ());
+                    },""",
             "renderer closing event log",
         )
 

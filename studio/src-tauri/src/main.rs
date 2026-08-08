@@ -826,11 +826,40 @@ fn lock_quit_confirmation_state() -> MutexGuard<'static, QuitConfirmationState> 
 }
 
 /// Clears the flag on cancel, spawn failure, or panic, so a quit cannot leave the app inert.
-struct QuitGuard;
+struct QuitGuard {
+    active: bool,
+}
+
+impl QuitGuard {
+    fn new() -> Self {
+        Self { active: true }
+    }
+
+    /// Atomically close this confirmation to new attachments and take the AppKit reply, if any.
+    /// Once `in_progress` becomes false, a later system request starts its own confirmation instead
+    /// of attaching after this worker's final drain.
+    fn finish(mut self) -> bool {
+        let mut state = lock_quit_confirmation_state();
+        state.in_progress = false;
+        #[cfg(target_os = "macos")]
+        let reply_pending = std::mem::take(&mut state.termination_reply_pending);
+        #[cfg(not(target_os = "macos"))]
+        let reply_pending = false;
+        self.active = false;
+        reply_pending
+    }
+}
 
 impl Drop for QuitGuard {
     fn drop(&mut self) {
-        lock_quit_confirmation_state().in_progress = false;
+        if self.active {
+            let mut state = lock_quit_confirmation_state();
+            state.in_progress = false;
+            #[cfg(target_os = "macos")]
+            {
+                state.termination_reply_pending = false;
+            }
+        }
     }
 }
 
@@ -840,7 +869,7 @@ fn begin_quit() -> Option<QuitGuard> {
         return None;
     }
     state.in_progress = true;
-    Some(QuitGuard)
+    Some(QuitGuard::new())
 }
 
 #[cfg(target_os = "macos")]
@@ -869,7 +898,7 @@ fn begin_or_attach_termination(requires_confirmation: bool) -> TerminationConfir
     }
     state.in_progress = true;
     state.termination_reply_pending = true;
-    TerminationConfirmation::Start(QuitGuard)
+    TerminationConfirmation::Start(QuitGuard::new())
 }
 
 #[cfg(target_os = "macos")]
@@ -1019,38 +1048,46 @@ where
     let spawned = std::thread::Builder::new()
         .name("request-quit".to_string())
         .spawn(move || {
-            let _guard = guard;
             // Driven from here rather than the CloseRequested arm so the tray Quit is
             // covered on the same terms as the close button.
-            let proceed = quit_sequence(
-                || {
-                    confirm_quit_during_install(&app)
-                        && confirm_quit_during_update(&app)
-                        && confirm_quit_during_shell_update(&app)
-                        && confirm_quit_during_training(&app)
-                        && confirm_quit_during_downloads(&app)
-                },
-                || {
-                    quit_raises_the_overlay(
-                        // Windows only. macOS never reaches here from the close button,
-                        // which hides to the tray, and on Linux the button already quit
-                        // without an overlay: the freeze this covers was reported on
-                        // Windows, where stop_backend spends its liveness, shutdown and
-                        // CTRL_BREAK budgets in series.
-                        cfg!(target_os = "windows"),
-                        || {
-                            app.get_webview_window("main")
-                                .map(|window| window.is_visible().map_err(|e| e.to_string()))
-                        },
-                    )
-                },
-                || cleanup_child_processes(&app),
-                |event| {
-                    let _ = app.emit(event, ());
-                },
-            );
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                quit_sequence(
+                    || {
+                        confirm_quit_during_install(&app)
+                            && confirm_quit_during_update(&app)
+                            && confirm_quit_during_shell_update(&app)
+                            && confirm_quit_during_training(&app)
+                            && confirm_quit_during_downloads(&app)
+                    },
+                    || {
+                        quit_raises_the_overlay(
+                            // Windows only. macOS never reaches here from the close button,
+                            // which hides to the tray, and on Linux the button already quit
+                            // without an overlay: the freeze this covers was reported on
+                            // Windows, where stop_backend spends its liveness, shutdown and
+                            // CTRL_BREAK budgets in series.
+                            cfg!(target_os = "windows"),
+                            || {
+                                app.get_webview_window("main")
+                                    .map(|window| window.is_visible().map_err(|e| e.to_string()))
+                            },
+                        )
+                    },
+                    || cleanup_child_processes(&app),
+                    |event| {
+                        let _ = app.emit(event, ());
+                    },
+                )
+            }));
+            let proceed = result.as_ref().copied().unwrap_or(false);
+            let reply_pending = guard.finish();
             #[cfg(target_os = "macos")]
-            reply_to_pending_termination_request(&app, proceed);
+            if reply_pending {
+                reply_to_termination_request(&app, proceed);
+            }
+            if let Err(payload) = result {
+                std::panic::resume_unwind(payload);
+            }
             done(&app, proceed);
         });
     if let Err(error) = spawned {
@@ -1148,13 +1185,6 @@ fn reply_to_termination_request(app: &tauri::AppHandle, proceed: bool) {
     });
     if let Err(error) = result {
         warn!("Could not reply to the pending termination request: {error}");
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn reply_to_pending_termination_request(app: &tauri::AppHandle, proceed: bool) {
-    if take_pending_termination_reply() {
-        reply_to_termination_request(app, proceed);
     }
 }
 
@@ -1726,7 +1756,7 @@ mod tests {
         }
 
         {
-            let _first = begin_quit().expect("the first quit must be admitted");
+            let first = begin_quit().expect("the first quit must be admitted");
             assert!(
                 begin_quit().is_none(),
                 "a repeat close must not stack a second confirmation"
@@ -1742,9 +1772,15 @@ mod tests {
                     begin_or_attach_termination(true),
                     TerminationConfirmation::Duplicate
                 ));
-                assert!(take_pending_termination_reply());
+                assert!(
+                    first.finish(),
+                    "finishing must atomically take the attached AppKit reply"
+                );
                 assert!(!take_pending_termination_reply());
             }
+
+            #[cfg(not(target_os = "macos"))]
+            assert!(!first.finish());
         }
 
         #[cfg(target_os = "macos")]
@@ -1753,8 +1789,8 @@ mod tests {
                 TerminationConfirmation::Start(guard) => guard,
                 _ => panic!("an idle active state must start its own confirmation"),
             };
-            assert!(take_pending_termination_reply());
-            drop(guard);
+            assert!(guard.finish());
+            assert!(!lock_quit_confirmation_state().in_progress);
         }
 
         // Cancelling drops the guard, which re-arms the close button.
@@ -1764,9 +1800,19 @@ mod tests {
 
         let unwound = std::panic::catch_unwind(|| {
             let _guard = begin_quit().expect("admitted");
+            #[cfg(target_os = "macos")]
+            assert!(matches!(
+                begin_or_attach_termination(true),
+                TerminationConfirmation::Attached
+            ));
             panic!("quit thread unwound");
         });
         assert!(unwound.is_err());
+        #[cfg(target_os = "macos")]
+        assert!(
+            !take_pending_termination_reply(),
+            "unwinding must not leave a stale duplicate request"
+        );
         assert!(
             begin_quit().is_some(),
             "a panicking quit must release the guard"
