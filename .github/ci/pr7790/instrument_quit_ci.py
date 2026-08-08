@@ -150,6 +150,11 @@ fn setup_quit_ci_state(app: &tauri::App) {
             }
             "delegate-double" => quit_ci_direct_duplicate(),
             "native-menu" => quit_ci_native_menu(&handle),
+            "menu-then-native" => {
+                request_quit(&handle);
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                quit_ci_native_terminate(&handle);
+            }
             "menu" => request_quit(&handle),
             "programmatic" => handle.exit(42),
             _ => quit_ci_log("unknown trigger"),
@@ -193,6 +198,16 @@ def instrument(mode: str, *, check_only: bool = False) -> None:
             '            "menu" => request_quit(&handle),',
             '            "menu" => quit_ci_log("menu trigger unavailable on base"),',
             "base menu trigger removal",
+        )
+        main = replace_once(
+            main,
+            '''            "menu-then-native" => {
+                request_quit(&handle);
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                quit_ci_native_terminate(&handle);
+            }''',
+            '            "menu-then-native" => quit_ci_log("overlap probe unavailable on base"),',
+            "base overlap probe removal",
         )
         cargo = CARGO.read_text(encoding="utf-8")
         if "[target.'cfg(target_os = \"macos\")'.dependencies]" not in cargo:
@@ -343,28 +358,27 @@ extern "C-unwind" fn application_should_terminate(''',
         )
         main = replace_once(
             main,
-            """    if !quit_requires_confirmation(app) {
-        return NS_TERMINATE_NOW;
-    }""",
-            """    if !quit_requires_confirmation(app) {
-        quit_ci_log("applicationShouldTerminate NOW");
-        return NS_TERMINATE_NOW;
-    }""",
-            "inactive result log",
-        )
-        main = replace_once(
-            main,
-            """    if spawn_quit_confirmation(app, reply_to_termination_request) {
-        NS_TERMINATE_LATER
-    } else {
-        // Another quit path""",
-            """    if spawn_quit_confirmation(app, reply_to_termination_request) {
-        quit_ci_log("applicationShouldTerminate LATER");
-        NS_TERMINATE_LATER
-    } else {
-        quit_ci_log("applicationShouldTerminate CANCEL duplicate");
-        // Another quit path""",
-            "delegate result log",
+            """    match begin_or_attach_termination(quit_requires_confirmation(app)) {
+        TerminationConfirmation::Now => NS_TERMINATE_NOW,
+        TerminationConfirmation::Attached => NS_TERMINATE_LATER,
+        TerminationConfirmation::Duplicate => NS_TERMINATE_CANCEL,
+        TerminationConfirmation::Start(guard) => {""",
+            """    match begin_or_attach_termination(quit_requires_confirmation(app)) {
+        TerminationConfirmation::Now => {
+            quit_ci_log("applicationShouldTerminate NOW");
+            NS_TERMINATE_NOW
+        }
+        TerminationConfirmation::Attached => {
+            quit_ci_log("applicationShouldTerminate LATER attached");
+            NS_TERMINATE_LATER
+        }
+        TerminationConfirmation::Duplicate => {
+            quit_ci_log("applicationShouldTerminate CANCEL duplicate");
+            NS_TERMINATE_CANCEL
+        }
+        TerminationConfirmation::Start(guard) => {
+            quit_ci_log("applicationShouldTerminate LATER start");""",
+            "delegate disposition log",
         )
         main = replace_once(
             main,
