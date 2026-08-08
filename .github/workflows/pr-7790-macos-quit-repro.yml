@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - pr-7790-conflict-resolution-macos-ci-20260808
+      - pr-7790-conflict-resolution-v2-macos-ci-20260808
 
 permissions:
   contents: read
@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 60
     env:
       BASE_SHA: 7556b12d6aae5e4a8bf62e17b7493e2f4b257ab4
-      TARGET_SHA: 70e2c8cf08fea2d9318124aabd59d0723474ac86
+      TARGET_SHA: 998d5ba7221d4886299c94449515435245dd0878
       ARTIFACTS: ${{ github.workspace }}/macos-quit-artifacts
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2

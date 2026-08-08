@@ -354,20 +354,11 @@ extern "C-unwind" fn application_should_terminate(''',
         )
         main = replace_once(
             main,
-            """    if spawn_quit_confirmation(app, |app, proceed| {
-        if proceed {""",
-            """    if spawn_quit_confirmation(app, |app, proceed| {
-        quit_ci_log(&format!("confirmation completed {proceed}"));
-        if proceed {""",
-            "confirmation completion log",
-        )
-        main = replace_once(
-            main,
-            """    }) {
+            """    if spawn_quit_confirmation(app, reply_to_termination_request) {
         NS_TERMINATE_LATER
     } else {
         // Another quit path""",
-            """    }) {
+            """    if spawn_quit_confirmation(app, reply_to_termination_request) {
         quit_ci_log("applicationShouldTerminate LATER");
         NS_TERMINATE_LATER
     } else {
@@ -383,6 +374,17 @@ extern "C-unwind" fn application_should_terminate(''',
     quit_ci_log(&format!("replyToApplicationShouldTerminate {proceed}"));
     use objc2""",
             "reply log",
+        )
+        main = replace_once(
+            main,
+            """                |event| {
+                    let _ = app.emit(event, ());
+                },""",
+            """                |event| {
+                    quit_ci_log(&format!("renderer event {event}"));
+                    let _ = app.emit(event, ());
+                },""",
+            "renderer closing event log",
         )
 
     if not check_only:
