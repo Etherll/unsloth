@@ -18,7 +18,7 @@ jobs:
     runs-on: macos-14
     timeout-minutes: 60
     env:
-      BASE_SHA: 7556b12df737bfa917318637fd5e75b6f31d51c5
+      BASE_SHA: 7556b12d6aae5e4a8bf62e17b7493e2f4b257ab4
       TARGET_SHA: de65a00527f4d86e094f118e54d637841cad5e74
       ARTIFACTS: ${{ github.workspace }}/macos-quit-artifacts
     steps:
