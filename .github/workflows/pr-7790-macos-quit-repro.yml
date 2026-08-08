@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - pr-7790-macos-repro-ci-20260808
+      - pr-7790-conflict-resolution-macos-ci-20260808
 
 permissions:
   contents: read
@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 60
     env:
       BASE_SHA: 7556b12d6aae5e4a8bf62e17b7493e2f4b257ab4
-      TARGET_SHA: de65a00527f4d86e094f118e54d637841cad5e74
+      TARGET_SHA: 70e2c8cf08fea2d9318124aabd59d0723474ac86
       ARTIFACTS: ${{ github.workspace }}/macos-quit-artifacts
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -44,7 +44,8 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/pr7790-ci" "$ARTIFACTS"
           cp .github/ci/pr7790/*.py "$RUNNER_TEMP/pr7790-ci/"
-          git fetch --no-tags https://github.com/unslothai/unsloth.git "$BASE_SHA" "$TARGET_SHA"
+          git fetch --no-tags https://github.com/unslothai/unsloth.git "$BASE_SHA"
+          git cat-file -e "$TARGET_SHA^{commit}"
 
       - name: Install pinned JavaScript dependencies
         run: |
@@ -69,7 +70,7 @@ jobs:
             --mode base --binary "$BASE_APP/Contents/MacOS/unsloth-studio" \
             --artifacts "$ARTIFACTS/base"
 
-      - name: Validate exact PR head on native macOS
+      - name: Validate conflict-resolved PR head on native macOS
         run: |
           git restore studio/src-tauri/src/main.rs studio/src-tauri/Cargo.toml studio/src-tauri/Cargo.lock
           git checkout --detach "$TARGET_SHA"
@@ -98,6 +99,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
-          name: pr-7790-native-macos-quit-evidence
+          name: pr-7790-conflict-resolved-native-macos-evidence
           path: macos-quit-artifacts
           retention-days: 14
