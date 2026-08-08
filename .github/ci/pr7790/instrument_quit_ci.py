@@ -70,10 +70,12 @@ fn quit_ci_response(kind: &str) -> Option<bool> {
 #[cfg(target_os = "macos")]
 fn quit_ci_native_terminate(app: &tauri::AppHandle) {
     let result = app.run_on_main_thread(|| unsafe {
+        quit_ci_log("native terminate main-thread entered");
         let nsapp: *mut objc2::runtime::AnyObject =
             objc2::msg_send![objc2::class!(NSApplication), sharedApplication];
         let () =
             objc2::msg_send![nsapp, terminate: std::ptr::null_mut::<objc2::runtime::AnyObject>()];
+        quit_ci_log("native terminate main-thread returned");
     });
     if let Err(error) = result {
         quit_ci_log(&format!("native terminate scheduling failed: {error}"));
