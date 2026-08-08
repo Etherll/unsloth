@@ -45,25 +45,25 @@ def main() -> int:
     results: list[dict[str, object]] = []
 
     cases = [
-        {"name": "baseline-training-native", "state": "training", "trigger": "native", "exit": True},
+        {"name": "baseline-training-applescript", "state": "training", "trigger": "applescript", "exit": True},
     ] if args.mode == "base" else [
-        {"name": "inactive-native", "state": "inactive", "trigger": "native", "exit": True,
+        {"name": "inactive-applescript", "state": "inactive", "trigger": "applescript", "exit": True,
          "has": ["applicationShouldTerminate NOW"]},
-        {"name": "training-cancel", "state": "training", "trigger": "native", "response": "cancel", "exit": False,
+        {"name": "training-cancel", "state": "training", "trigger": "applescript", "response": "cancel", "exit": False,
          "has": ["applicationShouldTerminate LATER", "prompt training", "replyToApplicationShouldTerminate false"]},
-        {"name": "training-confirm", "state": "training", "trigger": "native", "response": "confirm", "exit": True,
+        {"name": "training-confirm", "state": "training", "trigger": "applescript", "response": "confirm", "exit": True,
          "has": ["applicationShouldTerminate LATER", "prompt training", "replyToApplicationShouldTerminate true"]},
-        {"name": "install-cancel", "state": "install", "trigger": "native", "response": "cancel", "exit": False,
+        {"name": "install-cancel", "state": "install", "trigger": "applescript", "response": "cancel", "exit": False,
          "has": ["applicationShouldTerminate LATER", "prompt install", "replyToApplicationShouldTerminate false"]},
-        {"name": "install-confirm", "state": "install", "trigger": "native", "response": "confirm", "exit": True,
+        {"name": "install-confirm", "state": "install", "trigger": "applescript", "response": "confirm", "exit": True,
          "has": ["applicationShouldTerminate LATER", "prompt install", "replyToApplicationShouldTerminate true"]},
-        {"name": "both-install-cancel", "state": "install,training", "trigger": "native", "response": "install=cancel,training=confirm", "exit": False,
+        {"name": "both-install-cancel", "state": "install,training", "trigger": "applescript", "response": "install=cancel,training=confirm", "exit": False,
          "has": ["prompt install", "replyToApplicationShouldTerminate false"], "lacks": ["prompt training"]},
-        {"name": "both-training-cancel", "state": "install,training", "trigger": "native", "response": "install=confirm,training=cancel", "exit": False,
+        {"name": "both-training-cancel", "state": "install,training", "trigger": "applescript", "response": "install=confirm,training=cancel", "exit": False,
          "has": ["prompt install", "prompt training", "replyToApplicationShouldTerminate false"]},
-        {"name": "both-confirm", "state": "install,training", "trigger": "native", "response": "confirm", "exit": True,
+        {"name": "both-confirm", "state": "install,training", "trigger": "applescript", "response": "confirm", "exit": True,
          "has": ["prompt install", "prompt training", "replyToApplicationShouldTerminate true"]},
-        {"name": "duplicate-native", "state": "training", "trigger": "native-double", "response": "cancel", "delay": "1200", "exit": False,
+        {"name": "duplicate-applescript", "state": "training", "trigger": "applescript-double", "response": "cancel", "delay": "1200", "exit": False,
          "has": ["applicationShouldTerminate LATER", "applicationShouldTerminate CANCEL duplicate", "replyToApplicationShouldTerminate false"]},
         {"name": "menu-cancel", "state": "training", "trigger": "menu", "response": "cancel", "exit": False,
          "has": ["menu confirmation path", "prompt training"]},
@@ -71,7 +71,7 @@ def main() -> int:
          "has": ["menu confirmation path", "prompt training"]},
         {"name": "programmatic-exit", "state": "install,training", "trigger": "programmatic", "exit": True,
          "lacks": ["prompt install", "prompt training", "applicationShouldTerminate entered"]},
-        {"name": "real-dialog-training", "state": "training", "trigger": "native", "exit": False,
+        {"name": "real-dialog-training", "state": "training", "trigger": "applescript", "exit": False,
          "has": ["applicationShouldTerminate LATER", "prompt training"], "screenshot": True},
     ]
 
@@ -83,9 +83,11 @@ def main() -> int:
         env.update({
             "UNSLOTH_QUIT_CI_LOG": str(log),
             "UNSLOTH_QUIT_CI_STATE": str(case["state"]),
-            "UNSLOTH_QUIT_CI_TRIGGER": str(case["trigger"]),
             "RUST_BACKTRACE": "1",
         })
+        trigger = str(case["trigger"])
+        if not trigger.startswith("applescript"):
+            env["UNSLOTH_QUIT_CI_TRIGGER"] = trigger
         if "response" in case:
             env["UNSLOTH_QUIT_CI_RESPONSE"] = str(case["response"])
         if "delay" in case:
@@ -94,6 +96,24 @@ def main() -> int:
         with stdout.open("wb") as output:
             proc = subprocess.Popen([str(binary)], env=env, stdout=output, stderr=subprocess.STDOUT)
         ready = wait_for(log, "ready state=", 30)
+        if ready and trigger.startswith("applescript"):
+            command = [
+                "osascript",
+                "-e",
+                'tell application id "ai.unsloth.studio" to quit',
+            ]
+            apple_log = artifacts / f"{name}.applescript.log"
+            with apple_log.open("wb") as output:
+                requests = [subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT)]
+                if trigger == "applescript-double":
+                    time.sleep(0.1)
+                    requests.append(subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT))
+                for request in requests:
+                    try:
+                        request.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        request.kill()
+                        request.wait(timeout=5)
         time.sleep(3 if case.get("screenshot") else 2)
         running = proc.poll() is None
         events = log.read_text(errors="replace") if log.exists() else ""
