@@ -150,7 +150,7 @@ fn setup_quit_ci_state(app: &tauri::App) {
             }
             "delegate-double" => quit_ci_direct_duplicate(),
             "native-menu" => quit_ci_native_menu(&handle),
-            "menu" => confirm_then_quit(&handle),
+            "menu" => request_quit(&handle),
             "programmatic" => handle.exit(42),
             _ => quit_ci_log("unknown trigger"),
         }
@@ -159,7 +159,7 @@ fn setup_quit_ci_state(app: &tauri::App) {
 '''
 
 
-def instrument(mode: str) -> None:
+def instrument(mode: str, *, check_only: bool = False) -> None:
     main = MAIN.read_text(encoding="utf-8")
     main = replace_once(
         main,
@@ -190,7 +190,7 @@ def instrument(mode: str) -> None:
         )
         main = replace_once(
             main,
-            '            "menu" => confirm_then_quit(&handle),',
+            '            "menu" => request_quit(&handle),',
             '            "menu" => quit_ci_log("menu trigger unavailable on base"),',
             "base menu trigger removal",
         )
@@ -202,7 +202,8 @@ def instrument(mode: str) -> None:
                 "[target.'cfg(target_os = \"macos\")'.dependencies]\nobjc2 = \"0.6\"\n\n[target.'cfg(target_os = \"linux\")'.dependencies]",
                 "base objc2 dependency",
             )
-            CARGO.write_text(cargo, encoding="utf-8")
+            if not check_only:
+                CARGO.write_text(cargo, encoding="utf-8")
     else:
         main = replace_once(
             main,
@@ -282,11 +283,48 @@ extern "C-unwind" fn application_should_terminate(''',
     app.dialog()""",
             "install response hook",
         )
+        for function_name, state_name in (
+            ("confirm_quit_during_update", "update"),
+            ("confirm_quit_during_shell_update", "shell-update"),
+            ("confirm_quit_during_downloads", "downloads"),
+        ):
+            sentinel = f'''fn {function_name}(app: &tauri::AppHandle) -> bool {{
+    use tauri_plugin_dialog::{{DialogExt, MessageDialogButtons, MessageDialogKind}};
+'''
+            replacement = sentinel + f'''
+    #[cfg(target_os = "macos")]
+    if quit_ci_state_has("{state_name}") {{
+        quit_ci_log("prompt {state_name}");
+        if let Some(response) = quit_ci_response("{state_name}") {{
+            return response;
+        }}
+    }}
+'''
+            main = replace_once(
+                main,
+                sentinel,
+                replacement,
+                f"{state_name} response hook",
+            )
         main = replace_once(
             main,
-            """fn confirm_then_quit(app: &tauri::AppHandle) {
+            '''fn quit_requires_confirmation(app: &tauri::AppHandle) -> bool {
+    let update_active''',
+            '''fn quit_requires_confirmation(app: &tauri::AppHandle) -> bool {
+    if ["update", "shell-update", "downloads"]
+        .iter()
+        .any(|kind| quit_ci_state_has(kind))
+    {
+        return true;
+    }
+    let update_active''',
+            "native state override",
+        )
+        main = replace_once(
+            main,
+            """fn request_quit(app: &tauri::AppHandle) {
     spawn_quit_confirmation""",
-            """fn confirm_then_quit(app: &tauri::AppHandle) {
+            """fn request_quit(app: &tauri::AppHandle) {
     #[cfg(target_os = "macos")]
     quit_ci_log("menu confirmation path");
     spawn_quit_confirmation""",
@@ -305,10 +343,10 @@ extern "C-unwind" fn application_should_terminate(''',
         )
         main = replace_once(
             main,
-            """    if !install_is_active(app) && !training_is_active(app) {
+            """    if !quit_requires_confirmation(app) {
         return NS_TERMINATE_NOW;
     }""",
-            """    if !install_is_active(app) && !training_is_active(app) {
+            """    if !quit_requires_confirmation(app) {
         quit_ci_log("applicationShouldTerminate NOW");
         return NS_TERMINATE_NOW;
     }""",
@@ -347,11 +385,14 @@ extern "C-unwind" fn application_should_terminate(''',
             "reply log",
         )
 
-    MAIN.write_text(main, encoding="utf-8")
-    print(f"instrumented {mode}: {MAIN}")
+    if not check_only:
+        MAIN.write_text(main, encoding="utf-8")
+    print(f"{'checked' if check_only else 'instrumented'} {mode}: {MAIN}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("mode", choices=("base", "target"))
-    instrument(parser.parse_args().mode)
+    parser.add_argument("--check-only", action="store_true")
+    args = parser.parse_args()
+    instrument(args.mode, check_only=args.check_only)
