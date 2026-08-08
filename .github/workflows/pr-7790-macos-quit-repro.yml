@@ -38,6 +38,7 @@ jobs:
       - uses: swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2.9.1
         with:
           workspaces: studio/src-tauri -> target
+          cache-on-failure: true
 
       - name: Preserve staging harness and fetch immutable revisions
         run: |
@@ -59,7 +60,8 @@ jobs:
           git checkout --detach "$BASE_SHA"
           python3 "$RUNNER_TEMP/pr7790-ci/instrument_quit_ci.py" base
           npm ci --prefix studio --no-fund --no-audit
-          npx --prefix studio tauri build --debug --bundles app
+          npx --prefix studio tauri build --debug --bundles app \
+            --config '{"bundle":{"createUpdaterArtifacts":false}}'
           BASE_APP=studio/src-tauri/target/debug/bundle/macos/Unsloth.app
           test -n "$BASE_APP"
           python3 "$RUNNER_TEMP/pr7790-ci/run_macos_quit_probe.py" \
@@ -73,7 +75,8 @@ jobs:
           python3 "$RUNNER_TEMP/pr7790-ci/instrument_quit_ci.py" target
           cargo fmt --manifest-path studio/src-tauri/Cargo.toml --check 2>&1 | tee "$ARTIFACTS/target-cargo-fmt.log" || true
           cargo test --manifest-path studio/src-tauri/Cargo.toml --no-fail-fast
-          npx --prefix studio tauri build --debug --bundles app
+          npx --prefix studio tauri build --debug --bundles app \
+            --config '{"bundle":{"createUpdaterArtifacts":false}}'
           TARGET_APP=studio/src-tauri/target/debug/bundle/macos/Unsloth.app
           test -n "$TARGET_APP"
           file "$TARGET_APP/Contents/MacOS/unsloth-studio" | tee "$ARTIFACTS/target-binary.txt"
