@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""Run PR 7790's instrumented native macOS application lifecycle matrix."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from pathlib import Path
+import signal
+import subprocess
+import time
+
+
+def wait_for(path: Path, needle: str, timeout: float = 20) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if path.exists() and needle in path.read_text(errors="replace"):
+            return True
+        time.sleep(0.1)
+    return False
+
+
+def stop(proc: subprocess.Popen[bytes]) -> None:
+    if proc.poll() is not None:
+        return
+    proc.send_signal(signal.SIGKILL)
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=10)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=("base", "target"), required=True)
+    parser.add_argument("--binary", required=True)
+    parser.add_argument("--artifacts", required=True)
+    args = parser.parse_args()
+
+    binary = Path(args.binary).resolve()
+    artifacts = Path(args.artifacts).resolve()
+    artifacts.mkdir(parents=True, exist_ok=True)
+    results: list[dict[str, object]] = []
+
+    cases = [
+        {"name": "baseline-training-native", "state": "training", "trigger": "native", "exit": True},
+    ] if args.mode == "base" else [
+        {"name": "inactive-native", "state": "inactive", "trigger": "native", "exit": True,
+         "has": ["applicationShouldTerminate NOW"]},
+        {"name": "training-cancel", "state": "training", "trigger": "native", "response": "cancel", "exit": False,
+         "has": ["applicationShouldTerminate LATER", "prompt training", "replyToApplicationShouldTerminate false"]},
+        {"name": "training-confirm", "state": "training", "trigger": "native", "response": "confirm", "exit": True,
+         "has": ["applicationShouldTerminate LATER", "prompt training", "replyToApplicationShouldTerminate true"]},
+        {"name": "install-cancel", "state": "install", "trigger": "native", "response": "cancel", "exit": False,
+         "has": ["applicationShouldTerminate LATER", "prompt install", "replyToApplicationShouldTerminate false"]},
+        {"name": "install-confirm", "state": "install", "trigger": "native", "response": "confirm", "exit": True,
+         "has": ["applicationShouldTerminate LATER", "prompt install", "replyToApplicationShouldTerminate true"]},
+        {"name": "both-install-cancel", "state": "install,training", "trigger": "native", "response": "install=cancel,training=confirm", "exit": False,
+         "has": ["prompt install", "replyToApplicationShouldTerminate false"], "lacks": ["prompt training"]},
+        {"name": "both-training-cancel", "state": "install,training", "trigger": "native", "response": "install=confirm,training=cancel", "exit": False,
+         "has": ["prompt install", "prompt training", "replyToApplicationShouldTerminate false"]},
+        {"name": "both-confirm", "state": "install,training", "trigger": "native", "response": "confirm", "exit": True,
+         "has": ["prompt install", "prompt training", "replyToApplicationShouldTerminate true"]},
+        {"name": "duplicate-native", "state": "training", "trigger": "native-double", "response": "cancel", "delay": "1200", "exit": False,
+         "has": ["applicationShouldTerminate LATER", "applicationShouldTerminate CANCEL duplicate", "replyToApplicationShouldTerminate false"]},
+        {"name": "menu-cancel", "state": "training", "trigger": "menu", "response": "cancel", "exit": False,
+         "has": ["menu confirmation path", "prompt training"]},
+        {"name": "menu-confirm", "state": "training", "trigger": "menu", "response": "confirm", "exit": True,
+         "has": ["menu confirmation path", "prompt training"]},
+        {"name": "programmatic-exit", "state": "install,training", "trigger": "programmatic", "exit": True,
+         "lacks": ["prompt install", "prompt training", "applicationShouldTerminate entered"]},
+        {"name": "real-dialog-training", "state": "training", "trigger": "native", "exit": False,
+         "has": ["applicationShouldTerminate LATER", "prompt training"], "screenshot": True},
+    ]
+
+    for case in cases:
+        name = str(case["name"])
+        log = artifacts / f"{name}.events.log"
+        stdout = artifacts / f"{name}.process.log"
+        env = os.environ.copy()
+        env.update({
+            "UNSLOTH_QUIT_CI_LOG": str(log),
+            "UNSLOTH_QUIT_CI_STATE": str(case["state"]),
+            "UNSLOTH_QUIT_CI_TRIGGER": str(case["trigger"]),
+            "RUST_BACKTRACE": "1",
+        })
+        if "response" in case:
+            env["UNSLOTH_QUIT_CI_RESPONSE"] = str(case["response"])
+        if "delay" in case:
+            env["UNSLOTH_QUIT_CI_DELAY_MS"] = str(case["delay"])
+
+        with stdout.open("wb") as output:
+            proc = subprocess.Popen([str(binary)], env=env, stdout=output, stderr=subprocess.STDOUT)
+        ready = wait_for(log, "ready state=", 30)
+        time.sleep(3 if case.get("screenshot") else 2)
+        running = proc.poll() is None
+        events = log.read_text(errors="replace") if log.exists() else ""
+        expected_exit = bool(case["exit"])
+        ok = ready and (running != expected_exit)
+        for needle in case.get("has", []):
+            ok = ok and needle in events
+        for needle in case.get("lacks", []):
+            ok = ok and needle not in events
+        if case.get("screenshot"):
+            shot = artifacts / f"{name}.png"
+            capture = subprocess.run(["screencapture", "-x", str(shot)], capture_output=True, text=True)
+            ok = ok and capture.returncode == 0 and shot.exists()
+        results.append({
+            "name": name,
+            "passed": ok,
+            "ready": ready,
+            "expected": "exit" if expected_exit else "remain running",
+            "observed": "running" if running else f"exited ({proc.returncode})",
+            "events": events.splitlines(),
+        })
+        stop(proc)
+        print(("PASS" if ok else "FAIL"), name, results[-1]["observed"])
+
+    summary = {"mode": args.mode, "binary": str(binary), "results": results}
+    (artifacts / f"{args.mode}-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    return 0 if all(bool(result["passed"]) for result in results) else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
