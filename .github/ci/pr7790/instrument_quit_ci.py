@@ -7,7 +7,7 @@ import argparse
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path.cwd().resolve()
 MAIN = ROOT / "studio/src-tauri/src/main.rs"
 CARGO = ROOT / "studio/src-tauri/Cargo.toml"
 
