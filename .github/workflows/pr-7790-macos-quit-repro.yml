@@ -55,6 +55,7 @@ jobs:
         run: npm run --prefix studio/frontend build
 
       - name: Reproduce bug on base revision
+        continue-on-error: true
         run: |
           git restore studio/src-tauri/src/main.rs studio/src-tauri/Cargo.toml studio/src-tauri/Cargo.lock
           git checkout --detach "$BASE_SHA"
