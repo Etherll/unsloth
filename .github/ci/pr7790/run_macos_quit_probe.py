@@ -92,11 +92,11 @@ def main() -> int:
          "has": ["native menu item performClick", "menu confirmation path", "prompt training"]},
         {"name": "native-menu-confirm", "state": "training", "trigger": "native-menu", "response": "confirm", "exit": True,
          "has": ["native menu item performClick", "menu confirmation path", "prompt training"]},
-        {"name": "menu-system-overlap-cancel", "state": "training", "trigger": "menu-then-native", "response": "cancel", "delay": "1200", "exit": False,
+        {"name": "menu-system-overlap-cancel", "state": "training", "trigger": "menu-then-applescript", "response": "cancel", "delay": "1200", "exit": False,
          "has": ["menu confirmation path", "prompt training", "applicationShouldTerminate LATER attached",
                  "replyToApplicationShouldTerminate false"],
          "lacks": ["applicationShouldTerminate CANCEL duplicate"]},
-        {"name": "menu-system-overlap-confirm", "state": "training", "trigger": "menu-then-native", "response": "confirm", "delay": "1200", "exit": True,
+        {"name": "menu-system-overlap-confirm", "state": "training", "trigger": "menu-then-applescript", "response": "confirm", "delay": "1200", "exit": True,
          "has": ["menu confirmation path", "prompt training", "applicationShouldTerminate LATER attached",
                  "replyToApplicationShouldTerminate true"],
          "lacks": ["applicationShouldTerminate CANCEL duplicate"]},
@@ -128,7 +128,9 @@ def main() -> int:
         with stdout.open("wb") as output:
             proc = subprocess.Popen([str(binary)], env=env, stdout=output, stderr=subprocess.STDOUT)
         ready = wait_for(log, "ready state=", 30)
-        if ready and trigger.startswith("applescript"):
+        if ready and (trigger.startswith("applescript") or trigger == "menu-then-applescript"):
+            if trigger == "menu-then-applescript":
+                ready = wait_for(log, "prompt training", 10)
             command = [
                 "osascript",
                 "-e",

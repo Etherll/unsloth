@@ -150,10 +150,8 @@ fn setup_quit_ci_state(app: &tauri::App) {
             }
             "delegate-double" => quit_ci_direct_duplicate(),
             "native-menu" => quit_ci_native_menu(&handle),
-            "menu-then-native" => {
+            "menu-then-applescript" => {
                 request_quit(&handle);
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                quit_ci_native_terminate(&handle);
             }
             "menu" => request_quit(&handle),
             "programmatic" => handle.exit(42),
@@ -201,10 +199,8 @@ def instrument(mode: str, *, check_only: bool = False) -> None:
         )
         main = replace_once(
             main,
-            '''            "menu-then-native" => {
+            '''            "menu-then-applescript" => {
                 request_quit(&handle);
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                quit_ci_native_terminate(&handle);
             }''',
             '            "menu-then-native" => quit_ci_log("overlap probe unavailable on base"),',
             "base overlap probe removal",
