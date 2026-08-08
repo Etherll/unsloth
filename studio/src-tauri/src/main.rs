@@ -31,8 +31,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Once, OnceLock};
+use std::sync::{Mutex, MutexGuard, Once, OnceLock};
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager};
@@ -806,21 +805,77 @@ fn show_main_window(app: &tauri::AppHandle) {
     }
 }
 
-/// One quit confirmation at a time: the dialogs are unparented, so repeat requests would stack
-/// another one.
-static QUIT_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+/// Coordinates the one visible quit confirmation and, on macOS, one AppKit termination request
+/// waiting for that confirmation's answer.
+struct QuitConfirmationState {
+    in_progress: bool,
+    #[cfg(target_os = "macos")]
+    termination_reply_pending: bool,
+}
+
+static QUIT_CONFIRMATION_STATE: Mutex<QuitConfirmationState> = Mutex::new(QuitConfirmationState {
+    in_progress: false,
+    #[cfg(target_os = "macos")]
+    termination_reply_pending: false,
+});
+
+fn lock_quit_confirmation_state() -> MutexGuard<'static, QuitConfirmationState> {
+    QUIT_CONFIRMATION_STATE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 /// Clears the flag on cancel, spawn failure, or panic, so a quit cannot leave the app inert.
 struct QuitGuard;
 
 impl Drop for QuitGuard {
     fn drop(&mut self) {
-        QUIT_IN_PROGRESS.store(false, Ordering::SeqCst);
+        lock_quit_confirmation_state().in_progress = false;
     }
 }
 
 fn begin_quit() -> Option<QuitGuard> {
-    (!QUIT_IN_PROGRESS.swap(true, Ordering::SeqCst)).then_some(QuitGuard)
+    let mut state = lock_quit_confirmation_state();
+    if state.in_progress {
+        return None;
+    }
+    state.in_progress = true;
+    Some(QuitGuard)
+}
+
+#[cfg(target_os = "macos")]
+enum TerminationConfirmation {
+    Now,
+    Start(QuitGuard),
+    Attached,
+    Duplicate,
+}
+
+/// Atomically attach AppKit to a menu/tray confirmation that is already visible, or reserve the
+/// guard for a new confirmation. This closes the race between checking `in_progress` and marking
+/// the system termination pending.
+#[cfg(target_os = "macos")]
+fn begin_or_attach_termination(requires_confirmation: bool) -> TerminationConfirmation {
+    let mut state = lock_quit_confirmation_state();
+    if state.termination_reply_pending {
+        return TerminationConfirmation::Duplicate;
+    }
+    if state.in_progress {
+        state.termination_reply_pending = true;
+        return TerminationConfirmation::Attached;
+    }
+    if !requires_confirmation {
+        return TerminationConfirmation::Now;
+    }
+    state.in_progress = true;
+    state.termination_reply_pending = true;
+    TerminationConfirmation::Start(QuitGuard)
+}
+
+#[cfg(target_os = "macos")]
+fn take_pending_termination_reply() -> bool {
+    let mut state = lock_quit_confirmation_state();
+    std::mem::take(&mut state.termination_reply_pending)
 }
 
 /// Asks the renderer for the closing overlay. Reaping the backend takes up to ~18s on
@@ -940,15 +995,25 @@ fn quit_sequence(
 }
 
 /// Run the complete upstream confirm-overlay-reap sequence off the caller's thread, then hand its
-/// verdict to `done`. Returns false when another confirmation owns the guard or the worker cannot
-/// start.
-fn spawn_quit_confirmation<F>(app: &tauri::AppHandle, done: F) -> bool
+/// verdict to `done`. `reserved_guard` lets AppKit atomically attach-or-reserve before spawning;
+/// ordinary menu and tray requests acquire the guard here.
+fn spawn_quit_confirmation<F>(
+    app: &tauri::AppHandle,
+    reserved_guard: Option<QuitGuard>,
+    done: F,
+) -> bool
 where
     F: FnOnce(&tauri::AppHandle, bool) + Send + 'static,
 {
-    let Some(guard) = begin_quit() else {
-        info!("Quit already awaiting confirmation, ignoring the repeat request");
-        return false;
+    let guard = match reserved_guard {
+        Some(guard) => guard,
+        None => {
+            let Some(guard) = begin_quit() else {
+                info!("Quit already awaiting confirmation, ignoring the repeat request");
+                return false;
+            };
+            guard
+        }
     };
     let app = app.clone();
     let spawned = std::thread::Builder::new()
@@ -984,6 +1049,8 @@ where
                     let _ = app.emit(event, ());
                 },
             );
+            #[cfg(target_os = "macos")]
+            reply_to_pending_termination_request(&app, proceed);
             done(&app, proceed);
         });
     if let Err(error) = spawned {
@@ -997,7 +1064,7 @@ where
 /// backend tree. AppHandle::exit then emits ExitRequested and Exit; the latter is an idempotent
 /// cleanup safety net below.
 fn request_quit(app: &tauri::AppHandle) {
-    spawn_quit_confirmation(app, |app, proceed| {
+    spawn_quit_confirmation(app, None, |app, proceed| {
         if proceed {
             app.exit(0);
         }
@@ -1052,18 +1119,19 @@ extern "C-unwind" fn application_should_terminate(
     let Some(app) = TERMINATE_APP_HANDLE.get() else {
         return NS_TERMINATE_NOW;
     };
-    if !quit_requires_confirmation(app) {
-        return NS_TERMINATE_NOW;
-    }
-    // NSTerminateLater keeps a logout/restart/shutdown pending while the user
-    // decides; cancelling here would deny it before they had answered, so a
-    // confirmed quit would still leave the logout aborted.
-    if spawn_quit_confirmation(app, reply_to_termination_request) {
-        NS_TERMINATE_LATER
-    } else {
-        // Another quit path already has the dialog up; deny this request
-        // rather than promise a reply nobody will send.
-        NS_TERMINATE_CANCEL
+    match begin_or_attach_termination(quit_requires_confirmation(app)) {
+        TerminationConfirmation::Now => NS_TERMINATE_NOW,
+        TerminationConfirmation::Attached => NS_TERMINATE_LATER,
+        TerminationConfirmation::Duplicate => NS_TERMINATE_CANCEL,
+        TerminationConfirmation::Start(guard) => {
+            if spawn_quit_confirmation(app, Some(guard), |_, _| {}) {
+                NS_TERMINATE_LATER
+            } else {
+                // The worker never started, so no caller can deliver the promised reply.
+                take_pending_termination_reply();
+                NS_TERMINATE_CANCEL
+            }
+        }
     }
 }
 
@@ -1080,6 +1148,13 @@ fn reply_to_termination_request(app: &tauri::AppHandle, proceed: bool) {
     });
     if let Err(error) = result {
         warn!("Could not reply to the pending termination request: {error}");
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn reply_to_pending_termination_request(app: &tauri::AppHandle, proceed: bool) {
+    if take_pending_termination_reply() {
+        reply_to_termination_request(app, proceed);
     }
 }
 
@@ -1636,10 +1711,19 @@ mod tests {
         drop(next);
     }
 
-    // One test, not three: `QUIT_IN_PROGRESS` is process-global and cargo tests run in parallel.
+    // One test, not three: the quit coordinator is process-global and cargo tests run in parallel.
     #[test]
     fn quit_guard_admits_one_quit_and_always_re_arms() {
-        assert!(!QUIT_IN_PROGRESS.load(Ordering::SeqCst));
+        assert!(!lock_quit_confirmation_state().in_progress);
+
+        #[cfg(target_os = "macos")]
+        {
+            assert!(matches!(
+                begin_or_attach_termination(false),
+                TerminationConfirmation::Now
+            ));
+            assert!(!take_pending_termination_reply());
+        }
 
         {
             let _first = begin_quit().expect("the first quit must be admitted");
@@ -1647,6 +1731,30 @@ mod tests {
                 begin_quit().is_none(),
                 "a repeat close must not stack a second confirmation"
             );
+
+            #[cfg(target_os = "macos")]
+            {
+                assert!(matches!(
+                    begin_or_attach_termination(false),
+                    TerminationConfirmation::Attached
+                ));
+                assert!(matches!(
+                    begin_or_attach_termination(true),
+                    TerminationConfirmation::Duplicate
+                ));
+                assert!(take_pending_termination_reply());
+                assert!(!take_pending_termination_reply());
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            let guard = match begin_or_attach_termination(true) {
+                TerminationConfirmation::Start(guard) => guard,
+                _ => panic!("an idle active state must start its own confirmation"),
+            };
+            assert!(take_pending_termination_reply());
+            drop(guard);
         }
 
         // Cancelling drops the guard, which re-arms the close button.
