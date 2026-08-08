@@ -108,6 +108,7 @@ fn setup_quit_ci_state(app: &tauri::App) {
                 std::thread::sleep(std::time::Duration::from_millis(100));
                 quit_ci_native_terminate(&handle);
             }
+            "delegate-double" => quit_ci_direct_duplicate(),
             "menu" => confirm_then_quit(&handle),
             "programmatic" => handle.exit(42),
             _ => quit_ci_log("unknown trigger"),
@@ -142,6 +143,12 @@ def instrument(mode: str) -> None:
     if mode == "base":
         main = replace_once(
             main,
+            '            "delegate-double" => quit_ci_direct_duplicate(),',
+            '            "delegate-double" => quit_ci_log("delegate probe unavailable on base"),',
+            "base delegate probe removal",
+        )
+        main = replace_once(
+            main,
             '            "menu" => confirm_then_quit(&handle),',
             '            "menu" => quit_ci_log("menu trigger unavailable on base"),',
             "base menu trigger removal",
@@ -156,6 +163,22 @@ def instrument(mode: str) -> None:
             )
             CARGO.write_text(cargo, encoding="utf-8")
     else:
+        main = replace_once(
+            main,
+            '''#[cfg(target_os = "macos")]
+extern "C-unwind" fn application_should_terminate(''',
+            '''#[cfg(target_os = "macos")]
+fn quit_ci_direct_duplicate() {
+    let selector = objc2::sel!(applicationShouldTerminate:);
+    let first = application_should_terminate(std::ptr::null_mut(), selector, std::ptr::null_mut());
+    let second = application_should_terminate(std::ptr::null_mut(), selector, std::ptr::null_mut());
+    quit_ci_log(&format!("direct duplicate results {first} {second}"));
+}
+
+#[cfg(target_os = "macos")]
+extern "C-unwind" fn application_should_terminate(''',
+            "direct duplicate probe",
+        )
         main = replace_once(
             main,
             """fn training_is_active(app: &tauri::AppHandle) -> bool {
