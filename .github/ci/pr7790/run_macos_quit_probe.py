@@ -147,6 +147,11 @@ def main() -> int:
             ok = ok and needle in events
         for needle in case.get("lacks", []):
             ok = ok and needle not in events
+        if args.mode == "target":
+            # The closing overlay merged from upstream is Windows-only. Any renderer closing
+            # event on native macOS means the conflict resolution crossed platform semantics.
+            ok = ok and "renderer event app-closing" not in events
+            ok = ok and "renderer event app-closing-cancelled" not in events
         if case.get("screenshot"):
             shot = artifacts / f"{name}.png"
             capture = subprocess.run(["screencapture", "-x", str(shot)], capture_output=True, text=True)
