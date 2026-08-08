@@ -87,11 +87,32 @@ fn quit_ci_native_menu(app: &tauri::AppHandle) {
     let result = app.run_on_main_thread(|| unsafe {
         let nsapp: *mut objc2::runtime::AnyObject =
             objc2::msg_send![objc2::class!(NSApplication), sharedApplication];
+        if nsapp.is_null() {
+            quit_ci_log("native menu missing NSApplication");
+            return;
+        }
         let main_menu: *mut objc2::runtime::AnyObject = objc2::msg_send![nsapp, mainMenu];
+        if main_menu.is_null() {
+            quit_ci_log("native menu missing mainMenu");
+            return;
+        }
         let app_item: *mut objc2::runtime::AnyObject =
             objc2::msg_send![main_menu, itemAtIndex: 0isize];
+        if app_item.is_null() {
+            quit_ci_log("native menu missing app item");
+            return;
+        }
         let app_menu: *mut objc2::runtime::AnyObject = objc2::msg_send![app_item, submenu];
+        if app_menu.is_null() {
+            quit_ci_log("native menu missing app submenu");
+            return;
+        }
         let count: isize = objc2::msg_send![app_menu, numberOfItems];
+        quit_ci_log(&format!("native app menu item count {count}"));
+        if count < 1 {
+            quit_ci_log("native menu has no items");
+            return;
+        }
         let quit_item: *mut objc2::runtime::AnyObject =
             objc2::msg_send![app_menu, itemAtIndex: count - 1];
         quit_ci_log("native menu item performClick");
@@ -119,7 +140,8 @@ fn setup_quit_ci_state(app: &tauri::App) {
     };
     let handle = app.handle().clone();
     std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(350));
+        let delay = if trigger == "native-menu" { 1_500 } else { 350 };
+        std::thread::sleep(std::time::Duration::from_millis(delay));
         quit_ci_log(&format!("trigger {trigger}"));
         match trigger.as_str() {
             "native" => quit_ci_native_terminate(&handle),
