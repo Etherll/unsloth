@@ -83,6 +83,26 @@ fn quit_ci_native_terminate(app: &tauri::AppHandle) {
 }
 
 #[cfg(target_os = "macos")]
+fn quit_ci_native_menu(app: &tauri::AppHandle) {
+    let result = app.run_on_main_thread(|| unsafe {
+        let nsapp: *mut objc2::runtime::AnyObject =
+            objc2::msg_send![objc2::class!(NSApplication), sharedApplication];
+        let main_menu: *mut objc2::runtime::AnyObject = objc2::msg_send![nsapp, mainMenu];
+        let app_item: *mut objc2::runtime::AnyObject =
+            objc2::msg_send![main_menu, itemAtIndex: 0isize];
+        let app_menu: *mut objc2::runtime::AnyObject = objc2::msg_send![app_item, submenu];
+        let count: isize = objc2::msg_send![app_menu, numberOfItems];
+        let quit_item: *mut objc2::runtime::AnyObject =
+            objc2::msg_send![app_menu, itemAtIndex: count - 1];
+        quit_ci_log("native menu item performClick");
+        let () = objc2::msg_send![quit_item, performClick: std::ptr::null_mut::<objc2::runtime::AnyObject>()];
+    });
+    if let Err(error) = result {
+        quit_ci_log(&format!("native menu scheduling failed: {error}"));
+    }
+}
+
+#[cfg(target_os = "macos")]
 fn setup_quit_ci_state(app: &tauri::App) {
     if quit_ci_state_has("training") {
         if let Some(state) = app.try_state::<TrainingActivityState>() {
@@ -109,6 +129,7 @@ fn setup_quit_ci_state(app: &tauri::App) {
                 quit_ci_native_terminate(&handle);
             }
             "delegate-double" => quit_ci_direct_duplicate(),
+            "native-menu" => quit_ci_native_menu(&handle),
             "menu" => confirm_then_quit(&handle),
             "programmatic" => handle.exit(42),
             _ => quit_ci_log("unknown trigger"),
