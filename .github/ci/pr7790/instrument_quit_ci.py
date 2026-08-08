@@ -138,6 +138,12 @@ def instrument(mode: str) -> None:
     )
 
     if mode == "base":
+        main = replace_once(
+            main,
+            '            "menu" => confirm_then_quit(&handle),',
+            '            "menu" => quit_ci_log("menu trigger unavailable on base"),',
+            "base menu trigger removal",
+        )
         cargo = CARGO.read_text(encoding="utf-8")
         if "[target.'cfg(target_os = \"macos\")'.dependencies]" not in cargo:
             cargo = replace_once(
