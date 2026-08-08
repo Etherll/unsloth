@@ -113,10 +113,8 @@ fn quit_ci_native_menu(app: &tauri::AppHandle) {
             quit_ci_log("native menu has no items");
             return;
         }
-        let quit_item: *mut objc2::runtime::AnyObject =
-            objc2::msg_send![app_menu, itemAtIndex: count - 1];
         quit_ci_log("native menu item performClick");
-        let () = objc2::msg_send![quit_item, performClick: std::ptr::null_mut::<objc2::runtime::AnyObject>()];
+        let () = objc2::msg_send![app_menu, performActionForItemAtIndex: count - 1];
     });
     if let Err(error) = result {
         quit_ci_log(&format!("native menu scheduling failed: {error}"));
