@@ -74,7 +74,6 @@ export { hasSeparateStreamingEvalSplit } from "./training-config-policy";
 // AbortController for in-flight dataset multimodal checks.
 let _datasetCheckController: AbortController | null = null;
 
-
 // AbortController for in-flight model default loads.
 let _modelConfigController: AbortController | null = null;
 
@@ -129,8 +128,7 @@ export const useTrainingConfigStore = create<TrainingConfigStore>()(
           const patch = typeof update === "function" ? update(state) : update;
           const invariantPatch = datasetSourceInvariantPatch({
             datasetSource: patch.datasetSource ?? state.datasetSource,
-            datasetStreaming:
-              patch.datasetStreaming ?? state.datasetStreaming,
+            datasetStreaming: patch.datasetStreaming ?? state.datasetStreaming,
           });
           const normalizedPatch = { ...patch, ...invariantPatch };
           if (trainingConfigPatchTouchesModelDefaults(normalizedPatch)) {
@@ -747,6 +745,7 @@ export const useTrainingConfigStore = create<TrainingConfigStore>()(
           modelFormat: TrainingConfigState["modelFormat"];
           modelType?: ModelType;
           visionImageSize?: number | null;
+          chatTemplate?: string | null;
           trustRemoteCode?: boolean;
           approvedRemoteCodeFingerprint?: string | null;
           isVisionModel?: boolean;
@@ -769,6 +768,7 @@ export const useTrainingConfigStore = create<TrainingConfigStore>()(
         }
         if (selectionChanged) {
           patch.visionImageSize = DEFAULT_HYPERPARAMS.visionImageSize;
+          patch.chatTemplate = DEFAULT_HYPERPARAMS.chatTemplate;
           patch.trustRemoteCode = false;
           patch.approvedRemoteCodeFingerprint = null;
           patch.isVisionModel =
@@ -825,6 +825,7 @@ export const useTrainingConfigStore = create<TrainingConfigStore>()(
             modelKnownCached: false,
             modelLocalPath: null,
             modelFormat: null,
+            chatTemplate: DEFAULT_HYPERPARAMS.chatTemplate,
             isCheckingVision: false,
             isVisionModel: false,
             isEmbeddingModel: false,
@@ -1322,6 +1323,7 @@ export const useTrainingConfigStore = create<TrainingConfigStore>()(
             ...(trainOnCompletions ? { datasetStreaming: false } : {}),
           });
         },
+        setChatTemplate: (chatTemplate) => setUserEdit({ chatTemplate }),
         setGradientCheckpointing: (gradientCheckpointing) =>
           setUserEdit({ gradientCheckpointing }),
         setRandomSeed: (randomSeed) => setUserEdit({ randomSeed }),

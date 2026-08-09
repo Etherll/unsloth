@@ -167,6 +167,7 @@ class UnslothTrainer:
         model_load_name: Optional[str] = None,
         local_files_only: bool = False,
         model_revision: Optional[str] = None,
+        chat_template: Optional[str] = None,
     ) -> None:
         """Lightweight detection and tokenizer load — no model weights, no VRAM.
 
@@ -242,6 +243,10 @@ class UnslothTrainer:
                 local_files_only = local_files_only,
                 revision = model_revision,
             )
+
+        from core.training.chat_template import apply_chat_template_override
+
+        apply_chat_template_override(self.tokenizer, chat_template)
 
         logger.info("Pre-loaded tokenizer for %s", model_name)
 
@@ -538,6 +543,7 @@ class UnslothTrainer:
         local_files_only: bool = False,
         actual_model_repo_id: Optional[str] = None,
         model_revision: Optional[str] = None,
+        chat_template: Optional[str] = None,
     ) -> bool:
         """Load model for training (supports both text and vision models)"""
         self.load_in_4bit = load_in_4bit  # For training_meta.json
@@ -861,6 +867,10 @@ class UnslothTrainer:
                 )
                 logger.info("Loaded text model")
 
+            from core.training.chat_template import apply_chat_template_override
+
+            apply_chat_template_override(self.tokenizer, chat_template)
+
             raise_if_offloaded(self.model, device_map, "Unsloth training")
 
             restored_repo_id = restore_hf_cache_repo_identity(
@@ -907,6 +917,7 @@ class UnslothTrainer:
                     local_files_only = local_files_only,
                     actual_model_repo_id = actual_model_repo_id,
                     model_revision = model_revision,
+                    chat_template = chat_template,
                 )
             error_msg = str(e)
             error_lower = error_msg.lower()

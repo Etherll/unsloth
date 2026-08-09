@@ -166,6 +166,14 @@ export function mapBackendModelConfigToTrainingPatch(
     patch.trainOnCompletions = trainOnCompletions;
   }
 
+  if (Object.hasOwn(training ?? {}, "chat_template")) {
+    const chatTemplate = training?.chat_template;
+    patch.chatTemplate =
+      typeof chatTemplate === "string" && chatTemplate.trim()
+        ? chatTemplate
+        : null;
+  }
+
   const gradientCheckpointing = toGradientCheckpointing(
     training?.gradient_checkpointing,
   );

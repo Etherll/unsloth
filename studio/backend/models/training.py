@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from typing import Any, Optional, List, Dict, Literal, Union
 
 from hub.schemas.inventory import ModelFormat
+from picker.schemas import MAX_CHAT_TEMPLATE_BYTES, chat_template_byte_length
 from utils.hf_dataset_options import (
     MAX_HF_DATASET_OPTION_LENGTH,
     valid_hf_dataset_config_name,
@@ -127,6 +128,10 @@ class TrainingStartRequest(BaseModel):
         None,
         description = "Optional maximum image side length for VLM training. Null uses model default.",
     )
+    chat_template: Optional[str] = Field(
+        None,
+        description = "Optional Jinja chat template used to format conversational SFT data.",
+    )
     trust_remote_code: bool = Field(
         False,
         description = "Allow loading models with custom code (e.g. NVIDIA Nemotron). Only enable for repos you trust.",
@@ -205,6 +210,25 @@ class TrainingStartRequest(BaseModel):
     @classmethod
     def _normalize_project_name(cls, value: Optional[str]) -> Optional[str]:
         return normalize_project_name(value)
+
+    @field_validator("chat_template")
+    @classmethod
+    def _validate_chat_template(cls, value: Optional[str]) -> Optional[str]:
+        if value is None or not value.strip():
+            return None
+        size = chat_template_byte_length(value)
+        if size is None:
+            raise ValueError("chat_template contains unpaired surrogate characters")
+        if size > MAX_CHAT_TEMPLATE_BYTES:
+            raise ValueError(
+                f"chat_template exceeds the {MAX_CHAT_TEMPLATE_BYTES}-byte limit"
+            )
+        from picker.service import validate_chat_template
+
+        result = validate_chat_template(value)
+        if not result.valid:
+            raise ValueError(f"chat_template is invalid: {result.error}")
+        return value
 
     # NOTE: pydantic runs all `mode="after"` validators in definition order, and
     # `_check_steps_or_epochs` is lower in this class; keep these checks order-independent.

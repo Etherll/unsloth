@@ -180,6 +180,13 @@ def _build_training_worker_config(values: dict[str, Any]) -> dict[str, Any]:
         "load_in_4bit": values.get("load_in_4bit", True),
         "max_seq_length": values.get("max_seq_length", 2048),
         "vision_image_size": values.get("vision_image_size"),
+        "chat_template": (
+            None
+            if values.get("training_type") == "Continued Pretraining"
+            or values.get("format_type") == "raw"
+            or values.get("is_embedding", False)
+            else values.get("chat_template")
+        ),
         "hf_dataset": values.get("hf_dataset", ""),
         "model_known_cached": values.get("model_known_cached", False),
         "model_local_path": values.get("model_local_path"),

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright 2026-present the Unsloth AI Inc. team. All rights reserved. See /studio/LICENSE.AGPL-3.0
 
+import { Button } from "@/components/ui/button";
 import {
   Combobox,
   ComboboxContent,
@@ -17,7 +18,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { CONTEXT_LENGTHS } from "@/config/training";
+import { ChatTemplateEditorDialog } from "@/features/model-picker";
 import {
+  isRawTextDatasetFormat,
   useMaxStepsEpochsToggle,
   useTrainingConfigStore,
 } from "@/features/training";
@@ -51,6 +54,11 @@ export function ParamsSection({
     useShallow((state) => ({
       projectName: state.projectName,
       trainingMethod: state.trainingMethod,
+      datasetFormat: state.datasetFormat,
+      isVisionModel: state.isVisionModel,
+      isEmbeddingModel: state.isEmbeddingModel,
+      isAudioModel: state.isAudioModel,
+      chatTemplate: state.chatTemplate,
       epochs: state.epochs,
       contextLength: state.contextLength,
       learningRate: state.learningRate,
@@ -64,12 +72,21 @@ export function ParamsSection({
       setEmbeddingLearningRate: state.setEmbeddingLearningRate,
       setMaxSteps: state.setMaxSteps,
       setSaveSteps: state.setSaveSteps,
+      setChatTemplate: state.setChatTemplate,
     })),
   );
   useMlxTrainingConfigPolicy();
 
   const isCpt = store.trainingMethod === "cpt";
   const showAdvanced = mode === "advanced";
+  const showChatTemplate =
+    showAdvanced &&
+    !isCpt &&
+    !store.isVisionModel &&
+    !store.isEmbeddingModel &&
+    !store.isAudioModel &&
+    !isRawTextDatasetFormat(store.datasetFormat);
+  const [chatTemplateOpen, setChatTemplateOpen] = useState(false);
   const [contextDraft, setContextDraft] = useState(() => ({
     contextLength: store.contextLength,
     value: String(store.contextLength),
@@ -475,6 +492,39 @@ export function ParamsSection({
             </div>
           )}
         </div>
+
+        {showChatTemplate && (
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-muted/20 px-4 py-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                Chat template
+                <FieldHint
+                  text="Override the model's Jinja chat template when training a base model that does not provide one."
+                  label="Chat template"
+                />
+              </div>
+              <p className="mt-0.5 text-ui-11 text-muted-foreground">
+                {store.chatTemplate ? "Custom template" : "Use model default"}
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setChatTemplateOpen(true)}
+            >
+              {store.chatTemplate ? "Edit" : "Add"}
+            </Button>
+            <ChatTemplateEditorDialog
+              open={chatTemplateOpen}
+              onOpenChange={setChatTemplateOpen}
+              value={store.chatTemplate}
+              defaultTemplate={null}
+              defaultLoading={false}
+              onSave={store.setChatTemplate}
+            />
+          </div>
+        )}
 
         {showAdvanced && <LoraParamsSection />}
         {showAdvanced && (

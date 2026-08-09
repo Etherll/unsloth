@@ -16,6 +16,7 @@ export {
   snapToStep,
 } from "./components/numeric-value-input";
 export { ModelConfigPage } from "./components/model-config-page";
+export { ChatTemplateEditorDialog } from "./components/chat-template-editor-dialog";
 export { SidebarModelConfig } from "./components/sidebar-model-config";
 export type { ModelPickTarget } from "./components/model-selector/types";
 export {

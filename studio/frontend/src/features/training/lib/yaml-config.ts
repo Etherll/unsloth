@@ -20,9 +20,7 @@ export function parseYamlConfig(text: string): BackendModelConfig {
   }
 
   const raw = parsed as Record<string, unknown>;
-  const unknownKeys = Object.keys(raw).filter(
-    (k) => !EXPECTED_TOP_KEYS.has(k),
-  );
+  const unknownKeys = Object.keys(raw).filter((k) => !EXPECTED_TOP_KEYS.has(k));
   if (unknownKeys.length > 0) {
     console.warn("Ignored unknown YAML keys:", unknownKeys.join(", "));
   }
@@ -94,6 +92,7 @@ export function serializeConfigToYaml(
     random_seed: state.randomSeed,
     packing: state.packing,
     train_on_completions: state.trainOnCompletions,
+    chat_template: state.chatTemplate,
     gradient_checkpointing: state.gradientCheckpointing,
     optim: state.optimizerType,
     lr_scheduler_type: state.lrSchedulerType,

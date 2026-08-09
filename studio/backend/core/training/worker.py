@@ -680,6 +680,7 @@ def _pre_detect_training_model(
         model_load_name = model_load_name,
         local_files_only = local_files_only,
         model_revision = model_revision,
+        chat_template = config.get("chat_template"),
     )
 
 
@@ -2923,6 +2924,13 @@ def _run_mlx_training(event_queue, stop_queue, config):
     if "append_eos" in _supported_fields:
         # Unsloth SFT formatting owns rendered examples; raw/CPT text still needs MLX to append EOS.
         mlx_config_kwargs["append_eos"] = bool(raw_text_mode)
+    from core.training.chat_template import add_mlx_chat_template_config
+
+    add_mlx_chat_template_config(
+        mlx_config_kwargs,
+        _supported_fields,
+        config.get("chat_template"),
+    )
 
     trainer = MLXTrainer(
         model = model,
@@ -4093,6 +4101,7 @@ def run_training_process(*, event_queue: Any, stop_queue: Any, config: dict) -> 
                 local_files_only = model_local_only,
                 actual_model_repo_id = config.get("actual_model_repo_id"),
                 model_revision = model_revision,
+                chat_template = config.get("chat_template"),
             )
             fallback_error = (
                 _model_cache_fallback_error(config, trainer.model_load_error)
@@ -4157,6 +4166,7 @@ def run_training_process(*, event_queue: Any, stop_queue: Any, config: dict) -> 
                         local_files_only = model_local_only,
                         actual_model_repo_id = config.get("actual_model_repo_id"),
                         model_revision = model_revision,
+                        chat_template = config.get("chat_template"),
                     )
         finally:
             _load_watchdog_stop.set()

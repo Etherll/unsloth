@@ -120,7 +120,7 @@ export const LR_SCHEDULER_OPTIONS: ReadonlyArray<{
 ];
 
 /** Method-aware learning rate defaults; the backend mirrors these in
-* studio/backend/assets/configs/. */
+ * studio/backend/assets/configs/. */
 export const LR_DEFAULT_LORA = 2e-4;
 export const LR_DEFAULT_FULL = 2e-5;
 export const LR_DEFAULT_CPT = 5e-5;
@@ -147,6 +147,7 @@ export const DEFAULT_HYPERPARAMS = {
   evalSteps: 0.0,
   packing: false,
   trainOnCompletions: false,
+  chatTemplate: null as string | null,
   gradientCheckpointing: "unsloth" as const,
   randomSeed: 3407,
   enableWandb: false,

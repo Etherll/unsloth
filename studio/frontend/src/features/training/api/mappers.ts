@@ -110,6 +110,8 @@ export function buildTrainingStartPayload(
     s3_config: s3Config,
     format_type: config.datasetFormat,
     custom_format_mapping: customFormatMapping,
+    chat_template:
+      isEmbedding || isCpt || isRawText ? null : config.chatTemplate,
     num_epochs: config.epochs,
     learning_rate: String(config.learningRate),
     embedding_learning_rate:

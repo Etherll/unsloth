@@ -104,6 +104,7 @@ export interface TrainingConfigState {
   evalSteps: number;
   packing: boolean;
   trainOnCompletions: boolean;
+  chatTemplate: string | null;
   gradientCheckpointing: GradientCheckpointing;
   randomSeed: number;
   enableWandb: boolean;
@@ -243,6 +244,7 @@ export interface TrainingConfigActions {
   setEvalSteps: (value: number) => void;
   setPacking: (value: boolean) => void;
   setTrainOnCompletions: (value: boolean) => void;
+  setChatTemplate: (value: string | null) => void;
   setGradientCheckpointing: (value: GradientCheckpointing) => void;
   setRandomSeed: (value: number) => void;
   setEnableWandb: (value: boolean) => void;

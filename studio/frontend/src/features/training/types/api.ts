@@ -37,6 +37,8 @@ export interface TrainingStartRequest {
   s3_config?: S3Config | null;
   format_type: string;
   custom_format_mapping?: Record<string, unknown> | null;
+  /** Optional Jinja chat template used to format conversational SFT data. */
+  chat_template?: string | null;
   num_epochs: number;
   learning_rate: string;
   /** Optional CPT embedding LR. If omitted, backend uses lr/10; typical range is 2x-10x smaller than main LR. */
