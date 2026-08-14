@@ -369,7 +369,11 @@ def _handle_load(backend, config: dict, resp_queue: Any) -> None:
 
         # Authoritative gates over the model + the LoRA base resolved via mc. Must run before
         # the SSM install so a blocked model never triggers a native kernel build.
-        targets = [config["model_name"]]
+        from core.inference.native_audio import native_audio_security_targets
+
+        targets = native_audio_security_targets(
+            config["model_name"], getattr(mc, "audio_type", None), hf_token
+        )
         if mc.is_lora and getattr(mc, "base_model", None):
             targets.append(str(mc.base_model))
         if not _run_security_gates(
@@ -744,6 +748,8 @@ def _handle_generate_audio(backend, cmd: dict, resp_queue: Any, cancel_event) ->
             repetition_penalty = cmd.get("repetition_penalty", 1.0),
             use_adapter = cmd.get("use_adapter"),
             cancel_event = cancel_event,
+            instructions = cmd.get("instructions"),
+            seed = cmd.get("seed"),
         )
 
         # Send WAV bytes as base64 (bytes can't go through mp.Queue directly).
@@ -965,6 +971,16 @@ def run_inference_process(
 
     model_name = config["model_name"]
 
+    # These architectures use their publishers' native Transformers/Diffusers
+    # interfaces. Select that backend before the Apple MLX fast-path and before
+    # importing Unsloth; native_audio itself has no eager ML imports.
+    from core.inference.native_audio import (
+        is_native_audio_model,
+        native_audio_security_targets,
+    )
+
+    _native_audio_worker = is_native_audio_model(model_name)
+
     # ── 0. MLX fast-path — skip torch/transformers ──
     _ensure_backend_on_path()
 
@@ -984,7 +1000,7 @@ def run_inference_process(
     from utils.hardware import hardware as _hw
 
     _hw.detect_hardware()
-    if _hw.DEVICE == _hw.DeviceType.MLX:
+    if _hw.DEVICE == _hw.DeviceType.MLX and not _native_audio_worker:
         try:
             from core.inference.mlx_inference import MLXInferenceBackend, _init_mlx_distributed
 
@@ -1202,7 +1218,7 @@ def run_inference_process(
     # are metadata-only, so run them first and refuse a blocked model before any native build.
     # Gate only the model + a genuine LoRA base (matching _handle_load), never a full fine-tune's
     # unloaded base; _handle_load re-runs the authoritative gates with the mc base.
-    _gate_targets = [model_name]
+    _gate_targets = native_audio_security_targets(model_name, hf_token = _hf_token)
     if _lora_base:
         _gate_targets.append(_lora_base)
     _trust_remote_code = config.get("trust_remote_code", False) or _needs_nemotron_trust(
@@ -1232,18 +1248,24 @@ def run_inference_process(
             resp_queue,
             {
                 "type": "status",
-                "message": "Importing Unsloth...",
+                "message": (
+                    "Importing native audio runtime..."
+                    if _native_audio_worker
+                    else "Importing Unsloth..."
+                ),
             },
         )
 
         _ensure_backend_on_path()
 
-        # Recover from any namespace-package shadow before importing Unsloth.
-        from core.import_guards import ensure_real_packages
+        if _native_audio_worker:
+            from core.inference.native_audio import NativeAudioBackend as InferenceBackend
+        else:
+            # Recover from any namespace-package shadow before importing Unsloth.
+            from core.import_guards import ensure_real_packages
+            ensure_real_packages("unsloth_zoo", "unsloth")
 
-        ensure_real_packages("unsloth_zoo", "unsloth")
-
-        from core.inference.inference import InferenceBackend
+            from core.inference.inference import InferenceBackend
 
         import transformers
 

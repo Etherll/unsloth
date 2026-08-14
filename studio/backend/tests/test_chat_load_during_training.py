@@ -51,7 +51,7 @@ def _devices(*free_specs):
 
 
 class TestCanLoadAutoHF(_GpuCacheResetMixin, unittest.TestCase):
-    def _run(self, *, selection_mode, required, usable):
+    def _run(self, *, selection_mode, required, usable, required_override = None):
         meta = {"selection_mode": selection_mode, "required_gb": required, "usable_gb": usable}
         with (
             patch("utils.hardware.get_device", return_value = DeviceType.CUDA),
@@ -64,6 +64,7 @@ class TestCanLoadAutoHF(_GpuCacheResetMixin, unittest.TestCase):
                 max_seq_length = 0,
                 requested_gpu_ids = None,
                 is_gguf = False,
+                required_override_gb = required_override,
             )
         return ok, info, auto_mock
 
@@ -84,6 +85,15 @@ class TestCanLoadAutoHF(_GpuCacheResetMixin, unittest.TestCase):
         # Selector couldn't confirm placement -> default-deny to protect training.
         ok, info = self._run(selection_mode = "fallback_all", required = 8.0, usable = 999.0)[:2]
         self.assertFalse(ok)
+
+    def test_native_component_override_reaches_auto_selector(self):
+        _, _, auto_mock = self._run(
+            selection_mode = "auto",
+            required = 14.0,
+            usable = 60.0,
+            required_override = 14.0,
+        )
+        self.assertEqual(auto_mock.call_args.kwargs["required_override_gb"], 14.0)
 
 
 # ── can_load_chat_during_training: HF explicit (per-GPU floor) ────────────────
@@ -487,6 +497,7 @@ class TestChatLoadGuardRoute(unittest.TestCase):
         cache_type_kv = None,
         tensor_parallel = False,
         gpu_layers = -1,
+        native_required_gb = None,
     ):
         config = config or SimpleNamespace(is_gguf = False, is_lora = False, path = None)
         placement = self.route._LoadPlacement(
@@ -494,6 +505,7 @@ class TestChatLoadGuardRoute(unittest.TestCase):
             requested_gpu_ids,
             gpu_ids_are_vulkan_ordinals,
             self.route._classify_diffusion_gguf(config) if config.is_gguf else False,
+            native_required_gb,
         )
         with _stub_guard_deps(
             training_active = training_active, decision = decision, captured = captured
@@ -792,6 +804,18 @@ class TestChatLoadGuardRoute(unittest.TestCase):
         self.assertEqual(captured[0]["required_override_gb"], 12.5)
         self.assertEqual(captured[0]["model_name"], config.identifier)
 
+    def test_native_audio_passes_aggregate_component_size(self):
+        captured = []
+        config = SimpleNamespace(identifier = "OpenMOSS-Team/MOSS-TTS-Nano-100M", is_gguf = False)
+        self._guard(
+            config = config,
+            captured = captured,
+            training_active = True,
+            decision = (True, {}),
+            native_required_gb = 6.5,
+        )
+        self.assertEqual(captured[0]["required_override_gb"], 6.5)
+
     def test_vulkan_gguf_estimate_keeps_tensor_cache_coercion(self):
         config = SimpleNamespace(is_gguf = True)
         estimate_kwargs = {}
@@ -837,6 +861,15 @@ class TestEffectiveLoadIn4bit(unittest.TestCase):
         cfg = SimpleNamespace(is_lora = False, path = None, base_model = None)
         self.assertTrue(self.route._effective_load_in_4bit(cfg, True))
 
+    def test_native_audio_forces_full_precision_for_admission_sizing(self):
+        cfg = SimpleNamespace(
+            is_lora = False,
+            path = None,
+            base_model = None,
+            audio_type = "moss_tts_local",
+        )
+        self.assertFalse(self.route._effective_load_in_4bit(cfg, True))
+
     def test_lora_method_flips_to_16bit(self):
         import tempfile
         with tempfile.TemporaryDirectory() as d:
@@ -865,6 +898,106 @@ class TestEffectiveLoadIn4bit(unittest.TestCase):
             (Path(d) / "adapter_config.json").write_text("[1, 2, 3]")  # not a dict
             cfg = SimpleNamespace(is_lora = True, path = d, base_model = "x")
             self.assertTrue(self.route._effective_load_in_4bit(cfg, True))  # no crash
+
+
+class TestNativeAudioPlacementPreflight(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.route = _load_inference_route()
+
+    def _run(
+        self,
+        audio_type,
+        device,
+        selected = None,
+        requested = None,
+        rocm = False,
+    ):
+        config = SimpleNamespace(
+            identifier = "test/native-audio",
+            audio_type = audio_type,
+        )
+        request = SimpleNamespace(
+            gpu_ids = requested,
+            hf_token = None,
+            max_seq_length = 2048,
+        )
+        placement = self.route._LoadPlacement(requested, None, False, False)
+        with (
+            patch("utils.hardware.get_device", return_value = device),
+            patch(
+                "core.inference.native_audio.native_audio_security_targets",
+                return_value = ["test/native-audio"],
+            ),
+            patch(
+                "utils.hardware.estimate_required_model_memory_gb",
+                side_effect = AssertionError("single-repo native audio keeps the default estimator"),
+            ),
+            patch("utils.hardware.prepare_gpu_selection", return_value = (selected, {})),
+            patch.object(_hw_module, "IS_ROCM", rocm),
+        ):
+            return asyncio.run(
+                self.route._preflight_native_audio_placement(config, request, placement)
+            )
+
+    def test_single_gpu_is_resolved_before_load(self):
+        placement = self._run("higgs_tts2", DeviceType.CUDA, selected = [0])
+        self.assertEqual(placement.resolved_gpu_ids, [0])
+
+    def test_multi_gpu_is_rejected_before_load(self):
+        with self.assertRaisesRegex(HTTPException, "require one GPU"):
+            self._run("higgs_tts2", DeviceType.CUDA, selected = [0, 1])
+
+    def test_native_audio_lora_is_rejected_before_gpu_resolution(self):
+        config = SimpleNamespace(
+            identifier = "test/native-audio-lora",
+            audio_type = "higgs_tts3",
+            is_lora = True,
+        )
+        request = SimpleNamespace(gpu_ids = None, hf_token = None, max_seq_length = 2048)
+        placement = self.route._LoadPlacement(None, None, False, False)
+
+        with self.assertRaisesRegex(HTTPException, "merged checkpoint"):
+            asyncio.run(self.route._preflight_native_audio_placement(config, request, placement))
+
+    def test_minimax_rejects_cpu_and_rocm_hosts(self):
+        with self.assertRaisesRegex(HTTPException, "NVIDIA CUDA"):
+            self._run("minimax_music3", DeviceType.CPU)
+        with self.assertRaisesRegex(HTTPException, "NVIDIA CUDA"):
+            self._run("minimax_music3", DeviceType.CUDA, selected = [0], rocm = True)
+
+    def test_higgs_rejects_python_39_before_gpu_resolution(self):
+        with patch.object(self.route.sys, "version_info", (3, 9, 18)):
+            for audio_type in ("higgs_tts2", "higgs_tts3"):
+                with self.subTest(audio_type = audio_type):
+                    with self.assertRaisesRegex(HTTPException, "Python 3.10"):
+                        self._run(audio_type, DeviceType.CUDA, selected = [0])
+
+    def test_companion_sizes_are_aggregated_for_gpu_selection(self):
+        config = SimpleNamespace(
+            identifier = "OpenMOSS-Team/MOSS-TTS-Nano-100M",
+            audio_type = "moss_tts_nano",
+        )
+        request = SimpleNamespace(gpu_ids = None, hf_token = "token", max_seq_length = 2048)
+        placement = self.route._LoadPlacement(None, None, False, False)
+        with (
+            patch("utils.hardware.get_device", return_value = DeviceType.CUDA),
+            patch(
+                "core.inference.native_audio.native_audio_security_targets",
+                return_value = [config.identifier, "OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano"],
+            ),
+            patch(
+                "utils.hardware.estimate_required_model_memory_gb",
+                side_effect = [(4.0, {}), (2.5, {})],
+            ),
+            patch("utils.hardware.prepare_gpu_selection", return_value = ([0], {})) as prepare,
+        ):
+            result = asyncio.run(
+                self.route._preflight_native_audio_placement(config, request, placement)
+            )
+
+        self.assertEqual(result.native_required_gb, 6.5)
+        self.assertEqual(prepare.call_args.kwargs["required_override_gb"], 6.5)
 
 
 # ── validate_model integration (early refusal, real settings) ────────────────

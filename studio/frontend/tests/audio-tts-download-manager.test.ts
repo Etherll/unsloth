@@ -9,6 +9,10 @@ const source = readFileSync(
   new URL("../src/features/audio/audio-page.tsx", import.meta.url),
   "utf8",
 );
+const apiSource = readFileSync(
+  new URL("../src/features/audio/api.ts", import.meta.url),
+  "utf8",
+);
 
 test("uncached remote TTS GGUFs stage the exact file through the shared manager", () => {
   assert.match(source, /useStagedDownload\(\{\s*scopeId: "audio"/);
@@ -31,7 +35,7 @@ test("cached and local TTS picks keep the direct load path and supersede stale s
     source,
     // meta.loadId is the load target for a row cached in a non-active HF cache; sending
     // the display repo id instead failed offline or re-downloaded into the active cache.
-    /pendingStagedTtsLoad\.current = null;[\s\S]*stageTtsDownload\(\[\]\);[\s\S]*loadTtsModelRef\.current\(repoId, ggufFilename, meta\.loadId\)/,
+    /pendingStagedTtsLoad\.current = null;[\s\S]*stageTtsDownload\(\[\]\);[\s\S]*loadTtsModelRef\.current\([\s\S]*repoId,[\s\S]*ggufFilename,[\s\S]*meta\.loadId,[\s\S]*meta\.audioType/,
   );
   assert.match(source, /if \(busyRef\.current !== null\) return;/);
   assert.match(
@@ -43,7 +47,7 @@ test("cached and local TTS picks keep the direct load path and supersede stale s
   // cleared ?model=, so nothing retried it.
   assert.match(
     source,
-    /if \(ttsLoadInFlight\.current\) \{\s*pendingRoutedTtsPick\.current = \{ repoId, ggufFilename, loadId \};\s*return;\s*\}/,
+    /if \(ttsLoadInFlight\.current\) \{\s*pendingRoutedTtsPick\.current = \{[\s\S]*repoId,[\s\S]*ggufFilename,[\s\S]*loadId,[\s\S]*audioType,[\s\S]*\};\s*return;\s*\}/,
   );
   assert.match(
     source,
@@ -54,6 +58,23 @@ test("cached and local TTS picks keep the direct load path and supersede stale s
   );
 });
 
+test("Hub TTS repos and native companion codecs use a cache-aware exact-file plan", () => {
+  assert.match(apiSource, /\/api\/inference\/audio\/download-plan/);
+  assert.match(
+    source,
+    /meta\.source === "hub" && !ggufFilename[\s\S]*await getAudioDownloadPlan\([\s\S]*plan\.entries\.length > 0/,
+  );
+  assert.match(
+    source,
+    /plan\.entries\.map\(\(entry\) => \(\{[\s\S]*repoId: entry\.repo_id,[\s\S]*files: entry\.files,[\s\S]*bytes: entry\.bytes,[\s\S]*checkpoint: entry\.checkpoint/,
+  );
+  assert.doesNotMatch(
+    source,
+    /meta\.source === "hub" && !ggufFilename[\s\S]{0,400}meta\.isDownloaded === false/,
+    "a cached main repo can still be missing its companion codec",
+  );
+});
+
 test("managed completion loads the exact GGUF only when Audio is active and idle", () => {
   assert.match(
     source,
@@ -61,7 +82,7 @@ test("managed completion loads the exact GGUF only when Audio is active and idle
   );
   assert.match(
     source,
-    /loadTtsModelRef\.current\(pending\.repoId, pending\.ggufFilename\)/,
+    /loadTtsModelRef\.current\([\s\S]*pending\.repoId,[\s\S]*pending\.ggufFilename,[\s\S]*pending\.loadId,[\s\S]*pending\.audioType/,
   );
   assert.match(
     source,
