@@ -389,9 +389,16 @@ _MIN_SPEECH_OUTPUT_TOKENS = 64
 # back over the context. Generous rather than exact, since the wrapper is chosen deeper
 # than this and 32 tokens off a 2048 context is not worth threading it up here.
 _TTS_PROMPT_FORMAT_RESERVE = 32
+_MINIMAX_MUSIC3_DEFAULT_FRAMES = 750
 
 
-def _tts_max_new_tokens(payload, prompt: Optional[str] = None) -> int:
+def _tts_max_new_tokens(
+    payload,
+    prompt: Optional[str] = None,
+    *,
+    audio_type: Optional[str] = None,
+    speech_api_default_max_tokens: bool = False,
+) -> int:
     """Bound TTS work consistently across llama.cpp and subprocess backends.
 
     ``prompt`` shares the loaded context with the output, so a Max tokens slider near the
@@ -402,6 +409,8 @@ def _tts_max_new_tokens(payload, prompt: Optional[str] = None) -> int:
         AUDIO_GENERATION_MAX_TOKENS,
         max(1, int(_effective_max_tokens(payload) or 2048)),
     )
+    if speech_api_default_max_tokens and audio_type == "minimax_music3":
+        budget = min(budget, _MINIMAX_MUSIC3_DEFAULT_FRAMES)
     if prompt:
         context_length = _monitor_context_length()
         if context_length:
@@ -5784,6 +5793,10 @@ async def _auto_switch_from_request_body(request: Request, current_subject: str)
 def _effective_load_in_4bit(config: ModelConfig, requested: bool) -> bool:
     """Effective quantization the loader will use: a LoRA adapter can flip 4-bit to
     16-bit via adapter_config.json, so the guard sizes this, not the raw request."""
+    from core.inference.native_audio import NATIVE_AUDIO_TYPES
+
+    if getattr(config, "audio_type", None) in NATIVE_AUDIO_TYPES:
+        return False
     load_in_4bit = requested
     if not getattr(config, "is_lora", False) or not getattr(config, "path", None):
         return load_in_4bit
@@ -6870,6 +6883,62 @@ async def _prepare_load_placement(
     )
     _reject_draft_device_with_gpu_ids(resolved, extra_args, gpu_ids_are_vulkan_ordinals = is_vulkan)
     return _LoadPlacement(requested, resolved, is_vulkan, diffusion_kind)
+
+
+async def _preflight_native_audio_placement(
+    config: ModelConfig, request: LoadRequest | ValidateModelRequest, placement: _LoadPlacement
+) -> _LoadPlacement:
+    """Resolve native-audio placement before a resident model can be evicted."""
+    from core.inference.native_audio import NATIVE_AUDIO_TYPES
+
+    audio_type = getattr(config, "audio_type", None)
+    if audio_type not in NATIVE_AUDIO_TYPES:
+        return placement
+    if getattr(config, "is_lora", False):
+        raise HTTPException(
+            status_code = 400,
+            detail = (
+                "Native audio LoRA adapters are not supported yet. "
+                "Load a merged checkpoint instead."
+            ),
+        )
+
+    def _resolve() -> Optional[List[int]]:
+        import utils.hardware as hardware
+
+        device = hardware.get_device()
+        if audio_type == "minimax_music3":
+            if device != hardware.DeviceType.CUDA or hardware.IS_ROCM:
+                raise ValueError(
+                    "MiniMax Music 3 requires an NVIDIA CUDA GPU in its official local runtime."
+                )
+            if sys.version_info < (3, 10):
+                raise ValueError("MiniMax Music 3 requires Python 3.10 or newer in Studio.")
+        if device not in (hardware.DeviceType.CUDA, hardware.DeviceType.XPU):
+            if placement.requested_gpu_ids:
+                raise ValueError(
+                    "Native audio GPU selection is only supported on CUDA and Intel XPU."
+                )
+            return None
+        resolved, _metadata = hardware.prepare_gpu_selection(
+            placement.requested_gpu_ids,
+            model_name = config.identifier,
+            hf_token = request.hf_token,
+            load_in_4bit = False,
+            max_seq_length = request.max_seq_length,
+        )
+        if resolved and len(resolved) > 1:
+            raise ValueError(
+                "Native audio models currently require one GPU. Select a single GPU; "
+                "multi-GPU sharding is not supported yet."
+            )
+        return resolved
+
+    try:
+        resolved = await asyncio.to_thread(_resolve)
+    except ValueError as exc:
+        raise HTTPException(status_code = 400, detail = str(exc)) from exc
+    return placement._replace(resolved_gpu_ids = resolved)
 
 
 def _inherited_batch_flags_stripped(request) -> bool:
@@ -8215,6 +8284,8 @@ async def _load_model_impl(
                     "architectures)"
                 )
 
+        placement = await _preflight_native_audio_placement(config, request, placement)
+
         # Apply the training coexistence policy before the unload step below
         # frees the resident model. Off-loop and guarded: the guard does sync HF work.
         await asyncio.to_thread(
@@ -8496,7 +8567,11 @@ async def _load_model_impl(
             hf_token = request.hf_token,
             trust_remote_code = request.trust_remote_code,
             approved_remote_code_fingerprint = request.approved_remote_code_fingerprint,
-            gpu_ids = placement.requested_gpu_ids,
+            gpu_ids = (
+                placement.resolved_gpu_ids
+                if placement.resolved_gpu_ids is not None
+                else placement.requested_gpu_ids
+            ),
             subject = current_subject,
             mlx_kv_bits = request.mlx_kv_bits,
             chat_template_override = request.chat_template_override,
@@ -8861,10 +8936,15 @@ async def validate_model(
         # the current model.
         placement = await _prepare_load_placement(config, request, effective_extra_args)
         effective_load_in_4bit = _effective_load_in_4bit(config, request.load_in_4bit)
+        placement = await _preflight_native_audio_placement(config, request, placement)
 
         # Both checks cover the [adapter, base] set (matching the scan route and workers):
         # either repo can ship auto_map code or a poisoned pickle.
-        security_targets = [config.identifier]
+        from core.inference.native_audio import native_audio_security_targets
+
+        security_targets = native_audio_security_targets(
+            config.identifier, getattr(config, "audio_type", None)
+        )
         try:
             from utils.models.model_config import get_base_model_from_lora_identifier
 
@@ -10024,12 +10104,29 @@ async def get_load_progress(current_subject: str = Depends(get_current_subject))
 # Audio (TTS) Generation  (/audio/generate)
 # =====================================================================
 
-_TRANSFORMERS_TTS_AUDIO_TYPES = frozenset(("snac", "csm", "bicodec", "dac"))
+_TRANSFORMERS_TTS_AUDIO_TYPES = frozenset(
+    (
+        "snac",
+        "csm",
+        "bicodec",
+        "dac",
+        "higgs_tts2",
+        "moss_tts_local",
+        "moss_tts_nano",
+        "higgs_tts3",
+        "minimax_music3",
+    )
+)
 _GGUF_TTS_AUDIO_TYPES = frozenset(("snac", "bicodec", "dac"))
 
 
 async def _generate_tts_wav(
-    text: str, payload: ChatCompletionRequest, request: Request, current_subject: str
+    text: str,
+    payload: ChatCompletionRequest,
+    request: Request,
+    current_subject: str,
+    *,
+    speech_api_default_max_tokens: bool = False,
 ) -> tuple[bytes, int, str, Optional[str]]:
     """Shared core of /audio/generate and /audio/speech. Returns
     (wav_bytes, sample_rate, model_name, audio_type)."""
@@ -10055,6 +10152,7 @@ async def _generate_tts_wav(
     # Created before the backend pick so the GGUF lambda can close over it; the registration
     # that arms it is below, once the model name is known.
     _audio_cancel = threading.Event()
+    prompt_for_budget = text
 
     # Pick backend — both return (wav_bytes, sample_rate)
     llama_backend = get_llama_cpp_backend()
@@ -10075,7 +10173,12 @@ async def _generate_tts_wav(
             top_p = payload.top_p,
             top_k = payload.top_k,
             min_p = payload.min_p,
-            max_new_tokens = _tts_max_new_tokens(payload, text),
+            max_new_tokens = _tts_max_new_tokens(
+                payload,
+                prompt_for_budget,
+                audio_type = audio_type,
+                speech_api_default_max_tokens = speech_api_default_max_tokens,
+            ),
             repetition_penalty = payload.repetition_penalty,
             cancel_event = _audio_cancel,
         )
@@ -10096,10 +10199,17 @@ async def _generate_tts_wav(
             top_p = payload.top_p,
             top_k = payload.top_k,
             min_p = payload.min_p,
-            max_new_tokens = _tts_max_new_tokens(payload, text),
+            max_new_tokens = _tts_max_new_tokens(
+                payload,
+                prompt_for_budget,
+                audio_type = audio_type,
+                speech_api_default_max_tokens = speech_api_default_max_tokens,
+            ),
             repetition_penalty = payload.repetition_penalty,
             use_adapter = payload.use_adapter,
             cancel_event = _audio_cancel,
+            instructions = payload.audio_instructions,
+            seed = payload.seed,
         )
 
     if audio_type not in supported_audio_types:
@@ -10107,6 +10217,15 @@ async def _generate_tts_wav(
             status_code = 400,
             detail = f"Active model does not support text-to-speech (audio_type={audio_type or 'unknown'}).",
         )
+    if audio_type == "minimax_music3" and not str(payload.audio_instructions or "").strip():
+        raise HTTPException(
+            status_code = 400,
+            detail = "MiniMax Music 3 requires a music description in addition to lyrics.",
+        )
+    if audio_type == "higgs_tts2":
+        scene = payload.audio_instructions or "Audio is recorded from a quiet room."
+        prompt_for_budget = f"{scene}\n{text}"
+        _raise_if_prompt_leaves_no_speech_budget(prompt_for_budget)
 
     # Apply per-model recommended sampling + any operator UNSLOTH_SAMPLING_* pin before
     # generating, so `unsloth run --temperature` (and the other pins) and per-model
@@ -10253,9 +10372,9 @@ async def openai_audio_speech(
             detail = f"Unsupported response_format '{body.response_format}'. Only 'wav' is supported.",
         )
     # The tts core reads its sampling knobs from a chat request shape; defaults apply here.
-    # max_tokens is set explicitly because the OpenAI CreateSpeech shape has no field for it,
-    # so the chat default of 2048 would silently truncate any input past ~30s of speech and
-    # still return HTTP 200 with a short WAV.
+    # Keep the full speech ceiling unless a client supplies the native max_new_tokens
+    # extension. MiniMax gets its documented 750-frame default deeper in the shared core;
+    # its adapter converts that frame budget into a 30-second duration upper bound.
     # Unlike the Audio page, which loads with headroom for both, this route is reachable
     # after any /api/inference/load, including the default max_seq_length=0 that becomes
     # 2048. Asking for the full ceiling against that context overflows or truncates, so
@@ -10263,10 +10382,16 @@ async def openai_audio_speech(
     # The over-context check lives in _generate_tts_wav, so both routes share it.
     payload = ChatCompletionRequest(
         messages = [{"role": "user", "content": body.input}],
-        max_tokens = AUDIO_GENERATION_MAX_TOKENS,
+        max_tokens = body.max_new_tokens or AUDIO_GENERATION_MAX_TOKENS,
+        audio_instructions = body.instructions,
+        seed = body.seed,
     )
     wav_bytes, sample_rate, model_name, audio_type = await _generate_tts_wav(
-        body.input, payload, request, current_subject
+        body.input,
+        payload,
+        request,
+        current_subject,
+        speech_api_default_max_tokens = body.max_new_tokens is None,
     )
     await asyncio.to_thread(
         _persist_tts_clip, wav_bytes, sample_rate, body.input, model_name, audio_type

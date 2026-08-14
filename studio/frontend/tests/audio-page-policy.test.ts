@@ -30,6 +30,17 @@ const chatApiSource = readFileSync(
   new URL("../src/features/chat/api/chat-api.ts", import.meta.url),
   "utf8",
 );
+const audioCatalogSource = readFileSync(
+  new URL("../src/features/audio/catalog.ts", import.meta.url),
+  "utf8",
+);
+const modelPickerSource = readFileSync(
+  new URL(
+    "../src/features/model-picker/components/model-selector/pickers.tsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
 
 test("mode transitions cancel generation but wait for non-cancellable work", () => {
   assert.equal(canTransitionAudioMode(null), true);
@@ -80,6 +91,15 @@ test("Mac rejects safetensors-only TTS and redirects sibling families", () => {
     macTtsPickAction({ isMac: true, isGguf: true, ggufSibling: null }),
     "allow",
   );
+  assert.equal(
+    macTtsPickAction({
+      isMac: true,
+      isGguf: false,
+      ggufSibling: null,
+      nativeRuntime: true,
+    }),
+    "allow",
+  );
 });
 
 test("Mac sibling resolution returns an exact managed-download file", () => {
@@ -118,14 +138,89 @@ test("only the generation's persisted gallery id is selected", () => {
   assert.equal(persistedClipForGeneration("missing", refreshed), null);
 });
 
-test("Speak requires a supported TTS codec, not any audio model", () => {
-  for (const codec of ["snac", "csm", "bicodec", "dac"])
+test("Speak requires a supported TTS runtime, not any audio model", () => {
+  for (const codec of [
+    "snac",
+    "csm",
+    "bicodec",
+    "dac",
+    "higgs_tts2",
+    "moss_tts_local",
+    "moss_tts_nano",
+    "higgs_tts3",
+    "minimax_music3",
+  ])
     assert.equal(isTtsAudioType(codec), true);
   assert.equal(isTtsAudioType("csm", true), false);
   for (const codec of ["snac", "bicodec", "dac"])
     assert.equal(isTtsAudioType(codec, true), true);
   for (const codec of ["whisper", "audio_vlm", "", null])
     assert.equal(isTtsAudioType(codec), false);
+});
+
+test("hidden MiniMax instructions are not sent to speech models", () => {
+  assert.match(
+    audioPageSource,
+    /musicGeneration && instructions[\s\S]*audio_instructions: instructions/,
+  );
+});
+
+test("local native audio architecture metadata drives runtime and consent", () => {
+  assert.match(modelPickerSource, /audioType: adapter\.audioType \?\? null/);
+  assert.match(audioPageSource, /audioType: lora\.audio_type \?\? null/);
+  assert.match(modelPickerSource, /audioType: model\.audioType \?\? null/);
+  assert.match(modelPickerSource, /localModelMeta\(false, m\.task, m\.audio_type\)/);
+  assert.match(modelPickerSource, /audioType: c\.audio_type \?\? null/);
+  assert.match(audioPageSource, /usesNativeAudioRuntime\(id, meta\.audioType\)/);
+  assert.match(
+    audioPageSource,
+    /audioModelRequiresRemoteCode\(repoId, audioType\)/,
+  );
+  for (const audioType of [
+    "higgs_tts2",
+    "moss_tts_local",
+    "moss_tts_nano",
+    "higgs_tts3",
+    "minimax_music3",
+  ]) {
+    assert.match(audioCatalogSource, new RegExp(`"${audioType}"`));
+  }
+});
+
+test("custom-code audio models require consent and pass its fingerprint", () => {
+  assert.match(audioPageSource, /confirmRemoteCodeIfNeeded\(\{/);
+  assert.match(
+    audioPageSource,
+    /if \(audioModelRequiresRemoteCode\(repoId, audioType\)\)/,
+  );
+  assert.match(
+    audioPageSource,
+    /onApprove: \(fingerprint\) => \{[\s\S]*trustRemoteCode = true/,
+  );
+  assert.match(
+    audioPageSource,
+    /approved_remote_code_fingerprint: approvedRemoteCodeFingerprint/,
+  );
+});
+
+test("MiniMax is rejected before model selection mutates page lifecycle", () => {
+  const musicPick = audioPageSource.indexOf("const musicPick =");
+  const hardwareCheck = audioPageSource.indexOf("await fetchSystemInfo()", musicPick);
+  const stopRecording = audioPageSource.indexOf("stopAndDiscardRecording();", musicPick);
+  assert.ok(musicPick >= 0 && hardwareCheck > musicPick);
+  assert.ok(stopRecording > hardwareCheck);
+  assert.match(audioPageSource, /system\?\.device_backend !== "cuda"/);
+});
+
+test("MiniMax hides and omits the unsupported temperature control", () => {
+  assert.match(
+    audioPageSource,
+    /!musicGeneration && temperatureEdited \? \{ temperature \} : \{\}/,
+  );
+  assert.match(
+    audioPageSource,
+    /!musicGeneration \? \([\s\S]*label="Temperature"[\s\S]*\) : null/,
+  );
 });
 
 test("STT controls require the selected sidecar to be resident", () => {

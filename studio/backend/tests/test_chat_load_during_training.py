@@ -837,6 +837,15 @@ class TestEffectiveLoadIn4bit(unittest.TestCase):
         cfg = SimpleNamespace(is_lora = False, path = None, base_model = None)
         self.assertTrue(self.route._effective_load_in_4bit(cfg, True))
 
+    def test_native_audio_forces_full_precision_for_admission_sizing(self):
+        cfg = SimpleNamespace(
+            is_lora = False,
+            path = None,
+            base_model = None,
+            audio_type = "moss_tts_local",
+        )
+        self.assertFalse(self.route._effective_load_in_4bit(cfg, True))
+
     def test_lora_method_flips_to_16bit(self):
         import tempfile
         with tempfile.TemporaryDirectory() as d:
@@ -865,6 +874,65 @@ class TestEffectiveLoadIn4bit(unittest.TestCase):
             (Path(d) / "adapter_config.json").write_text("[1, 2, 3]")  # not a dict
             cfg = SimpleNamespace(is_lora = True, path = d, base_model = "x")
             self.assertTrue(self.route._effective_load_in_4bit(cfg, True))  # no crash
+
+
+class TestNativeAudioPlacementPreflight(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.route = _load_inference_route()
+
+    def _run(
+        self,
+        audio_type,
+        device,
+        selected = None,
+        requested = None,
+        rocm = False,
+    ):
+        config = SimpleNamespace(
+            identifier = "test/native-audio",
+            audio_type = audio_type,
+        )
+        request = SimpleNamespace(
+            gpu_ids = requested,
+            hf_token = None,
+            max_seq_length = 2048,
+        )
+        placement = self.route._LoadPlacement(requested, None, False, False)
+        with (
+            patch("utils.hardware.get_device", return_value = device),
+            patch("utils.hardware.prepare_gpu_selection", return_value = (selected, {})),
+            patch.object(_hw_module, "IS_ROCM", rocm),
+        ):
+            return asyncio.run(
+                self.route._preflight_native_audio_placement(config, request, placement)
+            )
+
+    def test_single_gpu_is_resolved_before_load(self):
+        placement = self._run("higgs_tts2", DeviceType.CUDA, selected = [0])
+        self.assertEqual(placement.resolved_gpu_ids, [0])
+
+    def test_multi_gpu_is_rejected_before_load(self):
+        with self.assertRaisesRegex(HTTPException, "require one GPU"):
+            self._run("higgs_tts2", DeviceType.CUDA, selected = [0, 1])
+
+    def test_native_audio_lora_is_rejected_before_gpu_resolution(self):
+        config = SimpleNamespace(
+            identifier = "test/native-audio-lora",
+            audio_type = "higgs_tts3",
+            is_lora = True,
+        )
+        request = SimpleNamespace(gpu_ids = None, hf_token = None, max_seq_length = 2048)
+        placement = self.route._LoadPlacement(None, None, False, False)
+
+        with self.assertRaisesRegex(HTTPException, "merged checkpoint"):
+            asyncio.run(self.route._preflight_native_audio_placement(config, request, placement))
+
+    def test_minimax_rejects_cpu_and_rocm_hosts(self):
+        with self.assertRaisesRegex(HTTPException, "NVIDIA CUDA"):
+            self._run("minimax_music3", DeviceType.CPU)
+        with self.assertRaisesRegex(HTTPException, "NVIDIA CUDA"):
+            self._run("minimax_music3", DeviceType.CUDA, selected = [0], rocm = True)
 
 
 # ── validate_model integration (early refusal, real settings) ────────────────
