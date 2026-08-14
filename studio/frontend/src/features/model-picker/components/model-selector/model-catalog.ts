@@ -4,6 +4,11 @@
 // One canonical name per diffusion model, its published artifacts (GGUF quants, prequant FP8 / bnb-4bit repos, official BF16 pipelines), and a deterministic router picking the best artifact for the device.
 // Pure helpers, no React/DOM deps. See model-catalog.check.ts (`npm run catalog:check`).
 
+import {
+  type HostClass,
+  curatedArtifactIsOfferable,
+  h3PerfSuffix,
+} from "./host-artifact-policy.ts";
 import type { ModelCapabilities } from "./model-capabilities";
 import type { ModelOption } from "./types";
 
@@ -443,7 +448,8 @@ export const VIDEO_CATALOG: CatalogGroup[] = [
 ];
 
 // The Audio page's curated list. tts groups load into the main slot via /api/inference/load
-// (Orpheus is the only family the llama.cpp TTS path also serves as GGUF); stt groups map to
+// (Orpheus is the only family the llama.cpp TTS path also serves as GGUF); native TTS
+// families use their official Transformers/Diffusers interfaces. stt groups map to
 // the dictation sidecar models in stt-model-catalog.ts, so their sizes are informational only.
 export const AUDIO_CATALOG: CatalogGroup[] = [
   {
@@ -482,6 +488,69 @@ export const AUDIO_CATALOG: CatalogGroup[] = [
     task: "tts",
     artifacts: [
       bf16Pipeline("unsloth/Llama-OuteTTS-1.0-1B", 4, { label: "Safetensors" }),
+    ],
+  },
+  {
+    canonicalId: "bosonai/higgs-tts-2-3b-base",
+    displayName: "Higgs TTS 2 3B",
+    description: "Text-to-speech",
+    scope: "audio",
+    task: "tts",
+    artifacts: [
+      bf16Pipeline("bosonai/higgs-tts-2-3b-base", 12, {
+        label: "Safetensors",
+      }),
+    ],
+  },
+  {
+    canonicalId: "OpenMOSS-Team/MOSS-TTS-Local-Transformer-v1.5",
+    displayName: "MOSS TTS Local v1.5",
+    description: "48 kHz stereo text-to-speech",
+    scope: "audio",
+    task: "tts",
+    artifacts: [
+      bf16Pipeline("OpenMOSS-Team/MOSS-TTS-Local-Transformer-v1.5", 10, {
+        label: "Safetensors",
+      }),
+    ],
+  },
+  {
+    canonicalId: "OpenMOSS-Team/MOSS-TTS-Nano-100M",
+    displayName: "MOSS TTS Nano 100M",
+    description: "CPU-friendly text-to-speech",
+    scope: "audio",
+    task: "tts",
+    artifacts: [
+      bf16Pipeline("OpenMOSS-Team/MOSS-TTS-Nano-100M", 1, {
+        label: "Safetensors",
+      }),
+    ],
+  },
+  {
+    canonicalId: "multimodalart/higgs-audio-v3-tts-4b-transformers",
+    displayName: "Higgs Audio v3 TTS 4B",
+    description: "Text-to-speech",
+    scope: "audio",
+    task: "tts",
+    artifacts: [
+      bf16Pipeline("multimodalart/higgs-audio-v3-tts-4b-transformers", 10, {
+        label: "Safetensors",
+      }),
+    ],
+  },
+  {
+    canonicalId: "MiniMaxAI/MiniMax-Music3",
+    displayName: "MiniMax Music 3",
+    description: "Lyrics-to-music · NVIDIA CUDA",
+    scope: "audio",
+    task: "tts",
+    artifacts: [
+      bf16Pipeline("MiniMaxAI/MiniMax-Music3", 67, {
+        label: "Diffusers",
+        // 67 GB is the repository/download footprint, not resident VRAM. The
+        // publisher's ModularPipeline path loads in BF16 on a 24 GB CUDA GPU.
+        offloadFitTiers: [{ gpuGb: 24, systemRamGb: 0 }],
+      }),
     ],
   },
   // Llasa is deliberately absent. It speaks XCodec2 (65,536 <|s_N|> tokens), which is
@@ -726,9 +795,16 @@ export function curatedCapabilitiesFor(
 export function curatedDisplayNameFor(
   repoId: string,
   catalog: CatalogGroup[],
+  host: HostClass = "unknown",
 ): string | null {
   const hit = artifactForRepoId(repoId, catalog);
   if (!hit) return null;
+  // A row that earns a speed qualifier reads the same closed as open: this helper names the
+  // trigger and curatedRowLabelFor names the row, so a divergence would rename the model as the
+  // popover opens.
+  if (h3PerfSuffix(repoId, host)) {
+    return curatedRowLabelFor(repoId, catalog, host)?.name ?? hit.group.displayName;
+  }
   return hit.group.artifacts.length > 1
     ? `${hit.group.displayName} (${hit.artifact.label})`
     : hit.group.displayName;
@@ -751,17 +827,22 @@ const RESOLUTION_RE = /^\d{3,4}p$/i;
 export function curatedRowLabelFor(
   repoId: string,
   catalog: CatalogGroup[],
+  host: HostClass = "unknown",
 ): { name: string; tags: string[] } | null {
   const hit = artifactForRepoId(repoId, catalog);
   if (!hit) return null;
+  // Only where the host can run both rows, so the qualifier compares things the user can pick
+  // between rather than advertising a speed they cannot have.
+  const perf = h3PerfSuffix(repoId, host);
+  const qualify = (name: string) => (perf ? `${name} (${perf})` : name);
   // GGUF reads like a text model's row: the repo name already ends in -GGUF, so show the repo
   // name and let it say so. A chip would only repeat the suffix.
   if (hit.artifact.format === "gguf") {
     const leaf = hit.artifact.repoId.split("/").pop() ?? hit.artifact.repoId;
-    return { name: GGUF_SUFFIX_RE.test(leaf) ? leaf : `${leaf}-GGUF`, tags: [] };
+    return { name: qualify(GGUF_SUFFIX_RE.test(leaf) ? leaf : `${leaf}-GGUF`), tags: [] };
   }
   // A group with one artifact has nothing to distinguish, so it stays bare, exactly as before.
-  if (hit.group.artifacts.length <= 1) return { name: hit.group.displayName, tags: [] };
+  if (hit.group.artifacts.length <= 1) return { name: qualify(hit.group.displayName), tags: [] };
   const [format, ...rest] = hit.artifact.label.split(LABEL_PART_SEPARATOR);
   const tags = [format.replace(OFFICIAL_SUFFIX_RE, "").trim()].filter(Boolean);
   const kept: string[] = [];
@@ -773,17 +854,24 @@ export function curatedRowLabelFor(
     kept.length > 0
       ? `${hit.group.displayName} (${kept.join(LABEL_PART_SEPARATOR)})`
       : hit.group.displayName;
-  return { name, tags };
+  return { name: qualify(name), tags };
 }
 
 /** Back-compat: the flat ModelOption list the ModelSelector `models` prop expects, one option per ARTIFACT. */
-export function catalogToModelOptions(catalog: CatalogGroup[]): ModelOption[] {
+export function catalogToModelOptions(
+  catalog: CatalogGroup[],
+  host: HostClass = "unknown",
+): ModelOption[] {
   const options: ModelOption[] = [];
   for (const group of catalog) {
     for (const artifact of group.artifacts) {
+      // A host that can only run the native engine is not offered the pipeline rows it would be
+      // refused at load. This is the one place the `models` prop is built, so filtering here
+      // covers the trigger name and the picker's seed ids together.
+      if (!curatedArtifactIsOfferable(artifact.repoId, host)) continue;
       options.push({
         id: artifact.repoId,
-        name: curatedDisplayNameFor(artifact.repoId, catalog) ?? group.displayName,
+        name: curatedDisplayNameFor(artifact.repoId, catalog, host) ?? group.displayName,
         description: `${group.description} - ${artifact.label}`,
         isGguf: artifact.format === "gguf",
         deviceQuant: artifact.deviceQuant,

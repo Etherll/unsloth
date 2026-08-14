@@ -930,11 +930,15 @@ async def list_local_models_response(models_dir: str = "./models") -> LocalModel
         # shared worker so retrying waiters do not repeat GGUF metadata reads, and only
         # for a response that is actually about to be served.
         try:
+            from core.inference.native_audio import native_audio_type_from_local_path
             from routes.models import _local_model_task
-            models = [
-                model.model_copy(update = {"task": _local_model_task(model)})
-                for model in response.models
-            ]
+
+            def classify_model(model):
+                audio_type = native_audio_type_from_local_path(model.path)
+                classified = model.model_copy(update = {"task": _local_model_task(model)})
+                return classified.model_copy(update = {"audio_type": audio_type})
+
+            models = [classify_model(model) for model in response.models]
             return response.model_copy(update = {"models": models})
         except Exception as e:  # noqa: BLE001 -- classification never breaks the listing
             logger.warning("Could not classify local model tasks: %s", e)

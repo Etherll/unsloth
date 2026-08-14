@@ -61,7 +61,12 @@ import {
   useOnlineStatus,
 } from "@/features/hub";
 import type { HfTaskFilter } from "@/features/hub/hooks/use-hub-model-search";
-import { useDebouncedValue, useGpuInfo, useInferenceGpuInfo } from "@/hooks";
+import {
+  useDebouncedValue,
+  useGpuInfo,
+  useHostClass,
+  useInferenceGpuInfo,
+} from "@/hooks";
 import { diffusionRouteSearch } from "@/lib/diffusion-route-search";
 import { extractParamLabel } from "@/lib/model-size";
 import { toast } from "@/lib/toast";
@@ -135,6 +140,7 @@ import {
   curatedTotalParamsFor,
   groupForRepoId,
 } from "./model-catalog";
+import { curatedArtifactIsOfferable } from "./host-artifact-policy";
 import { ModelDeleteAction } from "./model-delete-action";
 import { ModelLoadSettingsAction } from "./model-load-settings-action";
 import { ModelRowMenu } from "./model-row-menu";
@@ -2300,6 +2306,7 @@ function localPathTooltip(
 function localModelMeta(
   isGguf = false,
   pipelineTag?: string | null,
+  audioType?: string | null,
 ): ModelSelectorChangeMeta {
   return {
     source: "local",
@@ -2307,6 +2314,7 @@ function localModelMeta(
     isDownloaded: true,
     ...(isGguf ? { isGguf: true } : {}),
     pipelineTag: pipelineTag ?? null,
+    audioType: audioType ?? null,
   };
 }
 
@@ -2883,6 +2891,7 @@ export function HubModelPicker({
   const chatOnly = usePlatformStore((s) => s.isChatOnly());
   const deviceType = usePlatformStore((s) => s.deviceType);
   const isMac = deviceType === "mac";
+  const hostClass = useHostClass();
 
   // Drop models Unsloth cannot run for chat. A task-scoped picker wants exactly the tasks the chat classifier calls unsupported, so it gates on the task.
   const isChatSupported = useCallback(
@@ -3016,8 +3025,25 @@ export function HubModelPicker({
   // raw repo id exactly as before.
   const curatedRow = useCallback(
     (id: string) =>
-      (catalog && curatedRowLabelFor(id, catalog)) ?? { name: id, tags: [] as string[] },
-    [catalog],
+      (catalog && curatedRowLabelFor(id, catalog, hostClass)) ?? {
+        name: id,
+        tags: [] as string[],
+      },
+    [catalog, hostClass],
+  );
+
+  /** Whether this host can run a curated id at all, as opposed to whether it has room for it.
+   *  Browse rows only: an id already on disk keeps its row wherever it came from. */
+  const curatedOfferable = useCallback(
+    (id: string) => {
+      if (!catalog) return true;
+      // Downloaded weights keep their row. They may have been pulled on a machine that could run
+      // them, and hiding what is already on disk reads as Studio having lost the model.
+      if (downloadedSet.has(id.toLowerCase())) return true;
+      const hit = artifactForRepoId(id, catalog);
+      return hit ? curatedArtifactIsOfferable(hit.artifact.repoId, hostClass) : true;
+    },
+    [catalog, downloadedSet, hostClass],
   );
 
   // Paint curated rows before any request, so a task-scoped picker whose models
@@ -3027,6 +3053,7 @@ export function HubModelPicker({
     return dedupe(models.map((model) => model.id))
       .filter((id) => !isMobileVariant(id))
       .filter((id) => !isImageEditModel(id))
+      .filter(curatedOfferable)
       .filter((id) => {
         const isG = isKnownGgufRepo(id);
         return taskCatalogFormatMatches(
@@ -3047,7 +3074,7 @@ export function HubModelPicker({
         // other source for its param chip, and most curated ids carry no "<n>B" token.
         totalParams: catalog ? curatedTotalParamsFor(id, catalog) : undefined,
       }));
-  }, [catalog, models, formatFilter, isKnownGgufRepo, task]);
+  }, [catalog, models, formatFilter, isKnownGgufRepo, task, curatedOfferable]);
 
   /** The catalog's own fit verdict for a curated artifact, or undefined where it has none.
    *  Every list that judges a row against the device goes through this, so a badge and the
@@ -3100,6 +3127,7 @@ export function HubModelPicker({
     };
     const keep = (r: HfModelResult) =>
       keepCommon(r) &&
+      curatedOfferable(r.id) &&
       // Task pages load single-file GGUF, plus curated artifacts in any format.
       (!task ||
         r.isGguf ||
@@ -3156,6 +3184,7 @@ export function HubModelPicker({
     task,
     catalog,
     catalogFit,
+    curatedOfferable,
     communityRecommendedEnabled,
     communityBrowse.results,
     isLoadableCommunityRepo,
@@ -4050,6 +4079,11 @@ export function HubModelPicker({
         .map((result) => result.id)
         .filter((id) => !isHiddenModelId(id))
         .filter(owned)
+        // Search reaches the live Hub, so without this a query re-lands the exact curated row the
+        // seed and Recommended filters just dropped: the Mac format check below admits
+        // safetensors, so MiniMaxAI/MiniMax-H3 would come back clickable and still be refused at
+        // load. Same predicate as the other two lists, downloaded exception included.
+        .filter(curatedOfferable)
         .filter((id) => !recommendedSet.has(id))
         // Chat-only keeps runnable formats: GGUF anywhere, plus MLX/safetensors
         // on Mac (matches the empty Recommended view so search stays consistent).
@@ -4072,6 +4106,7 @@ export function HubModelPicker({
       downloadedSet,
       searchRowFits,
       isMac,
+      curatedOfferable,
     ],
   );
 
@@ -4967,6 +5002,7 @@ export function HubModelPicker({
                 loadId: c.load_id,
                 isDownloaded: true,
                 pipelineTag: c.task ?? null,
+                audioType: c.audio_type ?? null,
               })
             }
             vramStatus={null}
@@ -4985,6 +5021,7 @@ export function HubModelPicker({
                   isDownloaded: true,
                   isGguf: false,
                   pipelineTag: c.task ?? null,
+                  audioType: c.audio_type ?? null,
                 })
               }
             />
@@ -5065,6 +5102,7 @@ export function HubModelPicker({
                 isDownloaded: true,
                 isGguf: model.isGguf === true,
                 pipelineTag,
+                audioType: model.audioType ?? null,
               })
             }
             vramStatus={null}
@@ -5718,7 +5756,7 @@ export function HubModelPicker({
                                     } else {
                                       onSelect(
                                         m.id,
-                                        localModelMeta(false, m.task),
+                                        localModelMeta(false, m.task, m.audio_type),
                                       );
                                     }
                                   }}
@@ -5759,7 +5797,7 @@ export function HubModelPicker({
                                     onConfigure={() =>
                                       onConfigure(
                                         m.id,
-                                        localModelMeta(false, m.task),
+                                        localModelMeta(false, m.task, m.audio_type),
                                       )
                                     }
                                   />
@@ -5863,7 +5901,7 @@ export function HubModelPicker({
                                     } else {
                                       onSelect(
                                         m.id,
-                                        localModelMeta(false, m.task),
+                                        localModelMeta(false, m.task, m.audio_type),
                                       );
                                     }
                                   }}
@@ -5904,7 +5942,7 @@ export function HubModelPicker({
                                     onConfigure={() =>
                                       onConfigure(
                                         m.id,
-                                        localModelMeta(false, m.task),
+                                        localModelMeta(false, m.task, m.audio_type),
                                       )
                                     }
                                   />
@@ -5995,7 +6033,7 @@ export function HubModelPicker({
                                     } else {
                                       onSelect(
                                         m.id,
-                                        localModelMeta(false, m.task),
+                                        localModelMeta(false, m.task, m.audio_type),
                                       );
                                     }
                                   }}
@@ -6032,7 +6070,7 @@ export function HubModelPicker({
                                     onConfigure={() =>
                                       onConfigure(
                                         m.id,
-                                        localModelMeta(false, m.task),
+                                        localModelMeta(false, m.task, m.audio_type),
                                       )
                                     }
                                   />
@@ -6512,6 +6550,7 @@ function FineTunedRows({
           isDownloaded: true,
           isGguf: false,
           pipelineTag: audioPipelineTagFor(adapter.audioType, true),
+          audioType: adapter.audioType ?? null,
         };
         const canConfigure = !(isLocalGgufDir || isExportedGguf);
         const optionKey = makeModelOptionKey("lora", adapter.id);
