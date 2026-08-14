@@ -51,7 +51,14 @@ def _devices(*free_specs):
 
 
 class TestCanLoadAutoHF(_GpuCacheResetMixin, unittest.TestCase):
-    def _run(self, *, selection_mode, required, usable, required_override = None):
+    def _run(
+        self,
+        *,
+        selection_mode,
+        required,
+        usable,
+        required_override = None,
+    ):
         meta = {"selection_mode": selection_mode, "required_gb": required, "usable_gb": usable}
         with (
             patch("utils.hardware.get_device", return_value = DeviceType.CUDA),
@@ -965,6 +972,30 @@ class TestNativeAudioPlacementPreflight(unittest.TestCase):
             self._run("minimax_music3", DeviceType.CPU)
         with self.assertRaisesRegex(HTTPException, "NVIDIA CUDA"):
             self._run("minimax_music3", DeviceType.CUDA, selected = [0], rocm = True)
+
+    def test_minimax_uses_resident_memory_for_single_gpu_auto_selection(self):
+        config = SimpleNamespace(
+            identifier = "MiniMaxAI/MiniMax-Music3",
+            audio_type = "minimax_music3",
+        )
+        request = SimpleNamespace(gpu_ids = None, hf_token = None, max_seq_length = 2048)
+        placement = self.route._LoadPlacement(None, None, False, False)
+        with (
+            patch("utils.hardware.get_device", return_value = DeviceType.CUDA),
+            patch.object(_hw_module, "IS_ROCM", False),
+            patch(
+                "core.inference.native_audio.native_audio_security_targets",
+                return_value = [config.identifier],
+            ),
+            patch("utils.hardware.prepare_gpu_selection", return_value = ([1], {})) as prepare,
+        ):
+            result = asyncio.run(
+                self.route._preflight_native_audio_placement(config, request, placement)
+            )
+
+        self.assertEqual(result.resolved_gpu_ids, [1])
+        self.assertEqual(result.native_required_gb, 24.0)
+        self.assertEqual(prepare.call_args.kwargs["required_override_gb"], 24.0)
 
     def test_higgs_rejects_python_39_before_gpu_resolution(self):
         with patch.object(self.route.sys, "version_info", (3, 9, 18)):
