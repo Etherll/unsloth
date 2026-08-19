@@ -46,6 +46,7 @@ jobs:
                   page = await context.new_page()
                   await page.add_init_script(seed_init_script(auth, []))
                   await page.goto(f"{base}/settings", wait_until="domcontentloaded")
+                  await page.get_by_test_id("settings-tab-resources").click()
                   await page.get_by_text("Custom llama.cpp folder", exact=True).wait_for(timeout=30000)
                   await page.screenshot(path="studio-settings-9292.png", full_page=True)
                   assert Path("studio-settings-9292.png").stat().st_size > 1000
