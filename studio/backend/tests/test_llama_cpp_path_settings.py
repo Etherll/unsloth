@@ -182,8 +182,8 @@ def test_runtime_skips_non_executable_root_entrypoint_for_valid_build_layout(
     from core.inference.llama_cpp import LlamaCppBackend
 
     root = tmp_path / "custom"
-    root_binary = _binary(root, platform="linux", layout="root")
-    build_binary = _binary(root, platform="linux", layout="build")
+    root_binary = _binary(root, platform = "linux", layout = "root")
+    build_binary = _binary(root, platform = "linux", layout = "build")
     monkeypatch.setattr(path_settings.sys, "platform", "linux")
     monkeypatch.setattr(
         path_settings.os,
@@ -217,7 +217,10 @@ def test_runtime_resolver_rejects_a_selected_binary_that_loses_execute_permissio
     settings_store, monkeypatch, tmp_path
 ):
     from core.inference import llama_cpp as llama_cpp_module
-    from core.inference.llama_cpp import LlamaCppBackend
+    from core.inference.llama_cpp import (
+        LLAMA_SERVER_NOT_FOUND_DETAIL,
+        LlamaCppBackend,
+    )
 
     selected = tmp_path / "selected"
     binary = _binary(selected, platform = "linux")
@@ -233,6 +236,8 @@ def test_runtime_resolver_rejects_a_selected_binary_that_loses_execute_permissio
 
     assert path_settings.custom_llama_cpp_path_status()["available"] is False
     assert LlamaCppBackend._find_llama_server_binary() is None
+    assert LlamaCppBackend._find_llama_server_binary(include_denied = True) is None
+    assert "execute permission" in LLAMA_SERVER_NOT_FOUND_DETAIL
 
 
 def test_backend_updater_never_replaces_a_studio_selected_tree(monkeypatch):
@@ -255,9 +260,7 @@ def test_backend_updater_never_replaces_a_studio_selected_tree(monkeypatch):
     assert plan["refusal"]["reason"] == "custom_path"
 
 
-def test_selected_checkout_is_not_given_managed_runtime_repair_advice(
-    settings_store, tmp_path
-):
+def test_selected_checkout_is_not_given_managed_runtime_repair_advice(settings_store, tmp_path):
     from core.inference.llama_cpp import LlamaCppBackend
 
     root = tmp_path / "llama.cpp"
