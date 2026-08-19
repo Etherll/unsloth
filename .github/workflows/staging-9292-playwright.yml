@@ -26,10 +26,34 @@ jobs:
       - name: Install + launch Studio
         run: |
           ./install.sh --local --no-torch || pip install -e .
-          nohup unsloth studio -H 127.0.0.1 -p 8888 > studio.log 2>&1 &
+          UNSLOTH_STUDIO_PASSWORD='Staging-9292-Password!' nohup unsloth studio -H 127.0.0.1 -p 8888 > studio.log 2>&1 &
           for i in $(seq 1 60); do curl -sf http://127.0.0.1:8888/healthz && break; sleep 5; done
       - name: Playwright smoke (studio_test_kit)
-        run: PYTHONPATH=.github/scripts python -m studio_test_kit._smoke_ui
+        run: |
+          PYTHONPATH=.github/scripts python - <<'PY'
+          import asyncio
+          from pathlib import Path
+
+          from playwright.async_api import async_playwright
+          from studio_test_kit.auth import login, seed_init_script
+
+          async def main():
+              base = "http://127.0.0.1:8888"
+              auth = await login(base, "unsloth", "Staging-9292-Password!")
+              async with async_playwright() as playwright:
+                  browser = await playwright.chromium.launch(headless=True)
+                  context = await browser.new_context(viewport={"width": 1280, "height": 900})
+                  page = await context.new_page()
+                  await page.add_init_script(seed_init_script(auth, []))
+                  await page.goto(f"{base}/settings", wait_until="domcontentloaded")
+                  await page.get_by_text("Custom llama.cpp folder", exact=True).wait_for(timeout=30000)
+                  await page.screenshot(path="studio-settings-9292.png", full_page=True)
+                  assert Path("studio-settings-9292.png").stat().st_size > 1000
+                  await context.close()
+                  await browser.close()
+
+          asyncio.run(main())
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
