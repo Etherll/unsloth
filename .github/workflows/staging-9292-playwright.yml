@@ -29,7 +29,7 @@ jobs:
           nohup unsloth studio -H 127.0.0.1 -p 8888 > studio.log 2>&1 &
           for i in $(seq 1 60); do curl -sf http://127.0.0.1:8888/healthz && break; sleep 5; done
       - name: Playwright smoke (studio_test_kit)
-        run: PYTHONPATH=.github/scripts python -m studio_test_kit._smoke_ui || true
+        run: PYTHONPATH=.github/scripts python -m studio_test_kit._smoke_ui
       - uses: actions/upload-artifact@v4
         if: always()
         with:
