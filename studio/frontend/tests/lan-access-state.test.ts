@@ -7,6 +7,7 @@ import test from "node:test";
 // lan-access-section.tsx pulls in hugeicons, so only its pure helpers are tested here
 import {
   type ApiLanAccessStatus,
+  keylessLanAccessDescription,
   lanAccessAutoStartReadOnly,
   lanAccessBlockMessage,
   lanAccessErrorMessage,
@@ -64,6 +65,8 @@ test("normalize maps every snake_case field onto its camelCase name", () => {
     canStop: true,
     blockReason: null,
     servesWebUi: true,
+    keylessScope: "off",
+    keylessTools: false,
   });
 });
 
@@ -75,6 +78,37 @@ test("normalize defaults the optional fields an older backend may omit", () => {
   assert.equal(s.managedBy, null);
   assert.equal(s.blockReason, null);
   assert.equal(s.servesWebUi, true);
+  assert.equal(s.keylessScope, "off");
+  assert.equal(s.keylessTools, false);
+});
+
+test("keyless state and messaging preserve every security boundary", () => {
+  const unknown = normalizeLanAccessStatus(
+    apiStatus({ keyless_scope: "unknown", keyless_tools: true }),
+  );
+  assert.deepEqual(
+    [unknown.keylessScope, unknown.keylessTools],
+    ["off", false],
+  );
+  assert.ok(
+    keylessLanAccessDescription(null).includes("Authentication is required"),
+  );
+  const cases: [Partial<ApiLanAccessStatus>, string][] = [
+    [{ keyless_scope: "inference" }, "active private listener"],
+    [
+      { state: "online", public_urls: [PUBLIC], keyless_scope: "inference" },
+      "never through the listed public URL",
+    ],
+    [{ keyless_scope: "full" }, "never granted over LAN or public URLs"],
+    [
+      { block_reason: "colab", keyless_scope: "inference" },
+      "Colab never receives keyless access",
+    ],
+  ];
+  for (const [overrides, fragment] of cases) {
+    const status = normalizeLanAccessStatus(apiStatus(overrides));
+    assert.ok(keylessLanAccessDescription(status).includes(fragment));
+  }
 });
 
 test("urls survives a null or non-array payload without throwing", () => {
