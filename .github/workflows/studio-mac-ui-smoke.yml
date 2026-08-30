@@ -717,7 +717,7 @@ jobs:
             -d "{\"model_path\":\"$GGUF_REPO\",\"gguf_variant\":\"$GGUF_VARIANT\",\"is_lora\":false,\"max_seq_length\":2048}" \
             | jq '{status, display_name, is_gguf, context_length}'
 
-      - name: Multi-turn determinism via OpenAI + Anthropic SDKs
+      - name: Multi-turn history via OpenAI + Anthropic SDKs
         if: ${{ !cancelled() && steps.assert_llama.outcome == 'success' && steps.load-chat.outcome == 'success' }}
         timeout-minutes: 15
         env:

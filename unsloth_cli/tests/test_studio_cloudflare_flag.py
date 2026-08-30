@@ -10,6 +10,7 @@ child and run_server. Modeled on test_studio_run_parallel_flag.py.
 
 from __future__ import annotations
 
+import contextlib
 import sys
 from pathlib import Path
 
@@ -28,6 +29,15 @@ def _studio():
 
 
 _BASE = ["--model", "unsloth/Qwen3-1.7B-GGUF"]
+
+
+def _stub_cloudflare_runtime_launch_guard(monkeypatch, studio_mod):
+    """Keep flag-contract tests independent of the runtime-lock filesystem."""
+    monkeypatch.setattr(
+        studio_mod,
+        "_studio_runtime_launch_guard",
+        lambda **_kwargs: contextlib.nullcontext(True),
+    )
 
 
 # ── option registration ──────────────────────────────────────────────
@@ -65,16 +75,19 @@ class _ExecCaptured(SystemExit):
 def _install_run_reexec_capture(monkeypatch, *, platform = "linux"):
     studio_mod = _studio()
     captured = []
+    _stub_cloudflare_runtime_launch_guard(monkeypatch, studio_mod)
 
     monkeypatch.setattr(sys, "prefix", "/nonexistent/outer/venv")
     fake_venv = Path("/fake/studio/venv/unsloth_studio")
-    monkeypatch.setattr(studio_mod, "_studio_venv_python", lambda: fake_venv / "bin" / "python")
+    host_is_windows = studio_mod.platform.system() == "Windows"
+    fake_python = fake_venv / ("Scripts/python.exe" if host_is_windows else "bin/python")
+    monkeypatch.setattr(studio_mod, "_studio_venv_python", lambda: fake_python)
     # A built frontend dist is present so the public-launch UI check passes
     # deterministically (independent of whether the repo dist was built).
     monkeypatch.setattr(
         studio_mod, "_find_frontend_dist", lambda: Path("/fake/studio/frontend/dist")
     )
-    fake_bin = fake_venv / "bin" / "unsloth"
+    fake_bin = fake_python.parent / ("unsloth.exe" if host_is_windows else "unsloth")
     real_is_file = Path.is_file
     monkeypatch.setattr(
         Path,
@@ -153,6 +166,7 @@ def _invoke_studio_default(
 
     studio_mod = _studio()
     captured = []
+    _stub_cloudflare_runtime_launch_guard(monkeypatch, studio_mod)
 
     monkeypatch.setattr(sys, "prefix", "/nonexistent/outer/venv")
     monkeypatch.setattr(studio_mod, "_ensure_studio_env_exported", lambda: None)
@@ -222,6 +236,7 @@ def test_run_in_venv_passes_cloudflare_to_run_server(monkeypatch, user_flag, exp
     import types
 
     studio_mod = _studio()
+    _stub_cloudflare_runtime_launch_guard(monkeypatch, studio_mod)
     fake_venv = Path("/fake/studio/venv/unsloth_studio")
     monkeypatch.setattr(sys, "prefix", str(fake_venv))
     monkeypatch.setattr(studio_mod, "STUDIO_HOME", fake_venv.parent)
@@ -323,6 +338,7 @@ def test_run_silent_pins_internal_requests_to_the_bound_address(monkeypatch):
     import types
 
     studio_mod = _studio()
+    _stub_cloudflare_runtime_launch_guard(monkeypatch, studio_mod)
     fake_venv = Path("/fake/studio/venv/unsloth_studio")
     monkeypatch.setattr(sys, "prefix", str(fake_venv))
     monkeypatch.setattr(studio_mod, "STUDIO_HOME", fake_venv.parent)
@@ -432,6 +448,7 @@ def test_run_in_venv_shuts_down_on_startup_abort(monkeypatch):
     import types
 
     studio_mod = _studio()
+    _stub_cloudflare_runtime_launch_guard(monkeypatch, studio_mod)
     fake_venv = Path("/fake/studio/venv/unsloth_studio")
     monkeypatch.setattr(sys, "prefix", str(fake_venv))
     monkeypatch.setattr(studio_mod, "STUDIO_HOME", fake_venv.parent)
@@ -485,6 +502,7 @@ def test_run_in_venv_sets_tool_policy_before_server_start(monkeypatch):
     import types
 
     studio_mod = _studio()
+    _stub_cloudflare_runtime_launch_guard(monkeypatch, studio_mod)
     fake_venv = Path("/fake/studio/venv/unsloth_studio")
     monkeypatch.setattr(sys, "prefix", str(fake_venv))
     monkeypatch.setattr(studio_mod, "STUDIO_HOME", fake_venv.parent)

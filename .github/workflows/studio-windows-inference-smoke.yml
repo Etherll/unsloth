@@ -445,7 +445,7 @@ jobs:
           [ "$LOAD_OK" = "1" ] || { echo "::error::/api/inference/load failed 3 attempts"; exit 22; }
           jq '{status, display_name, is_gguf, context_length}' /tmp/load.json
 
-      - name: Multi-turn determinism via OpenAI + Anthropic SDKs
+      - name: Multi-turn history via OpenAI + Anthropic SDKs
         timeout-minutes: 12
         env:
           BASE_URL: http://127.0.0.1:18888

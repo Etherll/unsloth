@@ -5,10 +5,9 @@
 
 The multi-turn chat check ran inline in studio-inference-smoke.yml,
 studio-mac-inference-smoke.yml and studio-windows-inference-smoke.yml as three copies of
-one script. On 2026-05-22 an unrelated event-loop fix (#5669) turned the Linux copy's
-determinism assertion into a printed warning. macOS and Windows kept it and are otherwise
-identical in logic. Nothing compared them, so for three months the leg that runs on every
-pull request was the one not checking, and the two that still checked run rarely.
+one script. On 2026-05-22 an unrelated event-loop fix (#5669) weakened only the Linux
+copy. Nothing compared them, so for three months the leg that runs on every pull request
+was checking a different contract from the two legs that run less often.
 
 So the copies are gone, and these tests are about keeping them gone.
 """
@@ -48,7 +47,7 @@ def test_every_leg_runs_the_shared_script():
     missing = [name for name in LEGS if "studio_smoke/multi_turn_chat.py" not in _workflow(name)]
     assert not missing, (
         f"{missing} no longer run the shared multi-turn check. Three copies of it is how "
-        f"one of them stopped asserting determinism without anyone noticing."
+        f"one of them drifted without anyone noticing."
     )
 
 
@@ -61,63 +60,48 @@ def test_no_leg_has_grown_its_own_copy_back():
     )
 
 
-def test_a_divergent_second_run_is_a_failure_not_a_warning(script):
-    """The assertion #5669 removed on Linux, pinned by running it.
-
-    Asserted through behaviour rather than the text of the check, so rewriting it is
-    fine and weakening it is not.
-    """
-    clean = ["stored", "cobalt", "stored", "paris"]
-    script.check("ok", clean, list(clean))  # the baseline passes, or nothing below means anything
-
-    with pytest.raises(AssertionError, match = "non-deterministic"):
-        script.check("drift", clean, ["changed", "cobalt", "stored", "paris"])
+def _turns(script, texts = ("a", "b", "c", "d"), tokens = (10, 20, 30, 40)):
+    return [
+        script.TurnResult(text, prompt_tokens, "stop")
+        for text, prompt_tokens in zip(texts, tokens)
+    ]
 
 
-def test_trailing_whitespace_alone_is_still_tolerated(script):
-    """The reason the comparison is on stripped text, kept honest.
-
-    llama-server varies a final newline between identical greedy runs depending on where
-    the stream is closed. Tightening this to an exact match would fail on that.
-    """
-    clean = ["stored", "cobalt", "stored", "paris"]
-    script.check("whitespace", clean, [t + "\n" for t in clean])
+def test_model_wording_and_empty_eos_may_vary(script):
+    """Tiny-model prose is not a server contract; completion metadata is."""
+    first = _turns(script, ("2", "", "Paris", "Paris"))
+    second = _turns(script, ("Two", "You asked 1+1", "", "The city was Paris."))
+    script.check_multi_turn_contract("valid variation", first, second)
 
 
-def test_an_empty_reply_is_a_failure_in_either_run(script):
-    """A server answering nothing at all is deterministic, and the worst outcome.
+def test_every_run_must_return_all_four_turns(script):
+    clean = _turns(script)
+    with pytest.raises(AssertionError, match = "3/4 turns"):
+        script.check_multi_turn_contract("truncated", clean[:-1], clean)
 
-    Both runs, because the stripped comparison cannot tell them apart: a second run
-    returning "" against a first returning "\n" compares EQUAL, so checking only the
-    first would print OK for a server that had stopped answering halfway through. The
-    Linux copy asserted both before this was consolidated onto the macOS one, which
-    asserted only the first.
-    """
-    clean = ["stored", "cobalt", "stored", "paris"]
-    with pytest.raises(AssertionError, match = "empty turn"):
-        script.check("first", ["", "b", "paris", "paris"], ["", "b", "paris", "paris"])
-    with pytest.raises(AssertionError, match = "empty turn"):
-        script.check("second", clean, ["", "b", "paris", "paris"])
-    # The exact pair the stripped comparison is blind to.
-    with pytest.raises(AssertionError, match = "empty turn"):
-        script.check(
-            "whitespace vs nothing", ["\n", "b", "paris", "paris"], ["", "b", "paris", "paris"]
+
+def test_each_turn_must_have_a_stop_reason(script):
+    clean = _turns(script)
+    broken = list(clean)
+    broken[2] = script.TurnResult("c", 30, None)
+    with pytest.raises(AssertionError, match = "no completion stop reason"):
+        script.check_multi_turn_contract("unfinished", clean, broken)
+
+
+def test_prompt_usage_must_grow_with_history_in_both_runs(script):
+    clean = _turns(script)
+    with pytest.raises(AssertionError, match = "did not grow with history"):
+        script.check_multi_turn_contract(
+            "dropped history", clean, _turns(script, tokens = (10, 20, 20, 40))
         )
 
 
-def test_history_grounding_is_still_checked(script):
-    """Both dependent turns must recover their explicit marker in both runs."""
-    clean = ["stored", "cobalt", "stored", "paris"]
-    with pytest.raises(AssertionError, match = "cobalt"):
-        script.check("no first marker", clean, ["stored", "unknown", "stored", "paris"])
-    with pytest.raises(AssertionError, match = "paris"):
-        script.check("no second marker", ["stored", "cobalt", "stored", "unknown"], clean)
-
-
-def test_history_wording_may_vary_when_both_runs_are_grounded(script):
-    first = ["stored", "The code word was cobalt.", "stored", "Paris"]
-    second = ["stored", "cobalt", "stored", "The city was Paris."]
-    script.check("grounded paraphrase", first, second)
+def test_identical_fresh_turns_have_identical_prompt_usage(script):
+    clean = _turns(script)
+    with pytest.raises(AssertionError, match = "fresh first turns"):
+        script.check_multi_turn_contract(
+            "unstable accounting", clean, _turns(script, tokens = (11, 21, 31, 41))
+        )
 
 
 def test_the_script_needs_no_environment_to_import(script):
