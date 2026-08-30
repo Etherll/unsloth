@@ -62,7 +62,7 @@ def _boot_defaults() -> tuple[str, str]:
 PHASE_MARKERS = (
     "Drive the chat UI with Playwright",
     "Run Unsloth API & Auth tests",
-    "Multi-turn determinism via OpenAI + Anthropic SDKs",
+    ".github/scripts/studio_smoke/multi_turn_chat.py",
     "Tool calling, server-side tools, thinking on/off",
     "JSON schema decoding + image input",
     "Uninstall and verify clean",
@@ -119,8 +119,10 @@ def _phase_of(starts: list[int], index: int) -> int:
 
 def test_the_bundle_still_carries_every_phase(steps: list[dict]) -> None:
     """A scan that found no phases would pass every check below."""
-    names = [str(s.get("name") or s.get("uses") or "") for s in steps]
-    blob = "\n".join(names)
+    blob = "\n".join(
+        str(s.get("name") or s.get("uses") or "") + "\n" + str(s.get("run") or "")
+        for s in steps
+    )
     for marker in PHASE_MARKERS:
         assert marker in blob, (
             f"{WORKFLOW.name} no longer runs {marker!r}. Four workflows were folded "
