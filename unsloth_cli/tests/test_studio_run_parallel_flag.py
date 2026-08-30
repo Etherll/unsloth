@@ -35,6 +35,15 @@ def _load_run_command():
     return _studio
 
 
+def _stub_parallel_runtime_launch_guard(monkeypatch, studio_mod):
+    """Keep flag-contract tests independent of the runtime-lock filesystem."""
+    monkeypatch.setattr(
+        studio_mod,
+        "_studio_runtime_launch_guard",
+        lambda **_kwargs: contextlib.nullcontext(True),
+    )
+
+
 def test_parallel_option_is_registered():
     """The `--parallel` flag (with aliases) must be on the `run` command."""
     studio_mod = _load_run_command()
@@ -202,11 +211,7 @@ def _install_reexec_capture(monkeypatch, *, platform):
 
     monkeypatch.setattr(sys, "platform", platform)
     # Emulate Windows re-exec without calling Win32 APIs on non-Windows hosts.
-    monkeypatch.setattr(
-        studio_mod,
-        "_studio_runtime_launch_guard",
-        lambda **_kwargs: contextlib.nullcontext(True),
-    )
+    _stub_parallel_runtime_launch_guard(monkeypatch, studio_mod)
 
     def capture(kind, argv):
         captured.append(
@@ -837,6 +842,7 @@ def test_in_venv_path_passes_parallel_to_run_server(monkeypatch, value, stub_too
     """In-venv path must forward --parallel to
     run_server(llama_parallel_slots=N), not the old hardcoded 4."""
     studio_mod = _load_run_command()
+    _stub_parallel_runtime_launch_guard(monkeypatch, studio_mod)
 
     fake_venv = Path("/fake/studio/venv/unsloth_studio")
     monkeypatch.setattr(sys, "prefix", str(fake_venv))
@@ -931,6 +937,7 @@ def test_in_venv_path_passes_api_only_to_run_server(
 ):
     """In-venv path must forward --api-only to run_server(api_only=...)."""
     studio_mod = _load_run_command()
+    _stub_parallel_runtime_launch_guard(monkeypatch, studio_mod)
 
     fake_venv = Path("/fake/studio/venv/unsloth_studio")
     monkeypatch.setattr(sys, "prefix", str(fake_venv))
