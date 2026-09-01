@@ -1,0 +1,106 @@
+# Disposable repro workflow. Delete after validation.
+
+name: "PR 10075 Windows ACL repro"
+
+on:
+  push:
+    branches:
+      - "pr-10075-mimir-pr-10075-d394f9e-20260901t093500z-ci"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repro:
+    name: "Targeted repro"
+    runs-on: "windows-latest"
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: "3.12"
+
+      - name: "Install focused Python test dependency"
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check --quiet pytest==9.0.3
+          python -m pytest --version
+
+      - name: "Run 12 ACL and blocked-install Python regressions"
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tests = @(
+            'tests/studio/install/test_install_llama_prebuilt_logic.py::test_replace_with_busy_retry_names_acl_recovery_when_access_denied_persists',
+            'tests/studio/install/test_install_llama_prebuilt_logic.py::test_replace_with_busy_retry_does_not_blame_a_scanner_for_access_denied',
+            'tests/studio/install/test_install_llama_prebuilt_logic.py::test_replace_with_busy_retry_keeps_the_scanner_message_for_a_sharing_violation',
+            'tests/studio/install/test_install_llama_prebuilt_logic.py::test_replace_with_busy_retry_still_waits_out_an_access_denied',
+            'tests/studio/install/test_install_llama_prebuilt_logic.py::test_activate_install_tree_preserves_busy_exit_with_acl_aware_message',
+            'tests/studio/install/test_install_llama_prebuilt_logic.py::test_install_prebuilt_uses_cause_neutral_heading_for_acl_conflict',
+            'tests/studio/install/test_install_node_prebuilt_logic.py::test_install_prebuilt_does_not_hide_reported_acl_denial',
+            'tests/studio/install/test_install_node_prebuilt_logic.py::test_replace_names_acl_recovery_when_access_denied_persists',
+            'tests/studio/install/test_install_node_prebuilt_logic.py::test_replace_does_not_blame_a_scanner_for_access_denied',
+            'tests/studio/install/test_install_node_prebuilt_logic.py::test_replace_keeps_the_scanner_message_for_a_sharing_violation',
+            'tests/studio/install/test_install_node_prebuilt_logic.py::test_swap_into_place_reports_the_managed_parent_on_destination_denial',
+            'tests/studio/install/test_install_node_prebuilt_logic.py::test_swap_into_place_reports_the_managed_parent_when_aside_is_denied'
+          )
+          python -m pytest -q @tests
+
+      - name: "Ensure Pester 5.5 or newer"
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $moduleName = 'Pester'
+          $minimum = [version]'5.5.0'
+          function Get-InstalledPester {
+            Get-Module -ListAvailable -Name $moduleName | Where-Object { $_.Version -ge $minimum } | Sort-Object Version -Descending | Select-Object -First 1
+          }
+          $installed = Get-InstalledPester
+          if (-not $installed) {
+            $hasPSResourceGet = [bool](Get-Command Install-PSResource -ErrorAction SilentlyContinue)
+            $usePSResourceGet = $hasPSResourceGet
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+              try {
+                if ($usePSResourceGet) {
+                  if (-not (Get-PSResourceRepository -Name PSGallery -ErrorAction SilentlyContinue)) { Register-PSResourceRepository -PSGallery }
+                  Install-PSResource -Name $moduleName -Version "[$minimum,)" -Repository PSGallery -TrustRepository -Scope CurrentUser
+                } else {
+                  if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) { Register-PSRepository -Default }
+                  Set-PSRepository PSGallery -InstallationPolicy Trusted
+                  Install-Module $moduleName -MinimumVersion $minimum -Force -SkipPublisherCheck -Scope CurrentUser
+                }
+                $installed = Get-InstalledPester
+                if ($installed) { break }
+                throw "$moduleName >= $minimum still not present after install"
+              } catch {
+                Write-Host "::warning::$moduleName install attempt $attempt/3 failed: $($_.Exception.Message)"
+                if ($attempt -eq 3) { throw }
+                if ($hasPSResourceGet) { $usePSResourceGet = -not $usePSResourceGet }
+                Start-Sleep -Seconds (5 * $attempt)
+              }
+            }
+          }
+          Import-Module $moduleName -MinimumVersion $minimum -Force
+          $loaded = Get-Module $moduleName
+          if (-not $loaded -or $loaded.Version -lt $minimum) { throw "$moduleName >= $minimum failed to import" }
+          $loaded | Select-Object Name, Version | Format-Table
+
+      - name: "Run 17 setup blocked-install Pester assertions"
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cfg = New-PesterConfiguration
+          $cfg.Run.Path = Join-Path $env:GITHUB_WORKSPACE 'tests/studio_setup_ps1/Studio.Setup.BlockedInstallCause.Tests.ps1'
+          $cfg.Run.PassThru = $true
+          $cfg.Run.Throw = $true
+          $cfg.Output.Verbosity = 'Detailed'
+          $result = Invoke-Pester -Configuration $cfg
+          if ($result.TotalCount -ne 17) { throw "Expected 17 Pester tests, got $($result.TotalCount)" }
+          if ($result.FailedCount -ne 0) { throw "Expected zero Pester failures, got $($result.FailedCount)" }
+          Write-Host "PASS: Pester total=$($result.TotalCount) failed=$($result.FailedCount)"

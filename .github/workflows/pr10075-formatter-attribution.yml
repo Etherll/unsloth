@@ -1,0 +1,80 @@
+# Disposable repro workflow. Delete after validation.
+
+name: "PR 10075 formatter scope attribution"
+
+on:
+  push:
+    branches:
+      - "pr-10075-mimir-pr-10075-d394f9e-20260901t093500z-ci"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repro:
+    name: "Targeted repro"
+    runs-on: "ubuntu-latest"
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: "3.12"
+
+      - name: "Install pre-commit driver"
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --quiet pre-commit==4.3.0
+          pre-commit --version
+
+      - name: "Changed Python files stay formatter-clean"
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            studio/install_llama_prebuilt.py
+            studio/install_node_prebuilt.py
+            tests/studio/install/test_install_llama_prebuilt_logic.py
+            tests/studio/install/test_install_node_prebuilt_logic.py
+          )
+          pre-commit run ruff-format-with-kwargs --files "${files[@]}"
+          git diff --exit-code -- "${files[@]}"
+          echo 'PASS: changed Python files are clean under ruff-format-with-kwargs'
+
+      - name: "All-files scope rewrites only unrelated Python files"
+        shell: bash
+        run: |
+          set -uo pipefail
+          pr_files=(
+            studio/install_llama_prebuilt.py
+            studio/install_node_prebuilt.py
+            tests/studio/install/test_install_llama_prebuilt_logic.py
+            tests/studio/install/test_install_node_prebuilt_logic.py
+          )
+          set +e
+          pre-commit run ruff-format-with-kwargs --all-files
+          status=$?
+          set -e
+          echo "all-files hook exit=$status"
+          if [[ $status -eq 0 ]]; then
+            echo 'FAIL: all-files hook no longer reproduces the repository-wide formatter failure'
+            exit 1
+          fi
+          mapfile -t modified < <(git diff --name-only -- '*.py')
+          if [[ ${#modified[@]} -eq 0 ]]; then
+            echo 'FAIL: hook failed without rewriting any tracked Python file'
+            exit 1
+          fi
+          for pr_file in "${pr_files[@]}"; do
+            if printf '%s\n' "${modified[@]}" | grep -Fxq "$pr_file"; then
+              echo "FAIL: PR-owned Python file was rewritten: $pr_file"
+              exit 1
+            fi
+          done
+          printf 'UNRELATED_FORMAT_REWRITE %s\n' "${modified[@]}"
+          echo "PASS: expected all-files exit=$status rewrote ${#modified[@]} unrelated Python files while PR files stayed clean"
