@@ -1,0 +1,58 @@
+# Disposable repro workflow. Delete after validation.
+
+name: "PR 5603 focused repro macos"
+
+on:
+  push:
+    branches:
+      - "pr-5603-mimir-skill-e2e-pr-5603-20260901t030201z-ci"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repro:
+    name: "Targeted repro"
+    runs-on: "macos-14"
+    timeout-minutes: 30
+    env:
+      PYTHONHASHSEED: "0"
+      UNSLOTH_COMPILE_DISABLE: "1"
+      UNSLOTH_IS_PRESENT: "1"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: "3.12"
+
+      - name: "Install focused test dependencies"
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r studio/backend/requirements/studio.txt pytest pytest-asyncio pytest-timeout python-multipart
+
+      - name: "Create exact fresh-main baseline"
+        shell: bash
+        run: |
+          git worktree add "$RUNNER_TEMP/pr5603-base" 893a1fbd4854f3f2e873ad195c48248e7e36ee87
+
+      - name: "Negative proof on fresh upstream main"
+        shell: bash
+        run: |
+          PYTHONPATH="$RUNNER_TEMP/pr5603-base/studio/backend" python .github/repro/pr5603_probe.py --expect-attacks allowed --label baseline --iterations 300
+
+      - name: "Positive proof and analyzer benchmark on PR head"
+        shell: bash
+        run: |
+          PYTHONPATH=studio/backend python .github/repro/pr5603_probe.py --expect-attacks blocked --label pr-head --iterations 300
+
+      - name: "Run complete sandbox matrix"
+        shell: bash
+        run: |
+          PYTHONPATH=studio/backend python -m pytest studio/backend/tests/test_sandbox_hardening.py studio/backend/tests/test_sandbox_tools.py studio/backend/tests/test_permission_mode.py -q --durations=20
+
