@@ -1,0 +1,37 @@
+# Disposable repro workflow. Delete after validation.
+
+name: "staging-7101 macos-14 exact 3cd6760c"
+
+on:
+  push:
+    branches:
+      - "pr-7101-final-3cd6760c-20260901t0604z-ci"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repro:
+    name: "Targeted repro"
+    runs-on: "macos-14"
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: "3.12"
+
+      - name: "Install secret-free test dependencies"
+        shell: bash
+        run: |
+          python -m pip install -r studio/backend/requirements/studio.txt pytest pytest-asyncio pytest-timeout python-multipart
+
+      - name: "Run exact-head macOS sandbox suite"
+        shell: bash
+        run: |
+          PYTHONPATH=studio/backend python -m pytest studio/backend/tests/test_bypass_permissions.py studio/backend/tests/test_sandbox.py studio/backend/tests/test_sandbox_profile_security.py studio/backend/tests/test_sandbox_warm_probe.py studio/backend/tests/test_tool_output_streaming.py -q --tb=short -k 'not llama_cpp_load_progress_live and not TestGpuAutoSelection and not TestPreSpawnGpuResolution and not TestPerGpuFitGuardAllCounts and not TestTransformersIntrospection and not test_returns_cuda_when_cuda_available and not test_calls_cuda_cache_when_cuda'
+
