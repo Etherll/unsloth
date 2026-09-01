@@ -1,11 +1,11 @@
 # Disposable repro workflow. Delete after validation.
 
-name: "staging-7101 ubuntu-latest exact 3cd6760c"
+name: "staging-7101 ubuntu-latest exact 731b2c5"
 
 on:
   push:
     branches:
-      - "pr-7101-final-3cd6760c-20260901t0604z-ci"
+      - "pr-7101-final-731b2c5-20260901t1016z-ci"
   workflow_dispatch:
 
 permissions:
