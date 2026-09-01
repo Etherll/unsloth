@@ -1,0 +1,59 @@
+# Disposable repro workflow. Delete after validation.
+
+name: "PR 7101 sandbox A-B and benchmark"
+
+on:
+  push:
+    branches:
+      - "pr-7101-mimir-pr7101-sandbox-final-20260901t043723z-ci"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repro:
+    name: "Targeted repro"
+    runs-on: "ubuntu-latest"
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: "3.12"
+
+      - name: "Install secret-free sandbox test dependencies"
+        shell: bash
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 2>/dev/null || true
+          python -m pip install -r studio/backend/requirements/studio.txt pytest pytest-asyncio pytest-timeout python-multipart
+
+      - name: "Require working bubblewrap"
+        shell: bash
+        run: |
+          bwrap --ro-bind / / --unshare-all --die-with-parent /usr/bin/true
+          echo 'UNSLOTH_STUDIO_SANDBOX_CI_ENFORCE=1' >> "$GITHUB_ENV"
+
+      - name: "Reproduce all three defects on the parent head"
+        shell: bash
+        run: |
+          git worktree add --detach /tmp/pr7101-negative ad660a93accae2a5fbdbb1ec6172b7112720aab1
+          PYTHONPATH=/tmp/pr7101-negative/studio/backend python .github/scripts/pr7101_sandbox_probe.py --repo-root /tmp/pr7101-negative --expect negative
+
+      - name: "Verify original and final boundary fixes on the exact PR head"
+        shell: bash
+        run: |
+          PYTHONPATH=studio/backend python .github/scripts/pr7101_sandbox_probe.py --repo-root . --expect positive
+          PYTHONPATH=studio/backend python -m pytest -q studio/backend/tests/test_sandbox.py studio/backend/tests/test_sandbox_profile_security.py -k 'workdir_write_succeeds or home_read_denied or network_denied or linux_argv_narrows_etc or python_read_paths_includes_user_site_when_opted_in or editable_source_paths_include_plain_pth_entries or sandbox_path_uses_normalized_interpreter_dir or wsl_gpu_device_remains_visible_inside_sandbox or linux_restores_accelerator_devices_after_synthetic_dev or external_workdir_hardlink_is_rejected or internal_only_workdir_hardlinks_remain_allowed or unrepresentable_profile_path_uses_configured_fallback or safe_env_preserves_accelerator_visibility_selectors'
+
+      - name: "Benchmark sandbox runtime overhead"
+        shell: bash
+        run: |
+          PYTHONPATH=studio/backend python .github/scripts/pr7101_sandbox_benchmark.py | tee pr7101-benchmark.txt
+          grep '^BENCH' pr7101-benchmark.txt
