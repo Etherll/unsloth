@@ -1,11 +1,11 @@
 # Disposable repro workflow. Delete after validation.
 
-name: "PR 7101 exact 731b2c5 A-B benchmark"
+name: "PR 7101 exact 87303d3 A-B benchmark"
 
 on:
   push:
     branches:
-      - "pr-7101-final-731b2c5-20260901t1016z-ci"
+      - "pr-7101-final-87303d3-20260901t1055z-ci"
   workflow_dispatch:
 
 permissions:
