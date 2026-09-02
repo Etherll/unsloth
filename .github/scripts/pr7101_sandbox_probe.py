@@ -90,6 +90,38 @@ def main() -> None:
             and sandbox._linux_bwrap_probe_path() is not None
         )
 
+        installer_text = (Path(args.repo_root).resolve() / "install.sh").read_text(
+            encoding = "utf-8"
+        )
+        installer_seccomp_probe_ok = all(
+            marker in installer_text
+            for marker in (
+                'find_library("seccomp") or "libseccomp.so.2"',
+                'hasattr(os, "memfd_create")',
+                'bubblewrap_path_trusted "$PYTHON_BIN"',
+            )
+        )
+
+        trusted_rlimit_python_ok = False
+        nproc_host_budget_ok = False
+        rlimit_site_disabled_ok = False
+        if hasattr(sandbox, "_linux_rlimit_python_path"):
+            trusted_rlimit_python = sandbox._linux_rlimit_python_path()
+            trusted_rlimit_python_ok = bool(
+                trusted_rlimit_python
+                and sandbox._linux_executable_path_is_trusted(trusted_rlimit_python)
+            )
+        if hasattr(sandbox, "_linux_nproc_rlimit_target"):
+            host_tasks = sandbox._linux_real_uid_task_count()
+            target = sandbox._linux_nproc_rlimit_target()
+            nproc_host_budget_ok = bool(
+                host_tasks is not None
+                and target is not None
+                and target - host_tasks == sandbox._resolve_nproc_limit()
+            )
+        inner = sandbox._linux_inner_rlimit_wrapper(["/usr/bin/true"])
+        rlimit_site_disabled_ok = inner[1:4] == ["-I", "-S", "-c"]
+
         identity_workdir = workdir / "identity-workdir"
         identity_workdir.mkdir()
         previous_tmpdir = os.environ.get("TMPDIR")
@@ -178,9 +210,13 @@ def main() -> None:
         "fixed_probe_payload": fixed_probe_ok,
         "hsa_runtime_flags": hsa_flags_ok,
         "identity_outside_tmpdir": identity_outside_workdir_ok,
+        "installer_seccomp_probe": installer_seccomp_probe_ok,
         "macos_host_posix_ipc_denied": macos_host_ipc_denied_ok,
         "native_pth_extension": native_extension_ok,
+        "nproc_host_budget": nproc_host_budget_ok,
         "oneapi_runtime": oneapi_ok,
+        "rlimit_site_disabled": rlimit_site_disabled_ok,
+        "trusted_rlimit_python": trusted_rlimit_python_ok,
         "unix_socket_seccomp": unix_socket_denied_ok,
     }
     print(f"PROBE mode={args.expect} result={json.dumps(result, sort_keys = True)}")

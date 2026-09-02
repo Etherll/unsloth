@@ -67,6 +67,8 @@ def main() -> None:
             lambda: os.close(sandbox._linux_socket_seccomp_fd()),
             100,
         )
+        uid_task_count = distribution_ms(sandbox._linux_real_uid_task_count, 100)
+        trusted_rlimit_python = distribution_ms(sandbox._linux_rlimit_python_path, 500)
 
         scan_root = Path(workdir) / "boundary-scan"
         for directory_index in range(10):
@@ -94,6 +96,8 @@ def main() -> None:
         "build_safe_env": safe_env,
         "external_runtime_special_scan": external_runtime_scan,
         "seccomp_filter_build": seccomp_filter,
+        "uid_task_count": uid_task_count,
+        "trusted_rlimit_python": trusted_rlimit_python,
         "boundary_scan_500_files": boundary_scan,
     }
     print("BENCHMARK_JSON=" + json.dumps(results, sort_keys = True))
@@ -104,6 +108,8 @@ def main() -> None:
         "build_safe_env",
         "external_runtime_special_scan",
         "seccomp_filter_build",
+        "uid_task_count",
+        "trusted_rlimit_python",
         "boundary_scan_500_files",
     ):
         values = results[name]
