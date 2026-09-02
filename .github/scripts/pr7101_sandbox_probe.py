@@ -58,12 +58,18 @@ def main() -> None:
         source.mkdir()
         extension = source / f"native_probe{importlib.machinery.EXTENSION_SUFFIXES[0]}"
         extension.write_bytes(b"secret-free-placeholder")
+        namespace_root = source / "native_namespace"
+        native_leaf = namespace_root / "nested" / "leaf"
+        native_leaf.mkdir(parents = True)
+        namespace_extension = native_leaf / f"_native{importlib.machinery.EXTENSION_SUFFIXES[0]}"
+        namespace_extension.write_bytes(b"secret-free-placeholder")
         (site_dir / "editable.pth").write_text(str(source) + "\n")
         original_site_packages = site.getsitepackages
         site.getsitepackages = lambda: [str(site_dir)]
         try:
             native_paths = {os.path.realpath(path) for path in sandbox._editable_source_paths()}
             native_extension_ok = os.path.realpath(extension) in native_paths
+            namespace_native_extension_ok = os.path.realpath(namespace_root) in native_paths
         finally:
             site.getsitepackages = original_site_packages
 
@@ -213,6 +219,7 @@ def main() -> None:
         "installer_seccomp_probe": installer_seccomp_probe_ok,
         "macos_host_posix_ipc_denied": macos_host_ipc_denied_ok,
         "native_pth_extension": native_extension_ok,
+        "namespace_native_extension": namespace_native_extension_ok,
         "nproc_host_budget": nproc_host_budget_ok,
         "oneapi_runtime": oneapi_ok,
         "rlimit_site_disabled": rlimit_site_disabled_ok,
