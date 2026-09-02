@@ -63,6 +63,10 @@ def main() -> None:
             ),
             20,
         )
+        seccomp_filter = distribution_ms(
+            lambda: os.close(sandbox._linux_socket_seccomp_fd()),
+            100,
+        )
 
         scan_root = Path(workdir) / "boundary-scan"
         for directory_index in range(10):
@@ -89,6 +93,7 @@ def main() -> None:
         "python_read_paths": read_paths,
         "build_safe_env": safe_env,
         "external_runtime_special_scan": external_runtime_scan,
+        "seccomp_filter_build": seccomp_filter,
         "boundary_scan_500_files": boundary_scan,
     }
     print("BENCHMARK_JSON=" + json.dumps(results, sort_keys = True))
@@ -98,6 +103,7 @@ def main() -> None:
         "python_read_paths",
         "build_safe_env",
         "external_runtime_special_scan",
+        "seccomp_filter_build",
         "boundary_scan_500_files",
     ):
         values = results[name]
