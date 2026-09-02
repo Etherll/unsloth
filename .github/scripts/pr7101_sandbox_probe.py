@@ -65,7 +65,7 @@ def main() -> None:
         "user_site_import_path": user_site_ok,
         "plain_pth_source": pth_ok,
     }
-    print(f"PROBE mode={args.expect} result={json.dumps(result, sort_keys=True)}")
+    print(f"PROBE mode={args.expect} result={json.dumps(result, sort_keys = True)}")
     expected = args.expect == "positive"
     if any(value is not expected for value in result.values()):
         raise SystemExit(f"unexpected {args.expect} result: {result}")

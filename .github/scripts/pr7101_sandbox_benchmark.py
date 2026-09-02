@@ -56,6 +56,13 @@ def main() -> None:
         sandboxed = distribution_ms(lambda: run_bash(bypass = False), 20)
         read_paths = distribution_ms(sandbox._python_read_paths, 500)
         safe_env = distribution_ms(lambda: tools._build_safe_env(workdir), 2_000)
+        external_read_paths = sandbox._python_read_paths()
+        external_runtime_scan = distribution_ms(
+            lambda: sandbox._assert_external_read_paths_have_no_special_nodes(
+                workdir, external_read_paths
+            ),
+            20,
+        )
 
         scan_root = Path(workdir) / "boundary-scan"
         for directory_index in range(10):
@@ -81,6 +88,7 @@ def main() -> None:
         "bash_sandbox_ratio": sandboxed["median_ms"] / max(bypass["median_ms"], 0.001),
         "python_read_paths": read_paths,
         "build_safe_env": safe_env,
+        "external_runtime_special_scan": external_runtime_scan,
         "boundary_scan_500_files": boundary_scan,
     }
     print("BENCHMARK_JSON=" + json.dumps(results, sort_keys = True))
@@ -89,6 +97,7 @@ def main() -> None:
         "bash_sandboxed",
         "python_read_paths",
         "build_safe_env",
+        "external_runtime_special_scan",
         "boundary_scan_500_files",
     ):
         values = results[name]
