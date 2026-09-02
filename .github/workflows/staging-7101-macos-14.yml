@@ -1,11 +1,11 @@
 # Disposable repro workflow. Delete after validation.
 
-name: "staging-7101 macos-14 exact 9a029b8"
+name: "staging-7101 macos-14 exact 7977abc"
 
 on:
   push:
     branches:
-      - "pr-7101-final-9a029b8-20260902t045327z-ci"
+      - "pr-7101-final-7977abc-20260902t083515z-ci"
   workflow_dispatch:
 
 permissions:
