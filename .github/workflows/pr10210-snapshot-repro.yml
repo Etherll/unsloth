@@ -1,0 +1,62 @@
+# Disposable repro workflow. Delete after validation.
+
+name: "PR 10210 snapshot A-B"
+
+on:
+  push:
+    branches:
+      - "pr-10210-repro10210-20260907-1322-*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repro:
+    name: "Snapshot repro (${{ matrix.os }})"
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    env:
+      UNSLOTH_ALLOW_CPU: '1'
+      UNSLOTH_IS_PRESENT: '1'
+      UNSLOTH_STUDIO_DISABLE_DEVICE_PROBE: '1'
+      HF_HUB_OFFLINE: '1'
+      HF_HOME: ${{ runner.temp }}/pr10210-hf
+      UNSLOTH_STUDIO_HOME: ${{ runner.temp }}/pr10210-studio
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: "3.12"
+
+      - name: "Install CPU test environment"
+        shell: bash
+        run: |
+          python -m pip install -r studio/backend/requirements/studio.txt python-multipart aiofiles sqlalchemy psutil pyyaml jinja2 requests pytest pytest-asyncio pytest-timeout soundfile librosa python-dotenv
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            python -m pip install 'torch==2.10.0' 'transformers==5.4.0'
+          else
+            python -m pip install 'torch==2.10.0' --index-url https://download.pytorch.org/whl/cpu
+            python -m pip install 'transformers==5.4.0'
+          fi
+          python -m pip freeze
+
+      - name: "Assert older complete weights remain API servable"
+        shell: bash
+        run: |
+          python .github/scripts/pr10210_snapshot_probe.py
+
+      - name: "Positive regression suites"
+        shell: bash
+        run: |
+          python .github/scripts/pr10210_regression_suite.py
+
