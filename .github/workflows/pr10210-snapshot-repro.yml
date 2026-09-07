@@ -24,8 +24,8 @@ jobs:
       UNSLOTH_IS_PRESENT: '1'
       UNSLOTH_STUDIO_DISABLE_DEVICE_PROBE: '1'
       HF_HUB_OFFLINE: '1'
-      HF_HOME: ${{ runner.temp }}/pr10210-hf
-      UNSLOTH_STUDIO_HOME: ${{ runner.temp }}/pr10210-studio
+      HF_HOME: ${{ github.workspace }}/.pr10210-hf
+      UNSLOTH_STUDIO_HOME: ${{ github.workspace }}/.pr10210-studio
       OPENBLAS_NUM_THREADS: '1'
       OMP_NUM_THREADS: '1'
     timeout-minutes: 30
