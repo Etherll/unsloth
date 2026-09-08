@@ -4,8 +4,9 @@ import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 const target='70775b3bdf147d10e941306c17c25d51d98a4bca';
 mkdirSync('native-evidence',{recursive:true});
-let browser;
-for(let i=0;i<60;i++){try{browser=await chromium.connectOverCDP('http://127.0.0.1:19266');break;}catch{await new Promise(r=>setTimeout(r,1000));}}
+let browser, lastConnectionError;
+for(let i=0;i<60;i++){try{browser=await chromium.connectOverCDP('http://127.0.0.1:19266',{timeout:3000});break;}catch(error){lastConnectionError=error.message;await new Promise(r=>setTimeout(r,1000));}}
+if(!browser) writeFileSync('native-evidence/connection-error.txt',String(lastConnectionError));
 assert.ok(browser,'Native WebView2 CDP endpoint must start');
 const context=browser.contexts()[0];
 let page;

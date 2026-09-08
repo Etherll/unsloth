@@ -61,17 +61,38 @@ jobs:
         shell: pwsh
         run: |
           Set-Location target
+          New-Item -ItemType Directory -Force native-evidence | Out-Null
+          $runtimeRoots=@("${env:ProgramFiles(x86)}/Microsoft/EdgeWebView/Application", "$env:LOCALAPPDATA/Microsoft/EdgeWebView/Application")
+          $versions=@($runtimeRoots | Where-Object { Test-Path -LiteralPath $_ } | ForEach-Object { Get-ChildItem -LiteralPath $_ -Directory | Select-Object -ExpandProperty Name })
+          @{runtimeVersions=$versions;sessionId=(Get-Process -Id $PID).SessionId} | ConvertTo-Json | Set-Content native-evidence/environment.json
           $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS='--remote-debugging-port=19266'
           $server=Start-Process node -ArgumentList '.codex/pr9666/serve-harness.mjs' -WindowStyle Hidden -PassThru -RedirectStandardOutput vite.log -RedirectStandardError vite.err
           $app=$null
           try {
-            for($attempt=0;$attempt -lt 60;$attempt++) { try { $null=Invoke-WebRequest http://localhost:5173/review.html; break } catch { Start-Sleep -Seconds 1 } }
+            $ready=$false
+            for($attempt=0;$attempt -lt 60;$attempt++) { try { $null=Invoke-WebRequest http://localhost:5173/review.html; $ready=$true; break } catch { Start-Sleep -Seconds 1 } }
+            if (-not $ready) { throw "Harness HTTP endpoint failed to start" }
             $app=Start-Process './studio/src-tauri/target/debug/unsloth-studio.exe' -WindowStyle Hidden -PassThru -RedirectStandardOutput app.log -RedirectStandardError app.err
             node .codex/pr9666/probe.mjs
             if ($LASTEXITCODE) { throw "Native probe failed" }
           } finally {
-            if ($app) { Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue }
+            if ($app) {
+              $app.Refresh()
+              @{hasExited=$app.HasExited;exitCode=$(if($app.HasExited){$app.ExitCode}else{$null})} | ConvertTo-Json | Set-Content native-evidence/process.json
+              Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+            }
             Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+            # Retain only fixed diagnostic categories and numeric error codes, never raw startup logs.
+            $diagnostics=@()
+            foreach($log in @('app.log','app.err','vite.log','vite.err')) {
+              if(Test-Path -LiteralPath $log) {
+                $raw=Get-Content -LiteralPath $log -Raw
+                $categories=@('panicked','WebView2','WebviewRuntimeNotFound','Access is denied','error while building tauri application','HARNESS_READY','EADDRINUSE','ERR_MODULE_NOT_FOUND','0x[0-9A-Fa-f]{8}')
+                foreach($category in $categories) { if($raw -match $category){$diagnostics+=@{file=$log;category=$category;match=$Matches[0]}} }
+                $diagnostics+=@{file=$log;bytes=(Get-Item -LiteralPath $log).Length}
+              }
+            }
+            $diagnostics | ConvertTo-Json | Set-Content native-evidence/startup-categories.json
           }
 
       - name: Preserve scoped native evidence
