@@ -1,0 +1,84 @@
+# Disposable repro workflow. Delete after validation.
+
+name: "PR 9666 native scale"
+
+on:
+  push:
+    branches:
+      - "pr-9666-scale-20260908-70775b3b-ci"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repro:
+    name: "Targeted repro"
+    runs-on: "windows-latest"
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24"
+
+      - name: "Prepare exact target and probe"
+        shell: pwsh
+        run: |
+          git worktree add --detach target 70775b3bdf147d10e941306c17c25d51d98a4bca
+          if ($LASTEXITCODE) { throw "Exact target checkout failed" }
+          New-Item -ItemType Directory -Force target/.codex/pr9666 | Out-Null
+          Copy-Item .github/pr9666/* target/.codex/pr9666/
+          git -C target rev-parse HEAD
+
+      - name: "Frontend dependencies and build"
+        shell: pwsh
+        run: |
+          Set-Location target/studio/frontend
+          npm ci --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE) { throw "npm ci failed" }
+          npm run build
+          if ($LASTEXITCODE) { throw "Frontend build failed" }
+
+      - name: "Install pinned CDP client in probe directory"
+        shell: pwsh
+        run: |
+          npm install --prefix target/.codex/pr9666 --no-save --ignore-scripts --no-audit --no-fund playwright-core@1.58.2
+          if ($LASTEXITCODE) { throw "CDP client install failed" }
+
+      - name: "Build exact native app"
+        shell: pwsh
+        run: |
+          Set-Location target/studio/src-tauri
+          cargo build --locked
+          if ($LASTEXITCODE) { throw "Native build failed" }
+
+      - name: "Native zoom acceptance"
+        shell: pwsh
+        run: |
+          Set-Location target
+          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS='--remote-debugging-port=19266'
+          $server=Start-Process node -ArgumentList '.codex/pr9666/serve-harness.mjs' -WindowStyle Hidden -PassThru -RedirectStandardOutput vite.log -RedirectStandardError vite.err
+          $app=$null
+          try {
+            for($attempt=0;$attempt -lt 60;$attempt++) { try { $null=Invoke-WebRequest http://localhost:5173/review.html; break } catch { Start-Sleep -Seconds 1 } }
+            $app=Start-Process './studio/src-tauri/target/debug/unsloth-studio.exe' -WindowStyle Hidden -PassThru -RedirectStandardOutput app.log -RedirectStandardError app.err
+            node .codex/pr9666/probe.mjs
+            if ($LASTEXITCODE) { throw "Native probe failed" }
+          } finally {
+            if ($app) { Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue }
+            Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Preserve scoped native evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pr9666-native-scale
+          path: target/native-evidence/
+          if-no-files-found: warn
+          retention-days: 7
