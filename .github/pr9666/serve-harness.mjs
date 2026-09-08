@@ -7,6 +7,3 @@ const server=await createServer({root:frontend,configFile:frontend+'/vite.config
 // Remove inherited backend proxies: this isolated component harness never uses a real backend.
 server.config.server.proxy={};
 await server.listen();console.log('HARNESS_READY http://localhost:5173/review.html');
-
-
-

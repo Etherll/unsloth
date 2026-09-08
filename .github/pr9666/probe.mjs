@@ -34,4 +34,3 @@ assert.equal(await page.getByRole('spinbutton',{name:'Interface scale',exact:tru
 writeFileSync('native-evidence/proof.json',JSON.stringify({target,mode:'Native Windows WebView2; controlled production controls/effects mount; no backend or actual OS file drag',userAgent:await page.evaluate(()=>navigator.userAgent),baseline,results,reset:'pass'},null,2));
 console.log('PASS native WebView2 actual zoom 50/100/150/200 and reset',JSON.stringify(results));
 process.exit(0);
-

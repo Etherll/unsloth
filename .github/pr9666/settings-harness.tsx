@@ -105,4 +105,3 @@ void mount().catch((error) => {
 // 9. New context desktop=0: no Interface scale spinbutton; font rows still mount.
 // Nonfinite type=number strings may sanitize to empty in the browser; capture
 // DOM validity/value and actual result rather than force impossible React state.
-
