@@ -1,0 +1,39 @@
+{
+  "pr": 10223,
+  "base_sha": "03c1cb33db6c03a2cd45a436a061fd29bdf96919",
+  "head_sha": "f33b7781a72deed191171cb62389de31b5931307",
+  "scene": "link_definition_controls",
+  "facts": {
+    "BEFORE": {
+      "copyButtons": 0,
+      "downloadButtons": 0,
+      "codeBlocks": 2,
+      "fixtureReads": 5,
+      "browser": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36 Edg/152.0.0.0",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "link_count": 2,
+      "plain_count": 1,
+      "reload_copy_buttons": 0
+    },
+    "AFTER": {
+      "copyButtons": 2,
+      "downloadButtons": 2,
+      "codeBlocks": 2,
+      "fixtureReads": 5,
+      "browser": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36 Edg/152.0.0.0",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "downloaded_file_matches_first_code_block": true,
+      "link_count": 2,
+      "plain_count": 1,
+      "reload_copy_buttons": 2
+    }
+  },
+  "scope": "Identical stored-reply fixture in two isolated installed Studio builds; no model generation.",
+  "image_sha256": "a9d0ba953358be92144a1ea77a3fc3d77baee3edba02693c5f829c8d15e6a67f"
+}
