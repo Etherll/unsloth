@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
   repro:
@@ -51,26 +50,24 @@ jobs:
           npm install --prefix target/.codex/pr9666 --no-save --ignore-scripts --no-audit --no-fund playwright-core@1.58.2
           if ($LASTEXITCODE) { throw "CDP client install failed" }
 
-      - name: "Reuse verified exact native app"
+      - name: "Build native app with direct debugging configuration"
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          gh run download 34188779934 --repo Etherll/unsloth --name pr9666-native-binary --dir native-binary
-          if ($LASTEXITCODE) { throw "Binary download failed" }
-          $proof=Get-Content native-binary/provenance.json -Raw | ConvertFrom-Json
-          if($proof.target -ne '70775b3bdf147d10e941306c17c25d51d98a4bca'){throw 'Wrong target'}
-          $hash=(Get-FileHash native-binary/unsloth-studio.exe -Algorithm SHA256).Hash
-          if($hash -ne '5FE95F65E2B70293FFC5DDCA8EA00CE9BFF081F858147C00272EE785FCC5E4DF' -or $proof.sha256 -ne $hash){throw 'Binary hash mismatch'}
-          New-Item -ItemType Directory -Force target/studio/src-tauri/target/debug | Out-Null
-          Copy-Item native-binary/unsloth-studio.exe target/studio/src-tauri/target/debug/
+          Set-Location target/studio/src-tauri
+          $config=Get-Content tauri.conf.json -Raw | ConvertFrom-Json -AsHashtable
+          $config.app.windows[0].additionalBrowserArgs='--autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port=19266'
+          $env:TAURI_CONFIG=@{app=@{windows=$config.app.windows}} | ConvertTo-Json -Compress -Depth 20
+          New-Item -ItemType Directory -Force ../../native-evidence | Out-Null
+          $env:TAURI_CONFIG | Set-Content ../../native-evidence/build-config-override.json
+          cargo build --locked --no-default-features
+          if($LASTEXITCODE){throw 'Native development build failed'}
 
       - name: Retain exact executable
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force native-binary | Out-Null
           Copy-Item target/studio/src-tauri/target/debug/unsloth-studio.exe native-binary/
-          @{target='70775b3bdf147d10e941306c17c25d51d98a4bca';sha256=(Get-FileHash native-binary/unsloth-studio.exe -Algorithm SHA256).Hash;configuration='cargo build --locked; default custom-protocol'} | ConvertTo-Json | Set-Content native-binary/provenance.json
+          @{target='70775b3bdf147d10e941306c17c25d51d98a4bca';sha256=(Get-FileHash native-binary/unsloth-studio.exe -Algorithm SHA256).Hash;configuration='cargo build --locked --no-default-features; TAURI_CONFIG adds direct browser debug argument; original window configuration preserved'} | ConvertTo-Json | Set-Content native-binary/provenance.json
 
       - name: Preserve exact executable for follow-up probes
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

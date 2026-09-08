@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// Report-only original-head browser harness. Serve via the frontend Vite server
-// in a fresh isolated browser context. This mounts production components; it is
-// simulated-native evidence and cannot prove native zoom or the app provider.
+// Controlled native harness: actual Tauri bridge and production controls/effects.
 // Harness endpoint: window.settingsHarness after data-harness-ready="true".
 // Suggested controls: getByRole('spinbutton', {name:'Interface scale'}),
 // 'UI font size', 'Code font size'; Reset customization is the real tab button.
@@ -75,7 +73,7 @@ async function mount() {
     <MotionConfig reducedMotion="always">
       <TooltipProvider>
         <main style={{ maxWidth: 960, margin: "0 auto", padding: 24 }}>
-          <p data-evidence-mode={desktop ? "simulated-native" : "browser"}>
+          <p data-evidence-mode={desktop ? "native-controlled-mount" : "browser"}>
             {desktop ? "WINDOWS NATIVE WEBVIEW — controlled settings mount" : "BROWSER CONTROL — actual React controls"}
           </p>
           <AppearanceTab />

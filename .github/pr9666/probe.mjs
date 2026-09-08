@@ -32,6 +32,16 @@ await page.waitForFunction(dpr=>Math.abs(devicePixelRatio-dpr*1.5)<0.02,baseline
 await page.getByRole('button',{name:'Reset customization',exact:true}).click();
 await page.waitForFunction(dpr=>Math.abs(devicePixelRatio-dpr)<0.02,baseline.dpr);
 assert.equal(await page.getByRole('spinbutton',{name:'Interface scale',exact:true}).inputValue(),'100');
+await page.getByRole('spinbutton',{name:'Interface scale',exact:true}).fill('175');
+await page.getByRole('spinbutton',{name:'Interface scale',exact:true}).press('Tab');
+await page.waitForFunction(dpr=>Math.abs(devicePixelRatio-dpr*1.75)<0.02,baseline.dpr);
+await page.reload();
+await page.waitForFunction(()=>document.documentElement.dataset.harnessReady==='true');
+await page.waitForFunction(dpr=>Math.abs(devicePixelRatio-dpr*1.75)<0.02,baseline.dpr);
+assert.equal(await page.getByRole('spinbutton',{name:'Interface scale',exact:true}).inputValue(),'175');
+writeFileSync('native-evidence/persistence.json',JSON.stringify({target,requested:175,dpr:await page.evaluate(()=>devicePixelRatio),baseline:baseline.dpr,reload:'pass'}));
+await page.getByRole('button',{name:'Reset customization',exact:true}).click();
+await page.waitForFunction(dpr=>Math.abs(devicePixelRatio-dpr)<0.02,baseline.dpr);
 writeFileSync('native-evidence/proof.json',JSON.stringify({target,mode:'Native Windows WebView2; controlled production controls/effects mount; no backend or actual OS file drag',userAgent:await page.evaluate(()=>navigator.userAgent),baseline,results,reset:'pass'},null,2));
 console.log('PASS native WebView2 actual zoom 50/100/150/200 and reset',JSON.stringify(results));
 process.exit(0);

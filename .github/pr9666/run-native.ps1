@@ -59,7 +59,7 @@ try {
   for($attempt=0;$attempt -lt 60;$attempt++){try{$null=Invoke-WebRequest http://localhost:5173/review.html;$ready=$true;break}catch{Start-Sleep -Seconds 1}}
   if(-not $ready){throw 'Harness HTTP endpoint failed to start'}
   $registry='HKCU:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
-  foreach($mode in @('explicit-env','registry-only')) {
+  foreach($mode in @('direct-config')) {
     if($mode -eq 'registry-only') {
       Remove-Item Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS -ErrorAction SilentlyContinue
       New-Item -Path $registry -Force | Out-Null
@@ -70,7 +70,7 @@ try {
     Start-Sleep -Seconds 5
     Snapshot-App "$mode-5s"
     $cdp=$false
-    for($i=0;$i -lt 30;$i++) {try{$version=Invoke-RestMethod http://127.0.0.1:19266/json/version;$cdp=$true;break}catch{Start-Sleep -Seconds 1}}
+    for($i=0;$i -lt 30;$i++) {try{$version=Invoke-RestMethod http://127.0.0.1:19266/json/version -TimeoutSec 2;$cdp=$true;break}catch{Start-Sleep -Seconds 1}}
     Snapshot-App "$mode-final"
     @{mode=$mode;cdp=$cdp} | ConvertTo-Json | Set-Content "native-evidence/result-$mode.json"
     if($cdp){break}
