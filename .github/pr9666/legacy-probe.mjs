@@ -14,6 +14,8 @@ await page.goto('http://localhost:5173/review.html');
 const font=page.getByRole('spinbutton',{name:'UI font size',exact:true});
 await font.waitFor({timeout:60000});
 assert.equal(await page.evaluate(()=>!!window.__TAURI_INTERNALS__),true);
+assert.equal(await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('set_close_to_tray',{enabled:false})),false);
+assert.equal(await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('get_close_to_tray')),false);
 const field=page.getByRole('spinbutton',{name:'Interface scale',exact:true});
 const baseline=JSON.parse(readFileSync('native-evidence/proof.json','utf8')).baseline.dpr;
 if(phase==='existing'){
@@ -22,11 +24,11 @@ if(phase==='existing'){
  await page.evaluate(()=>localStorage.setItem('pr9666_retained_control','preserve'));
 }else{
  assert.equal(await page.evaluate(()=>localStorage.getItem('pr9666_retained_control')),'preserve');
- assert.equal(await font.inputValue(),phase==='upgrade'?'20':'22');
+ assert.equal(await font.inputValue(),phase==='upgrade'?'20':'18');
  if(phase==='upgrade'){
   assert.equal(await field.inputValue(),'100');
   await field.fill('175');await field.press('Tab');
-  await font.fill('22');await font.press('Tab');
+  await font.fill('18');await font.press('Tab');assert.equal(await font.inputValue(),'18');
  }else if(phase==='rollback'){
   assert.equal(await field.count(),0);
   assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('unsloth_interface_scale')).state.scale),175);

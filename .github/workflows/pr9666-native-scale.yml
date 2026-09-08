@@ -38,18 +38,14 @@ jobs:
           Copy-Item .github/pr9666/* target/.codex/pr9666/
           git -C target rev-parse HEAD
 
-      - name: "Frontend dependencies and build"
+      - name: "Prepare frontend dependencies for retained binaries"
         shell: pwsh
         run: |
           Set-Location target/studio/frontend
           npm ci --ignore-scripts --no-audit --no-fund
           if ($LASTEXITCODE) { throw "npm ci failed" }
-          npm run build
-          if ($LASTEXITCODE) { throw "Frontend build failed" }
           Set-Location ../../../baseline/studio/frontend
           New-Item -ItemType Junction -Path node_modules -Target (Resolve-Path ../../../target/studio/frontend/node_modules).Path | Out-Null
-          npm run build
-          if ($LASTEXITCODE) { throw "Baseline frontend build failed" }
 
       - name: "Install pinned CDP client in probe directory"
         shell: pwsh
