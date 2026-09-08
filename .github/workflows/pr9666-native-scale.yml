@@ -62,26 +62,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh run download 34190692611 --repo Etherll/unsloth --name pr9666-native-binary --dir native-binary
+          gh run download 34191407996 --repo Etherll/unsloth --name pr9666-native-binary --dir native-binary
           if($LASTEXITCODE){throw 'Download failed'}
           $hash=(Get-FileHash native-binary/unsloth-studio.exe -Algorithm SHA256).Hash
           if($hash -ne '4967C1FF7C79EE85ACE083467CDFE8C4FFF85B3B13A48EEE02B7D2EFF2088EC3'){throw 'Native executable mismatch'}
           New-Item -ItemType Directory -Force target/studio/src-tauri/target/debug | Out-Null
           Copy-Item native-binary/unsloth-studio.exe target/studio/src-tauri/target/debug/
 
-      - name: "Build old native app with direct debugging configuration"
+      - name: "Verify retained old native app"
         shell: pwsh
         run: |
-          Set-Location baseline/studio/src-tauri
-          $config=Get-Content tauri.conf.json -Raw | ConvertFrom-Json -AsHashtable
-          $config.app.windows[0].additionalBrowserArgs='--autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port=19266'
-          $env:TAURI_CONFIG=@{app=@{windows=$config.app.windows}} | ConvertTo-Json -Compress -Depth 20
-          New-Item -ItemType Directory -Force ../../../target/native-evidence | Out-Null
-          $env:TAURI_CONFIG | Set-Content ../../../target/native-evidence/baseline-build-config-override.json
-          cargo build --locked --no-default-features
-          if($LASTEXITCODE){throw 'Native development build failed'}
-          Copy-Item target/debug/unsloth-studio.exe ../../../native-binary/unsloth-studio-base.exe
-          @{source='5c44c8c96b7fad0777cb6ea1240e5427f81e6fe4';sha256=(Get-FileHash target/debug/unsloth-studio.exe -Algorithm SHA256).Hash;configuration='cargo build --locked --no-default-features; direct debug arguments; original windows retained'} | ConvertTo-Json | Set-Content ../../../native-binary/baseline-provenance.json
+          $hash=(Get-FileHash native-binary/unsloth-studio-base.exe -Algorithm SHA256).Hash
+          if($hash -ne '19A57D2BA8F1EA849CF6BFF45722F6BD4D426F8C6EF531D575F6EB343AB26DF1'){throw 'Baseline executable mismatch'}
+          $proof=Get-Content native-binary/baseline-provenance.json -Raw | ConvertFrom-Json
+          if($proof.source -ne '5c44c8c96b7fad0777cb6ea1240e5427f81e6fe4'){throw 'Baseline source mismatch'}
 
       - name: Retain exact executable
         shell: pwsh
