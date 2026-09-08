@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 $ErrorActionPreference='Stop'
 New-Item -ItemType Directory -Force native-evidence | Out-Null
+. .codex/pr9666/read-debug-environment.ps1
 function Protect-Log([string]$value) {
   if ($null -eq $value) { return '' }
   $value=$value -replace '(?im)^.*(?:password|authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|cookie|secret|bootstrap).*$','[sensitive line redacted]'
@@ -36,6 +37,8 @@ function Snapshot-App([string]$label) {
   } while($new.Count)
   $rows=@($all | Where-Object {$_.ProcessId -in $owned -or $_.Name -eq 'msedgewebview2.exe'} | ForEach-Object {@{pid=$_.ProcessId;parent=$_.ParentProcessId;name=$_.Name;command=(Protect-Log $_.CommandLine)}})
   $app.Refresh()
+  $flag=if(-not $app.HasExited){[DebugEnvironment]::ReadFlag($app.Id)}else{'<exited>'}
+  @{label=$label;inheritedDebugArguments=$flag} | ConvertTo-Json | Set-Content "native-evidence/child-environment-$label.json"
   $modules=@();$threads=@();$windows=@()
   if(-not $app.HasExited) {
     try { $modules=@($app.Modules | ForEach-Object {$_.ModuleName}) } catch { $modules=@('module enumeration unavailable') }
@@ -55,12 +58,29 @@ try {
   $ready=$false
   for($attempt=0;$attempt -lt 60;$attempt++){try{$null=Invoke-WebRequest http://localhost:5173/review.html;$ready=$true;break}catch{Start-Sleep -Seconds 1}}
   if(-not $ready){throw 'Harness HTTP endpoint failed to start'}
-  $app=Start-Process './studio/src-tauri/target/debug/unsloth-studio.exe' -WindowStyle Hidden -PassThru -RedirectStandardOutput app.log -RedirectStandardError app.err
-  Start-Sleep -Seconds 5
-  Snapshot-App '5s'
+  $registry='HKCU:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
+  foreach($mode in @('explicit-env','registry-only')) {
+    if($mode -eq 'registry-only') {
+      Remove-Item Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS -ErrorAction SilentlyContinue
+      New-Item -Path $registry -Force | Out-Null
+      New-ItemProperty -Path $registry -Name 'unsloth-studio.exe' -PropertyType String -Value '--remote-debugging-port=19266' -Force | Out-Null
+      $childEnv=@{WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=$null}
+    } else {$childEnv=@{WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS='--remote-debugging-port=19266'}}
+    $app=Start-Process './studio/src-tauri/target/debug/unsloth-studio.exe' -Environment $childEnv -WindowStyle Hidden -PassThru -RedirectStandardOutput app.log -RedirectStandardError app.err
+    Start-Sleep -Seconds 5
+    Snapshot-App "$mode-5s"
+    $cdp=$false
+    for($i=0;$i -lt 30;$i++) {try{$version=Invoke-RestMethod http://127.0.0.1:19266/json/version;$cdp=$true;break}catch{Start-Sleep -Seconds 1}}
+    Snapshot-App "$mode-final"
+    @{mode=$mode;cdp=$cdp} | ConvertTo-Json | Set-Content "native-evidence/result-$mode.json"
+    if($cdp){break}
+    Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 3
+  }
   node .codex/pr9666/probe.mjs
   if($LASTEXITCODE){throw 'Native probe failed'}
 } finally {
+  if($registry -and (Test-Path $registry)){Remove-ItemProperty -Path $registry -Name 'unsloth-studio.exe' -ErrorAction SilentlyContinue}
   if($app){try{Snapshot-App 'final'}catch{Protect-Log $_.Exception.Message | Set-Content native-evidence/snapshot-error.txt}finally{Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue}}
   Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
   foreach($log in @('app.log','app.err','vite.log','vite.err')) {

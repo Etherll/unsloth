@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   repro:
@@ -50,12 +51,19 @@ jobs:
           npm install --prefix target/.codex/pr9666 --no-save --ignore-scripts --no-audit --no-fund playwright-core@1.58.2
           if ($LASTEXITCODE) { throw "CDP client install failed" }
 
-      - name: "Build exact native app"
+      - name: "Reuse verified exact native app"
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          Set-Location target/studio/src-tauri
-          cargo build --locked
-          if ($LASTEXITCODE) { throw "Native build failed" }
+          gh run download 34188779934 --repo Etherll/unsloth --name pr9666-native-binary --dir native-binary
+          if ($LASTEXITCODE) { throw "Binary download failed" }
+          $proof=Get-Content native-binary/provenance.json -Raw | ConvertFrom-Json
+          if($proof.target -ne '70775b3bdf147d10e941306c17c25d51d98a4bca'){throw 'Wrong target'}
+          $hash=(Get-FileHash native-binary/unsloth-studio.exe -Algorithm SHA256).Hash
+          if($hash -ne '5FE95F65E2B70293FFC5DDCA8EA00CE9BFF081F858147C00272EE785FCC5E4DF' -or $proof.sha256 -ne $hash){throw 'Binary hash mismatch'}
+          New-Item -ItemType Directory -Force target/studio/src-tauri/target/debug | Out-Null
+          Copy-Item native-binary/unsloth-studio.exe target/studio/src-tauri/target/debug/
 
       - name: Retain exact executable
         shell: pwsh
