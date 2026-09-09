@@ -2,7 +2,7 @@
   "pr": 10620,
   "head_ref": "fix/scanned-pdf-ingestion",
   "base_sha": "999dd8500fa845cd766d3d1b3bd408c1fe0ee647",
-  "head_sha": "3c4a1c03311e756342a96e602d333e21007458b8",
+  "head_sha": "7eec4640940ba5ba1b5cc4fd8724a3446fce74a7",
   "scene": "pdf_seed_upload",
   "expect": "The identical scanned PDF fails to yield text before the PR; the final head uploads successfully and displays the OCR marker in Preview.",
   "facts": {
@@ -34,5 +34,5 @@
   "platform": "Windows",
   "ocr": "real local OCR, English tessdata",
   "composition": "Original pixels preserved; white padding equalizes panel dimensions. No resizing.",
-  "composite_sha256": "29f8473db8f2b815771ac63de04a8ccda1dd6b4205c92651f25772e779dfac56"
+  "composite_sha256": "369d5f863cae1d4ede048117e0a2411071184b405d19db730f0e4b2011fc398d"
 }
