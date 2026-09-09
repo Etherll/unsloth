@@ -34,5 +34,6 @@
   "platform": "Windows",
   "ocr": "real local OCR, English tessdata",
   "composition": "Original pixels preserved; white padding equalizes panel dimensions. No resizing.",
-  "composite_sha256": "369d5f863cae1d4ede048117e0a2411071184b405d19db730f0e4b2011fc398d"
+  "capture": "Active tab indicator aligned with its trigger within 0.25px for at least 200ms before each screenshot.",
+  "composite_sha256": "a8e608f8b577b02d6bb5d3de0333aa24ffd477f3ff90f8cb3acf9f2957090a59"
 }
