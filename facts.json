@@ -1,0 +1,38 @@
+{
+  "pr": 10620,
+  "head_ref": "fix/scanned-pdf-ingestion",
+  "base_sha": "999dd8500fa845cd766d3d1b3bd408c1fe0ee647",
+  "head_sha": "3c4a1c03311e756342a96e602d333e21007458b8",
+  "scene": "pdf_seed_upload",
+  "expect": "The identical scanned PDF fails to yield text before the PR; the final head uploads successfully and displays the OCR marker in Preview.",
+  "facts": {
+    "BEFORE": {
+      "pdf_sha256": "3b30dcac59dfe3cb09e3e3e74b929636b52f167c0b5bb9a4080b5874b8227613",
+      "upload_http_status": 200,
+      "upload_status": "error",
+      "upload_error": "No extractable text found in file",
+      "preview_rows": 0,
+      "marker_visible": false,
+      "dialog_text": "Document file\n\nUpload PDF, DOCX, or TXT and turn it into source rows.\n\nNeeds attention: Load the source-data preview first..\n\nKeep out of final dataset\n\nUse this step while generating, but leave it out of exported rows.\n\nConfig\nPreview\n\nDrop files here or click to browse\n\nPDF, DOCX, TXT, MD - up to 500MB each, 1GB total\n\ninput.pdf\n4.0 MB\nNo extractable text found in file\n0 files uploaded\n4.0 MB / 1GB\nADVANCED SOURCE OPTIONS\nShow\nDone\nClose"
+    },
+    "AFTER": {
+      "pdf_sha256": "3b30dcac59dfe3cb09e3e3e74b929636b52f167c0b5bb9a4080b5874b8227613",
+      "upload_http_status": 200,
+      "upload_status": "ok",
+      "upload_error": null,
+      "preview_rows": 1,
+      "marker_visible": true,
+      "dialog_text": "Document file\n\nUpload PDF, DOCX, or TXT and turn it into source rows.\n\nKeep out of final dataset\n\nUse this step while generating, but leave it out of exported rows.\n\nConfig\nPreview\nLoaded columns: chunk_text, source_file\nchunk_text\tsource_file\nInvoice zebra-42 total 123 dollars\tinput.pdf\nDone\nClose"
+    }
+  },
+  "pr_url": "https://github.com/unslothai/unsloth/pull/10620",
+  "browser": "Playwright Chromium",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "platform": "Windows",
+  "ocr": "real local OCR, English tessdata",
+  "composition": "Original pixels preserved; white padding equalizes panel dimensions. No resizing.",
+  "composite_sha256": "29f8473db8f2b815771ac63de04a8ccda1dd6b4205c92651f25772e779dfac56"
+}
