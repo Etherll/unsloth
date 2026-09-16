@@ -137,6 +137,7 @@ for (const active of ["runtime", "pre-stream", "queue", "idle"]) {
       overlay: false,
       hasAttachments: false,
       hasPendingAudio: false,
+      cancelAudioUpload: () => calls.push("cancel-upload"),
       clearStoredDraft: () => calls.push("clear"),
       sendReservedComposer: () => calls.push("send"),
     };
@@ -145,7 +146,9 @@ for (const active of ["runtime", "pre-stream", "queue", "idle"]) {
     release(); // An old render cannot release a cancelled/consumed send twice.
     assert.deepEqual(
       calls,
-      active === "idle" ? ["clear", "send"] : [[active !== "queue", "steer"]],
+      active === "idle"
+        ? ["cancel-upload", "clear", "send"]
+        : [[active !== "queue", "steer"]],
     );
     assert.equal(pendingSendRef.current, false);
   });
