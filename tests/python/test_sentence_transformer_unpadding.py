@@ -293,6 +293,81 @@ def test_torch_compile_eager_backend_preserves_padded_values(tiny_model, kernel,
     torch._dynamo.reset()
 
 
+@pytest.mark.parametrize("peft", [False, True])
+@pytest.mark.parametrize("forward_params", [None, {"input_ids", "attention_mask"}])
+def test_upstream_compile_restores_original_execution(
+    tiny_model, monkeypatch, peft, forward_params
+):
+    from unsloth import FastSentenceTransformer
+    from unsloth.utils import attention_dispatch as ad
+
+    monkeypatch.setattr(ad, "select_attention_backend", lambda **kwargs: ad.FLASH_VARLEN)
+    model = tiny_model
+    transformer = model[0]
+    base = transformer.auto_model
+    original_forward, original_encoder = model.forward, base.encoder.forward
+    transformer.model_forward_params = forward_params
+    _enable(model)
+    if forward_params is not None:
+        transformer.model_forward_params.add("later_extension")
+    if peft:
+        from peft import LoraConfig, get_peft_model
+        transformer.model = get_peft_model(base, LoraConfig(r = 2, target_modules = ["query", "value"]))
+    parameter_ids = [id(parameter) for parameter in model.parameters()]
+    calls = []
+
+    def compile_original(inner, mode):
+        calls.append(inner)
+        assert inner is transformer.auto_model
+        assert model.forward == original_forward
+        assert base.encoder.forward == original_encoder
+        assert base.config._attn_implementation == "sdpa"
+        assert not getattr(model, "_unsloth_unpadding_installed", False)
+        assert not hasattr(base.encoder, "_unsloth_original_forward")
+        expected_params = None if forward_params is None else forward_params | {"later_extension"}
+        assert transformer.model_forward_params == expected_params
+        return inner
+
+    monkeypatch.setattr(torch, "compile", compile_original)
+    assert FastSentenceTransformer._apply_torch_compile(model) is model
+    assert FastSentenceTransformer._apply_torch_compile(model) is model
+    assert len(calls) == 2
+    assert parameter_ids == [id(parameter) for parameter in model.parameters()]
+
+
+@pytest.mark.parametrize("owner", ["model", "encoder"])
+def test_compile_restoration_preserves_user_forward(tiny_model, monkeypatch, owner):
+    from unsloth.models._sentence_transformer_unpadding import (
+        disable_sentence_transformer_unpadding,
+    )
+    from unsloth.utils import attention_dispatch as ad
+
+    monkeypatch.setattr(ad, "select_attention_backend", lambda **kwargs: ad.FLASH_VARLEN)
+    model = _enable(tiny_model)
+    target = model if owner == "model" else model[0].auto_model.encoder
+
+    def custom_forward(*args, **kwargs):
+        return None
+
+    target.forward = custom_forward
+    assert not disable_sentence_transformer_unpadding(model)
+    assert target.forward is custom_forward
+
+
+def test_compile_restoration_preserves_changed_backend(tiny_model, monkeypatch):
+    from unsloth.models._sentence_transformer_unpadding import (
+        disable_sentence_transformer_unpadding,
+    )
+    from unsloth.utils import attention_dispatch as ad
+
+    monkeypatch.setattr(ad, "select_attention_backend", lambda **kwargs: ad.FLASH_VARLEN)
+    model = _enable(tiny_model)
+    model[0].auto_model.config._attn_implementation = "eager"
+    assert disable_sentence_transformer_unpadding(model)
+    assert model[0].auto_model.config._attn_implementation == "eager"
+    assert not disable_sentence_transformer_unpadding(model)
+
+
 def _assert_gradients(
     reference,
     candidate,

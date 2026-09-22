@@ -35,7 +35,9 @@ other architectures, custom token-processing modules, requested hidden states
 or attention weights, routed keyword mask overrides, feed-forward chunking, unsupported masks and head
 dimensions above 256 remain padded. Upstream automatic compilation is unchanged;
 compiled whole models and compiled inner encoders use the padded path, including
-across graph breaks. This does not replace native unpadding in other architectures.
+across graph breaks. Unsloth restores its own original forwards and SDPA backend
+before applying its compilation helper, avoiding wrapper overhead on that path.
+This does not replace native unpadding in other architectures.
 
 Attended token embeddings and sentence embeddings are the numerical contract.
 Padded encoder positions are zero during packed training. Dropout draws differ
@@ -117,8 +119,15 @@ repeated across different pairs and discard incomplete batches consistently acro
 Every forward receives fresh feature dictionaries because SentenceTransformer
 adds outputs to them. Exact fixture, initial-state, model-file and source hashes
 are recorded. An untimed post-measurement probe checks actual FlashAttention
-dispatch and automatic fallback; compiled runs additionally require a real
-OptimizedModule. Installation flags alone are not accepted as activation proof.
+dispatch and automatic fallback. Compiled runs require an OptimizedModule **and**
+successful Dynamo graphs, AOT backend compilations and generated Inductor kernels
+after warmup, before timing. Counters reset for each repeat; failed compilations
+and graph breaks are recorded. This proves partially compiled execution, not
+fullgraph coverage. A wrapper alone can silently fall back under upstream's
+compiler error-suppression policy. In WSL, inaccessible inherited Windows PATH
+entries can make compiler executable probes fail; use a Linux-only process PATH
+and retain any error evidence instead of accepting fallback timings as compiled.
+Installation flags alone are not accepted as activation proof.
 Keep raw per-step arrays and report medians across the three repeat medians.
 
 Run all three policies (main/off/auto) for the following matrix:
