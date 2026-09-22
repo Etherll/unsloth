@@ -216,7 +216,7 @@ def test_automatic_size_boundary_and_forced_override(tiny_model, kernel):
         inspect.signature(FastSentenceTransformer.from_pretrained)
         .parameters["use_unpadding"]
         .default
-        == "auto"
+        is False
     )
     reference = tiny_model.cuda().half().train()
     candidate = copy.deepcopy(reference)
