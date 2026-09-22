@@ -8,6 +8,7 @@ import argparse
 import gc
 import hashlib
 import json
+import math
 import os
 import platform
 import subprocess
@@ -23,6 +24,31 @@ SOURCE_FILES = (
     "unsloth/utils/attention_dispatch.py",
     "unsloth/utils/packing.py",
 )
+
+
+def select_wall_clock(time_module = time):
+    # Unlike CLOCK_MONOTONIC, RAW is not rate-adjusted by clock synchronization.
+    if hasattr(time_module, "CLOCK_MONOTONIC_RAW"):
+        return (
+            lambda: time_module.clock_gettime(time_module.CLOCK_MONOTONIC_RAW),
+            "CLOCK_MONOTONIC_RAW",
+        )
+    return time_module.perf_counter, "perf_counter"
+
+
+wall_clock, WALL_CLOCK_NAME = select_wall_clock()
+
+
+def validate_step_clocks(wall_ms, cuda_ms):
+    if not all(math.isfinite(value) and value > 0 for value in (wall_ms, cuda_ms)):
+        raise RuntimeError(f"invalid step clocks: wall={wall_ms} ms, CUDA={cuda_ms} ms")
+    # The synchronized wall window encloses both CUDA events. Allow small timer
+    # resolution/rate differences, but reject materially inconsistent clocks.
+    if cuda_ms > wall_ms * 1.01 + 0.05:
+        raise RuntimeError(
+            f"inconsistent step clocks ({WALL_CLOCK_NAME}): "
+            f"wall={wall_ms} ms, CUDA={cuda_ms} ms; discard this arm"
+        )
 
 
 def parse_args():
@@ -389,7 +415,7 @@ def synthetic_batches(model, a, torch):
 
 def text_batches(model, a, pairs):
     model.max_seq_length = a.max_length
-    started = time.perf_counter()
+    started = wall_clock()
     batches = []
     row_batches, dropped = full_pair_batches(pairs, a.batch_size)
     for rows in row_batches:
@@ -399,7 +425,7 @@ def text_batches(model, a, pairs):
                 model.tokenize([row[1] for row in rows]),
             )
         )
-    return batches, (time.perf_counter() - started) * 1000, dropped
+    return batches, (wall_clock() - started) * 1000, dropped
 
 
 def batch_meta(batches, torch):
@@ -571,7 +597,7 @@ def run_repeat(a, pairs, torch, device):
             torch.cuda.Event(enable_timing = True),
         )
         torch.cuda.synchronize()
-        wall_start = time.perf_counter()
+        wall_start = wall_clock()
         fwd_start.record()
         with torch.autocast("cuda", dtype = torch_dtype(a.dtype, torch), enabled = amp):
             loss = loss_fn(fresh_features(batch), labels = None)
@@ -581,21 +607,24 @@ def run_repeat(a, pairs, torch, device):
         optimizer.step()
         opt_end.record()
         torch.cuda.synchronize()
+        wall_ms = (wall_clock() - wall_start) * 1000
+        cuda_ms = fwd_start.elapsed_time(opt_end)
+        validate_step_clocks(wall_ms, cuda_ms)
         return (
             loss,
-            (time.perf_counter() - wall_start) * 1000,
+            wall_ms,
             fwd_start.elapsed_time(fwd_end),
             fwd_end.elapsed_time(back_end),
             back_end.elapsed_time(opt_end),
-            fwd_start.elapsed_time(opt_end),
+            cuda_ms,
         )
 
     warmup_wall = []
     for i in range(a.warmup):
-        warmup_start = time.perf_counter()
+        warmup_start = wall_clock()
         warmup_loss = train_step(gpu_batches[i % len(gpu_batches)])
         torch.cuda.synchronize()
-        warmup_wall.append((time.perf_counter() - warmup_start) * 1000)
+        warmup_wall.append((wall_clock() - warmup_start) * 1000)
         warmup_cpu = warmup_loss.detach().float().cpu()
         if not bool(torch.isfinite(warmup_cpu)):
             raise RuntimeError(f"non-finite warmup loss at step {i}: {warmup_cpu.item()}")
@@ -777,6 +806,22 @@ def package_versions():
 def self_validate_helpers():
     from types import SimpleNamespace
 
+    raw_clock, raw_name = select_wall_clock(
+        SimpleNamespace(CLOCK_MONOTONIC_RAW = 42, clock_gettime = lambda clock: clock + 1)
+    )
+    assert raw_name == "CLOCK_MONOTONIC_RAW" and raw_clock() == 43
+    fallback_clock, fallback_name = select_wall_clock(SimpleNamespace(perf_counter = lambda: 7))
+    assert fallback_name == "perf_counter" and fallback_clock() == 7
+    validate_step_clocks(10, 9.9)
+    validate_step_clocks(10, 10.1)
+    for wall_ms, cuda_ms in ((10, 11), (0, 1), (1, -1), (math.nan, 1), (1, math.inf)):
+        try:
+            validate_step_clocks(wall_ms, cuda_ms)
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError(f"invalid step clocks accepted: {wall_ms}, {cuda_ms}")
+
     probe_config = SimpleNamespace(
         compile = False,
         pairs_json = None,
@@ -853,7 +898,9 @@ def self_validate_helpers():
         else:
             raise AssertionError(f"compiled lane accepted missing {field}")
     assert quantile([1, 2, 3], 0.5) == 2 and stats([1, 2, 3])["median"] == 2
-    print("SELF_TEST_OK dispatch_guard fresh_features full_batches compile_execution_guard stats")
+    print(
+        "SELF_TEST_OK clocks dispatch_guard fresh_features full_batches compile_execution_guard stats"
+    )
 
 
 def main():
@@ -888,7 +935,12 @@ def main():
         raise SystemExit("CUDA is required for this benchmark")
     device = torch.device("cuda")
     base = {
-        "schema": "sentence-transformer-benchmark-v3",
+        "schema": "sentence-transformer-benchmark-v4",
+        "wall_clock": {
+            "name": WALL_CLOCK_NAME,
+            "cuda_sanity_relative_tolerance": 0.01,
+            "cuda_sanity_absolute_tolerance_ms": 0.05,
+        },
         "mode": a.mode,
         "execution": "compiled" if a.compile else "eager",
         "config": vars(a)
