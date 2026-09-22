@@ -1,5 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
-# Copyright 2026-present the Unsloth AI Inc. team.
+# SPDX-License-Identifier: Apache-2.0
 """Matched SentenceTransformer training benchmark; isolate each implementation in its own process."""
 
 from __future__ import annotations

@@ -1,5 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
-# Copyright 2026-present the Unsloth AI Inc. team.
+# SPDX-License-Identifier: Apache-2.0
 """Real tiny encoders exercise sentence unpadding without downloading checkpoints.
 
 The simulated Flash function executes independent SDPA segments on CUDA. It proves

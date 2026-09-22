@@ -1,5 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
-# Copyright 2026-present the Unsloth AI Inc. team.
+# SPDX-License-Identifier: Apache-2.0
 """Prepare a pinned STS-B sentence-pair fixture without using the HF dataset cache."""
 
 from __future__ import annotations
