@@ -324,6 +324,37 @@ def compilation_evidence(model, enabled):
     return {"requested": enabled, "optimized_modules": wrapped}
 
 
+def reset_compilation_counters(torch):
+    from torch._dynamo.utils import counters
+    from torch._inductor import metrics
+
+    torch._dynamo.reset()
+    counters.clear()
+    metrics.reset()
+
+
+def validate_compilation_execution(evidence):
+    required = ("unique_graphs", "aot_autograd_ok", "generated_kernel_count")
+    if any(evidence.get(name, 0) <= 0 for name in required):
+        raise RuntimeError(f"compiled lane has no successful Inductor execution: {evidence}")
+
+
+def compilation_execution_evidence():
+    from torch._dynamo.utils import counters
+    from torch._inductor import metrics
+
+    evidence = {
+        "scope": "successful graphs, not a fullgraph guarantee",
+        "unique_graphs": counters["stats"]["unique_graphs"],
+        "aot_autograd_ok": counters["aot_autograd"]["ok"],
+        "aot_autograd_not_ok": counters["aot_autograd"]["not_ok"],
+        "generated_kernel_count": metrics.generated_kernel_count,
+        "graph_breaks": sum(counters["graph_break"].values()),
+    }
+    validate_compilation_execution(evidence)
+    return evidence
+
+
 def synthetic_batches(model, a, torch):
     batch_count = a.warmup + a.iterations
     b, length, frac = a.batch_size, a.max_length, padding_fraction(a)
@@ -503,6 +534,8 @@ def probe_flash_varlen_dispatch(loss_fn, batch, a, torch):
 def run_repeat(a, pairs, torch, device):
     gc.collect()
     torch.cuda.empty_cache()
+    if a.compile:
+        reset_compilation_counters(torch)
     seed_all(a.seed, torch)
     model, fast_st = load_model(a, torch)
     fixture = build_fixture(model, a, pairs, torch)
@@ -567,6 +600,8 @@ def run_repeat(a, pairs, torch, device):
         if not bool(torch.isfinite(warmup_cpu)):
             raise RuntimeError(f"non-finite warmup loss at step {i}: {warmup_cpu.item()}")
     torch.cuda.synchronize()
+    if a.compile:
+        compiled_evidence["after_warmup"] = compilation_execution_evidence()
     torch.cuda.reset_peak_memory_stats(device)
     wall, forward, backward, optimizer_ms, total, losses, samples, tokens = (
         [],
@@ -597,6 +632,8 @@ def run_repeat(a, pairs, torch, device):
     torch.cuda.synchronize()
     peak_allocated = torch.cuda.max_memory_allocated(device) / 2**20
     peak_reserved = torch.cuda.max_memory_reserved(device) / 2**20
+    if a.compile:
+        compiled_evidence["after_measurement"] = compilation_execution_evidence()
     final = state_fingerprint(model)
     dispatch_probe = probe_flash_varlen_dispatch(loss_fn, gpu_batches[0], a, torch)
     validate_dispatch_probe(a, dispatch_probe)
@@ -645,6 +682,8 @@ def run_repeat(a, pairs, torch, device):
 def profile_case(a, pairs, torch, device, out_dir):
     gc.collect()
     torch.cuda.empty_cache()
+    if a.compile:
+        reset_compilation_counters(torch)
     seed_all(a.seed, torch)
     model, fast_st = load_model(a, torch)
     fixture = build_fixture(model, a, pairs, torch)
@@ -676,6 +715,8 @@ def profile_case(a, pairs, torch, device, out_dir):
     for i in range(a.warmup):
         step(gpu_batches[i % len(gpu_batches)])
     torch.cuda.synchronize()
+    if a.compile:
+        compiled_evidence["after_warmup"] = compilation_execution_evidence()
     out_dir.mkdir(parents = True, exist_ok = True)
     compile_label = "compiled" if a.compile else "eager"
     trace = (
@@ -692,6 +733,8 @@ def profile_case(a, pairs, torch, device, out_dir):
     ) as prof:
         for i in range(min(3, len(gpu_batches))):
             step(gpu_batches[i])
+    if a.compile:
+        compiled_evidence["after_profile"] = compilation_execution_evidence()
     prof.export_chrome_trace(str(trace))
     table = trace.with_suffix(".txt")
     table.write_text(
@@ -800,8 +843,17 @@ def self_validate_helpers():
     assert apply_explicit_compile(marker, FakeCompiler, False) is marker and not FakeCompiler.calls
     assert apply_explicit_compile(marker, FakeCompiler, True) == ("compiled", marker)
     assert FakeCompiler.calls == [(marker, "default")]
+    successful_compile = dict(unique_graphs = 1, aot_autograd_ok = 1, generated_kernel_count = 1)
+    validate_compilation_execution(successful_compile)
+    for field in successful_compile:
+        try:
+            validate_compilation_execution({**successful_compile, field: 0, "calls_captured": 927})
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError(f"compiled lane accepted missing {field}")
     assert quantile([1, 2, 3], 0.5) == 2 and stats([1, 2, 3])["median"] == 2
-    print("SELF_TEST_OK dispatch_guard fresh_features full_batches compile_control stats")
+    print("SELF_TEST_OK dispatch_guard fresh_features full_batches compile_execution_guard stats")
 
 
 def main():

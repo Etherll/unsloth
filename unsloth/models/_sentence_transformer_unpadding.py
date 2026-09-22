@@ -189,6 +189,37 @@ def _sentence_forward(model, input, **kwargs):
     return result
 
 
+def disable_sentence_transformer_unpadding(model):
+    """Restore installer-owned execution before upstream compiles the padded model."""
+    if not getattr(model, "_unsloth_unpadding_installed", False):
+        return False
+    transformer = model[0]
+    base = transformer.auto_model
+    base = getattr(base, "_orig_mod", base)
+    if hasattr(base, "get_base_model"):
+        base = base.get_base_model()
+    encoder = getattr(base, "encoder", None)
+    # Do not overwrite forwards replaced by callers after installation.
+    if (
+        getattr(model.forward, "__func__", None) is not _sentence_forward
+        or getattr(getattr(encoder, "forward", None), "__func__", None) is not _encoder_forward
+    ):
+        return False
+    model.forward = model._unsloth_original_forward
+    encoder.forward = encoder._unsloth_original_forward
+    if base.config._attn_implementation == _ATTENTION:
+        base.config._attn_implementation = "sdpa"
+    if transformer.model_forward_params is not None:
+        transformer.model_forward_params = set(transformer.model_forward_params) - {_MASK}
+    del model._unsloth_original_forward
+    del model._unsloth_unpadding_installed
+    del model._unsloth_use_unpadding
+    del encoder._unsloth_original_forward
+    del encoder._unsloth_padding_threshold
+    del encoder._unsloth_min_tokens
+    return True
+
+
 def enable_sentence_transformer_unpadding(
     model,
     padding_threshold = 0.0,

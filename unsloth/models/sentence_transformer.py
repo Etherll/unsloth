@@ -1392,6 +1392,9 @@ class FastSentenceTransformer(FastModel):
     @staticmethod
     def _apply_torch_compile(model, mode = "default"):
         """Apply torch.compile to a SentenceTransformer model (with an accelerate unwrap_model bug workaround)."""
+        if getattr(model, "_unsloth_unpadding_installed", False):
+            from ._sentence_transformer_unpadding import disable_sentence_transformer_unpadding
+            disable_sentence_transformer_unpadding(model)
         if hasattr(model, "__getitem__"):
             inner_model = model[0].auto_model
             compiled = torch.compile(inner_model, mode = mode)
