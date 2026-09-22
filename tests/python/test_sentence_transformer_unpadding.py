@@ -9,6 +9,7 @@ The real backend parameter is separately skipped when FlashAttention is unavaila
 
 import copy
 from contextlib import nullcontext
+import importlib.util
 import inspect
 import subprocess
 import sys
@@ -29,6 +30,8 @@ def _build_tiny_model(
     tmp_path,
     hidden_size = 16,
 ):
+    if importlib.util.find_spec("sentence_transformers") is None:
+        pytest.skip("tiny encoder fixtures require optional sentence-transformers")
     import transformers
 
     if int(transformers.__version__.split(".")[0]) < 5:
@@ -86,6 +89,12 @@ def _build_tiny_model(
     )
     transformer = Transformer(str(checkpoint), **{model_options: {"attn_implementation": "sdpa"}})
     return SentenceTransformer(modules = [transformer, Pooling(hidden_size)], device = "cpu")
+
+
+def test_missing_sentence_transformers_skips_fixture(monkeypatch, tmp_path):
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+    with pytest.raises(pytest.skip.Exception, match = "optional sentence-transformers"):
+        _build_tiny_model("bert", tmp_path)
 
 
 def _features(model, device = "cpu"):

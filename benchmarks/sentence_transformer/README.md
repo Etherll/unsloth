@@ -116,6 +116,15 @@ are reset after warmup. Tokenization and host-to-device transfer are recorded
 separately, outside resident training-step timing. Real batches exclude sentences
 repeated across different pairs and discard incomplete batches consistently across arms.
 
+Wall timing uses `CLOCK_MONOTONIC_RAW` where available, with `perf_counter` as
+the portable fallback, and records the selected clock. A per-step check rejects
+non-finite/non-positive clocks or CUDA event time exceeding its enclosing wall
+window by more than 1% plus 0.05 ms. Retain failed-run logs and rerun the entire
+affected arm. On the measured WSL host, the adjusted monotonic clock sometimes
+underreported elapsed time by about 9%; raw monotonic, CUDA events and an external
+Windows timer agreed. Earlier adjusted-clock timings are not accepted results.
+Do not interpret the wall/event difference as an isolated CPU-overhead measurement.
+
 Every forward receives fresh feature dictionaries because SentenceTransformer
 adds outputs to them. Exact fixture, initial-state, model-file and source hashes
 are recorded. An untimed post-measurement probe checks actual FlashAttention
