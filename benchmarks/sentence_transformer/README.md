@@ -146,7 +146,7 @@ Run all three policies (main/off/auto) for the following matrix:
 | 16 / 32, 32 / 128, 16 / 512 | 5%, 35%, 75% each |
 | 8 / 128, 64 / 128 | 50% |
 | 16 / 256, 31 / 256, 32 / 256 | 25%, including below/at the automatic cutoff |
-| 16 / 512 | 1% |
+| 16 / 512 | 0%, 1% |
 | 32 / 128, LoRA | 5%, 35%, 75% |
 | 32 / up to 128, real STSB | Full training and LoRA |
 | 32 / 128, compiled | 50%, full training and LoRA |
@@ -154,9 +154,13 @@ Run all three policies (main/off/auto) for the following matrix:
 Also report forced packing for 32/128/75% full training and LoRA, and real STSB.
 Do not describe memory-only wins as throughput wins. The initial profiling found
 launch overhead and synchronization significant for small shapes. Known-size
-indexing and in-place repadding were tested independently and rejected: neither
-gave a dependable speed improvement, and the latter's sub-1% peak-memory saving
-did not justify its measured latency cost.
+indexing and in-place repadding were tested independently and together. The
+combination's apparent fixed-order benefit did not hold consistently in an
+alternating-order confirmation. The simpler operations remain: in-place
+repadding saved less than 1% allocated memory without reducing reserved memory.
+Zero-padding automatic fallback retained a measured 2–4% dispatch cost; choose
+`False` when the workload never benefits from compaction. Short-batch fallback
+timings were noisy, so retain both the full matrix and supplemental controls.
 
 ## Correctness checks
 
