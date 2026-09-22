@@ -158,8 +158,9 @@ Do not describe memory-only wins as throughput wins. The initial profiling found
 launch overhead and synchronization significant for small shapes. Known-size
 indexing and in-place repadding were tested independently and together. The
 combination's apparent fixed-order benefit did not hold consistently in an
-alternating-order confirmation. The simpler operations remain: in-place
-repadding saved less than 1% allocated memory without reducing reserved memory.
+alternating-order confirmation. The original indexing and repadding remain.
+Experimental in-place repadding saved less than 1% allocated memory without
+reducing reserved memory, so it was not retained.
 Zero-padding automatic fallback retained a measured 2–4% dispatch cost; choose
 `False` when the workload never benefits from compaction. Short-batch fallback
 timings were noisy, so retain both the full matrix and supplemental controls.

@@ -121,8 +121,8 @@ def _encoder_forward(
     ):
         return original_forward(hidden_states, attention_mask = attention_mask, **kwargs)
 
-    # One host observation supplies validity, lengths and dispatch. Never cache
-    # by mask identity: data loaders can mutate and reuse the same tensor.
+    # Read validity and lengths once; nonzero also synchronizes CUDA to size its
+    # output. Never cache by mask identity: data loaders can mutate the tensor.
     keep = mask == 1
     lengths = keep.sum(dim = 1, dtype = torch.int32)
     summary = torch.cat((lengths, ((mask == 0) | keep).all().to(torch.int32).reshape(1))).tolist()
