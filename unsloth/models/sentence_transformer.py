@@ -1431,8 +1431,20 @@ class FastSentenceTransformer(FastModel):
         unsloth_tiled_mlp = False,
         pooling_mode = "mean",
         for_inference = False,
+        use_unpadding = "auto",
         **kwargs,
     ):
+        """Load a sentence model with optional training-only encoder unpadding.
+
+        ``use_unpadding="auto"`` packs eligible batches with at least 8,192 padded
+        token slots. ``True`` also packs smaller batches to save activation memory,
+        which can cost throughput; ``False`` retains ordinary padded execution.
+        Unsupported architectures/backends and compiled execution remain padded.
+        """
+        if type(use_unpadding) is not bool and not (
+            isinstance(use_unpadding, str) and use_unpadding == "auto"
+        ):
+            raise ValueError('use_unpadding must be "auto", True, or False')
         try:
             from sentence_transformers import SentenceTransformer
             from sentence_transformers.models import Transformer, Pooling, Normalize
@@ -1626,6 +1638,9 @@ class FastSentenceTransformer(FastModel):
             st_model._dtype = dtype
             st_model._load_in_4bit = load_in_4bit
             st_model.no_modules = False
+            if use_unpadding:
+                from ._sentence_transformer_unpadding import enable_sentence_transformer_unpadding
+                enable_sentence_transformer_unpadding(st_model, auto = use_unpadding == "auto")
             FastSentenceTransformer._patch_transformer_module_save_config(
                 st_model[0], getattr(st_model[0].auto_model, "config", None)
             )
