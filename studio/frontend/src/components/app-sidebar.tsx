@@ -99,6 +99,7 @@ import {
   AudioWave01Icon,
   Delete02Icon,
   Download01Icon,
+  DashboardSpeed01Icon,
   Edit03Icon,
   FolderExportIcon,
   Folder01Icon,
@@ -2684,6 +2685,18 @@ export function AppSidebar() {
       },
       onIntent: () => {
         preloadSilently(router.preloadRoute({ to: "/api-monitor" }));
+      },
+    },
+    benchmarks: {
+      icon: DashboardSpeed01Icon,
+      label: t("shell.navigation.benchmarks"),
+      active: pathname === "/benchmarks",
+      onClick: () => {
+        navigate({ to: "/benchmarks" });
+        closeMobileIfOpen();
+      },
+      onIntent: () => {
+        preloadSilently(router.preloadRoute({ to: "/benchmarks" }));
       },
     },
   };
