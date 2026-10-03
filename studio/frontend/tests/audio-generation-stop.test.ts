@@ -4,9 +4,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { readSrc } from "./helpers/kit.ts";
+import { readAudioWorkspaceSource } from "./helpers/audio-workspace.ts";
 
-const source = readSrc("features/audio/audio-page.tsx");
+const source = readAudioWorkspaceSource();
 
 test("generation exposes Stop only while the request controller can abort", () => {
   assert.match(
@@ -138,7 +138,7 @@ test("a saved clip the refresh missed keeps its response audio mounted", () => {
     source,
     /const selectClip = useCallback\(\s*\(id: string, keepFallback = false\) => \{[\s\S]*if \(!keepFallback\) setFallbackClip\(null\);/,
   );
-  assert.match(source, /saved: true,\s*\}\);\s*selectClip\(generated\.clip_id, true\);/);
+  assert.match(source, /saved: true,\s*workflow,\s*\}\);\s*selectClip\(generated\.clip_id, true\);/);
 });
 
 test("deleting a clip drops the row without waiting on the refresh", () => {
