@@ -408,7 +408,9 @@ class DecisionTrainer(Trainer):
         def _backward(loss, **backward_kwargs):
             if self.accelerator.distributed_type != DistributedType.DEEPSPEED:
                 loss = loss * self.accelerator.gradient_accumulation_steps
-            return backward(loss, **backward_kwargs)
+            # Checkpointed layers rerun their forward here, so they need the forward's attention.
+            with _no_cudnn_attention():
+                return backward(loss, **backward_kwargs)
 
         self.accelerator.backward = _backward
 
