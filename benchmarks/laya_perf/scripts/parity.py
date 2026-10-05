@@ -10,6 +10,7 @@ p.add_argument("--opts", default = "")
 p.add_argument("--batches", type = int, default = 8)
 p.add_argument("--bs", type = int, default = 4)
 p.add_argument("--out", required = True)
+p.add_argument("--data", default = "items.pt")
 args = p.parse_args()
 # "bf16" means the half-precision autocast this GPU trains in: bf16, or fp16 where bf16 is unsupported (T4).
 LP = os.environ["LP_ROOT"]
@@ -24,7 +25,7 @@ import opts as O
 
 names = [o for o in args.opts.split(",") if o]
 O.pre(names, D, args)
-data = torch.load(f"{LP}/data/items.pt", weights_only = False)
+data = torch.load(f"{LP}/data/{args.data}", weights_only = False)
 gc = {"unsloth": "unsloth", "true": True, "off": False}[args.gc]
 kw = O.load_kwargs(names, args)
 if args.precision == "fp32" and args.mode == "lora":

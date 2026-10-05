@@ -114,7 +114,8 @@ neutral; **RO** report-only (new public arg, overrides a user setting, or new de
 | X4 | D1 + Inductor `cpp_wrapper` | B2 full A screen | static 0.767 -> 0.682 | 13,536 | 6,781 / 7,028 | +12.5% over D1 | fp32 exact on torch 2.13; **crashes on torch 2.11** (`CudaKernelParamCache not populated`, G4 and pytest) | **REPORT-ONLY** (needs a torch-version gate: your decision) |
 | X5 | whole encoder as one compiled graph, torch checkpointing inside (`enc_compile`) | G4 full A | final 0.476 -> 0.404 | 22,864 | 8,080 / 8,246 | +18% over final / **+18% VRAM** (under the 8,604 official peak) | dloss 1.6e-6, dgn 4.8e-5; bf16 dloss 0.010 | **REPORT-ONLY** (replaces Unsloth's offloaded GC: a user setting) |
 | X6 | LoRA compile (D1 static path also for LoRA) | G4 LoRA A / B, 3 pairs each (g4_b8) | 1.025 -> 0.662; 0.607 -> 0.469 | 13,930; 40,057 | 1,905 / 2,032; 2,311 / 2,474 | **+54.6% (49.5..55.0); +29.5% (28.9..31.6)** / -2.4%; -0.6% | dloss 1.6e-6, dgn 7.5e-6; bf16 dloss 0.020; G2 A 0.016, B 0.020 PASS; 200-step 3 seeds: 0/3 collapse | **REPORT-ONLY** (plan: ask before enabling LoRA compile; meets R1) |
-| X6 | LoRA compile, second GPU | L4 LoRA A / B, 3 pairs each (l6_l4lc) | 3.271 -> 2.256; 2.555 -> 2.045 | 4,090; 9,289 | 1,905 / 2,032; 2,311 / 2,416 | **+45.0% (41.7..48.0); +24.9% (24.0..25.5)** / -2.4%; +0.25% | <!--L4LCG2--> | REPORT-ONLY (as above); cold first step 75 s on L4 |
+| X6 | LoRA compile, second GPU | L4 LoRA A / B, 3 pairs each (l6_l4lc) | 3.271 -> 2.256; 2.555 -> 2.045 | 4,090; 9,289 | 1,905 / 2,032; 2,311 / 2,416 | **+45.0% (41.7..48.0); +24.9% (24.0..25.5)** / -2.4%; +0.25% | G2 over 5 seeds/arm: A 0.021 PASS; B 0.050 as measured (PR seed 11 collapsed), 0.019 PASS without it | REPORT-ONLY (as above); cold first step 75 s on L4 |
+| X6 | LoRA compile, third GPU (fp16) | T4 LoRA A / B, 2 pairs each (k5_t4) | 3.457 -> 2.689; 5.111 -> 4.101 | 3,446; 4,631 | 1,905 / 2,012; 2,291 / 2,374 | **+23.6 / +34.3%; +24.8 / +24.4%** / -2.4%; -1.4% | G2 3 seeds: A 0.028 PASS; B 0.092 (**LoRA-compile seed 3407 collapsed**), 0.025 without it | REPORT-ONLY (as above); cold first step 70-83 s on T4 |
 | X7 | LoRA compile, dynamic shapes | G4 LoRA A / B screen | 1.028 -> 0.766; 0.598 -> 0.482 | 12,051; 39,425 | 1,896 / 2,006; 2,274 / 2,438 | +34%; +24% | n/m | superseded by X6 |
 | X8 | official laya script (fp32, as shipped) | G4 A / B | 0.850 / 1.053 s/step | - | 7,964 / **8,604**; 7,969 / **8,814** | VRAM ceiling for R3 | - | reference |
 
@@ -211,8 +212,9 @@ LoRA B PR 0.884 / 0.805, perf 0.886 / 0.775; full B PR 0.880 / 0.803.
 | G4, seeds 3408-3409 | 1 / 2 (3408) | 0 / 2 |
 | B200 long runs, seeds 3407-3409 | 0 / 3 | 2 / 3 |
 | G4 200-step, seeds 3407-3409 (g4_b8, against LoRA compile) | 1 / 3 (3408) | LoRA compile 0 / 3 |
-| L4 60-step G2 runs at A (l4_final, l5, l6), seeds 3407, 11-13 | 0 / 10 | 0 / 4 final, 0 / 2 LoRA compile |
-| **L4 at B (mb8 x acc8)**, seeds 11, 3407 (l6) | **1 / 2 (seed 11: loss 40-60 1.216, grad norm 0.21)** | LoRA compile 0 / 2 |
+| L4 60-step G2 runs at A (l4_final, l5, l6, l7), seeds 3407, 11-14 | 0 / 13 | 0 / 4 final, 0 / 5 LoRA compile |
+| **L4 at B (mb8 x acc8)**, seeds 11-14, 3407 (l6, l7) | **1 / 5 (seed 11: loss 40-60 1.216, grad norm 0.21)** | LoRA compile 0 / 5 |
+| T4 fp16 60-step runs (k5), seeds 3407, 11, 12 at A and B | 0 / 6 | **LoRA compile 1 / 6 (B, seed 3407)** |
 | **10-step LR warmup**, seeds 3408, 3409, 11, 18 (incl. the collapsed ones) | **0 / 4** | **0 / 4** |
 
 Ablation on the collapsing seeds (G4): removing C1, fused AdamW or the lean LoRA forward from perf, or adding C1 / fused
@@ -305,6 +307,8 @@ All Linux GPU work after the move ran on Colab or Kaggle; every Colab VM was rel
 | k4_t4 | Kaggle T4x2 | fp16 G2 seeds 11-13, compile-off arm, perf with foreach AdamW (14 jobs) | PASS (seed-averaged full A 0.018, LoRA B 0.011) |
 | l6_l4lc | Colab L4 | LoRA compile 3+3 pairs A/B, G2 seeds 3407 / 11 (20 jobs) | timing PASS (+45.0% / +24.9%); G2 A 0.030 PASS, B 0.092 (PR seed 11 collapsed) -> more seeds in l7 |
 | k6_t4 | Kaggle T4x2 | fp16 G2 seeds 11-12 for full B and LoRA A (8 jobs) | PASS (seed-averaged 0.020 / 0.016) |
+| l7_l4lcs | Colab L4 | LoRA compile G2 seeds 12-14 at A and B (12 jobs) | 5-seed G2: A PASS 0.021; B 0.050 from a PR collapse, 0.019 without it |
+| k5_t4 | Kaggle T4x2 | LoRA compile 2+2 pairs A/B, G2 seeds 3407 / 11 / 12 (20 jobs) | timing PASS (+24-34%); G2 A PASS, B 0.092 (LoRA-compile seed 3407 collapsed) |
 <!--CLOUDROWS-->
 
 ### Discarded measurements
@@ -324,7 +328,12 @@ All Linux GPU work after the move ran on Colab or Kaggle; every Colab VM was rel
    cold and ~1,400 / ~6,500 with a warm cache (G4). Keep always-compile, or bring back a threshold?
 2. **LoRA compile** (X6): +54.6% at A, +29.5% at B over the final LoRA path (3 pairs each, G4); +45.0% / +24.9% on L4.
    VRAM -2.4% / -0.6% (G4), -2.4% / +0.25% (L4); fp32 G1 exact, G2 PASS at A (0.016) and B (0.020) on G4, 200-step runs
-   0.915 / 0.748 over 3 seeds with no collapse; first step +30 s cold on G4, +75 s on L4. <!--T4LC-->
+   0.915 / 0.748 over 3 seeds with no collapse; first step +30 s cold on G4, +75 s on L4. L4 G2 over 5 seeds per arm: A 0.021
+   PASS; B 0.050 as measured, because the **PR** arm collapsed on seed 11 (LoRA compile 0/10 collapses, PR 1/10), 0.019 without
+   that run; LoRA compile holdout at B 0.990 CE vs PR 1.025. On the T4 (fp16): +24-34% at A and B, VRAM -2.4% / -1.4%, G2 A 0.028 PASS over 3 seeds; at B **LoRA compile itself collapsed
+   on seed 3407** (loss 40-60 1.225, grad norm 0.22), 0.025 without it. Across every LoRA-compile training run (G4 b8 + g2lc, L4 l6 + l7, T4 k5): 1 collapse in 21;
+   the PR arm of the same batches: 2 in 21. The collapse belongs to the no-warmup recipe (decision 5), not to compile, but if you enable
+   LoRA compile, decision 5 matters as much.
    Meets R1 on every check. Enable it? (Not committed: the plan says ask first.)
 3. **cpp_wrapper on top of D1** (X4): +12.5% more at A on torch 2.13 (B200), crashes on torch 2.11. Gate on torch >= 2.13, or leave off?
 4. **Whole-encoder compiled graph with in-graph checkpointing** (X5): +18% over the final at A, +18% VRAM (8,246 MiB, under the

@@ -211,6 +211,7 @@ def _packed_attention(module, query, key, value, attention_mask, **kwargs):
 
 
 _FLEX = {}
+_UNPAD_BUCKET = 256
 
 
 def _packed_forward(self, input_ids = None, attention_mask = None, **kwargs):
@@ -218,13 +219,13 @@ def _packed_forward(self, input_ids = None, attention_mask = None, **kwargs):
     backend = self._laya_backend
     half = torch.is_autocast_enabled() or self.embeddings.tok_embeddings.weight.dtype in (torch.float16, torch.bfloat16)
     if (not self.training or input_ids is None or attention_mask is None or kwargs.get("inputs_embeds") is not None
-            or (backend in ("flash", "varlen", "xf") and not half)):
+            or (backend in ("flash", "varlen", "varlen_b", "xf") and not half)):
         return orig(input_ids = input_ids, attention_mask = attention_mask, **kwargs)
     batch, width = input_ids.shape
     keep = attention_mask.bool()
     lengths = keep.sum(1, dtype = torch.int32)
     row_lengths = lengths.tolist()
-    if backend not in ("flash", "varlen", "xf") and sum(row_lengths) == batch * width:
+    if backend not in ("flash", "varlen", "varlen_b", "xf") and sum(row_lengths) == batch * width:
         return orig(input_ids = input_ids, attention_mask = attention_mask, **kwargs)
     index = keep.flatten().nonzero().flatten()
     ids = input_ids.flatten().index_select(0, index).unsqueeze(0)
@@ -256,9 +257,16 @@ def _packed_forward(self, input_ids = None, attention_mask = None, **kwargs):
         info["global_bm"] = create_block_mask(global_mod, None, None, total, total, device = ids.device)
         info["local_bm"] = create_block_mask(local_mod, None, None, total, total, device = ids.device)
         info["flex"] = _FLEX["flex"]
+    if backend == "varlen_b":
+        total = int(sum(row_lengths))
+        extra = -(-(total + 1) // _UNPAD_BUCKET) * _UNPAD_BUCKET - total
+        ids = torch.nn.functional.pad(ids, (0, extra), value = self.config.pad_token_id or 0)
+        pos = torch.nn.functional.pad(pos, (0, extra))
+        cu = torch.cat([cu, cu.new_tensor([total + extra])])
+        info.update(backend = "varlen", cu = cu, max = 1 << (max(max(row_lengths), extra) - 1).bit_length())
     out = orig(input_ids = ids, attention_mask = {"full_attention": None, "sliding_attention": None},
                position_ids = pos.unsqueeze(0), **kwargs, **{_PACK: info})
-    hidden = out.last_hidden_state.squeeze(0)
+    hidden = out.last_hidden_state.squeeze(0)[:index.numel()]
     out.last_hidden_state = hidden.new_zeros((batch * width, hidden.shape[-1])).index_copy(0, index, hidden).view(batch, width, -1)
     return out
 
@@ -284,6 +292,7 @@ POST["unpad_sdpa"] = _unpad("sdpa")
 POST["unpad_flex"] = _unpad("flex")
 POST["unpad_varlen"] = _unpad("varlen")
 POST["unpad_xf"] = _unpad("xf")
+POST["unpad_vb"] = _unpad("varlen_b")
 
 
 # C3a: stock transformers FlashAttention-2 on the padded batch (unpads inside attention only, windowed).
@@ -751,3 +760,32 @@ def accum_fuse(D, args):
 
 PRE["accum_fuse"] = accum_fuse
 POST["accum_fuse"] = accum_fuse_model
+
+
+# Long-context screens: train up to 4,096 tokens (Unsloth's offloaded GC sizes its buffers from max_len), compile every
+# length bucket instead of falling back to eager after torch's default 8 shapes, and coarser 256-token buckets.
+LOAD["long_ctx"] = lambda args: {"max_seq_length": 4096}
+
+
+def recompile_hi(D, args):
+    import torch._dynamo
+    cfg = torch._dynamo.config
+    for name, value in (("recompile_limit", 256), ("cache_size_limit", 256), ("accumulated_recompile_limit", 8192), ("accumulated_cache_size_limit", 8192)):
+        if hasattr(cfg, name):
+            setattr(cfg, name, max(getattr(cfg, name), value))
+
+
+def pad_multiple_256(D, args):
+    orig = D._compile_encoder_layers
+
+    def comp(model):
+        done = orig(model)
+        if done:
+            model._unsloth_pad_multiple = 256
+        return done
+
+    D._compile_encoder_layers = comp
+
+
+PRE["recompile_hi"] = recompile_hi
+PRE["pad256"] = pad_multiple_256

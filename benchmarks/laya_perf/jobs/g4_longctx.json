@@ -1,0 +1,618 @@
+[
+ {
+  "name": "make_long",
+  "cmd": [
+   "$S/make_long.py"
+  ]
+ },
+ {
+  "name": "lc_A_pr",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/base",
+   "--opts",
+   "long_ctx",
+   "--out",
+   "$ROOT/out/lc_A_pr.json"
+  ]
+ },
+ {
+  "name": "lc_A_final0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx",
+   "--out",
+   "$ROOT/out/lc_A_final0.json"
+  ]
+ },
+ {
+  "name": "lc_A_hi0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,recompile_hi",
+   "--out",
+   "$ROOT/out/lc_A_hi0.json"
+  ]
+ },
+ {
+  "name": "lc_A_p256_0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,recompile_hi,pad256",
+   "--out",
+   "$ROOT/out/lc_A_p256_0.json"
+  ]
+ },
+ {
+  "name": "lc_A_unpad0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,recompile_hi,unpad_vb",
+   "--out",
+   "$ROOT/out/lc_A_unpad0.json"
+  ]
+ },
+ {
+  "name": "lc_A_final1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx",
+   "--out",
+   "$ROOT/out/lc_A_final1.json"
+  ]
+ },
+ {
+  "name": "lc_A_hi1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,recompile_hi",
+   "--out",
+   "$ROOT/out/lc_A_hi1.json"
+  ]
+ },
+ {
+  "name": "lc_A_p256_1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,recompile_hi,pad256",
+   "--out",
+   "$ROOT/out/lc_A_p256_1.json"
+  ]
+ },
+ {
+  "name": "lc_A_unpad1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,recompile_hi,unpad_vb",
+   "--out",
+   "$ROOT/out/lc_A_unpad1.json"
+  ]
+ },
+ {
+  "name": "lc_A_eager_pad",
+  "env": {
+   "LP_TORCH_LOGS": "1",
+   "UNSLOTH_COMPILE_DISABLE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx",
+   "--out",
+   "$ROOT/out/lc_A_eager_pad.json"
+  ]
+ },
+ {
+  "name": "lc_A_eager_unpad",
+  "env": {
+   "LP_TORCH_LOGS": "1",
+   "UNSLOTH_COMPILE_DISABLE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,unpad_vb",
+   "--out",
+   "$ROOT/out/lc_A_eager_unpad.json"
+  ]
+ },
+ {
+  "name": "lc_B_pr",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/base",
+   "--opts",
+   "long_ctx",
+   "--out",
+   "$ROOT/out/lc_B_pr.json"
+  ]
+ },
+ {
+  "name": "lc_B_final0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx",
+   "--out",
+   "$ROOT/out/lc_B_final0.json"
+  ]
+ },
+ {
+  "name": "lc_B_hi0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,recompile_hi",
+   "--out",
+   "$ROOT/out/lc_B_hi0.json"
+  ]
+ },
+ {
+  "name": "lc_B_p256_0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,recompile_hi,pad256",
+   "--out",
+   "$ROOT/out/lc_B_p256_0.json"
+  ]
+ },
+ {
+  "name": "lc_B_unpad0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,recompile_hi,unpad_vb",
+   "--out",
+   "$ROOT/out/lc_B_unpad0.json"
+  ]
+ },
+ {
+  "name": "lc_B_final1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx",
+   "--out",
+   "$ROOT/out/lc_B_final1.json"
+  ]
+ },
+ {
+  "name": "lc_B_hi1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,recompile_hi",
+   "--out",
+   "$ROOT/out/lc_B_hi1.json"
+  ]
+ },
+ {
+  "name": "lc_B_p256_1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,recompile_hi,pad256",
+   "--out",
+   "$ROOT/out/lc_B_p256_1.json"
+  ]
+ },
+ {
+  "name": "lc_B_unpad1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,recompile_hi,unpad_vb",
+   "--out",
+   "$ROOT/out/lc_B_unpad1.json"
+  ]
+ },
+ {
+  "name": "lc_B_eager_pad",
+  "env": {
+   "LP_TORCH_LOGS": "1",
+   "UNSLOTH_COMPILE_DISABLE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx",
+   "--out",
+   "$ROOT/out/lc_B_eager_pad.json"
+  ]
+ },
+ {
+  "name": "lc_B_eager_unpad",
+  "env": {
+   "LP_TORCH_LOGS": "1",
+   "UNSLOTH_COMPILE_DISABLE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,unpad_vb",
+   "--out",
+   "$ROOT/out/lc_B_eager_unpad.json"
+  ]
+ },
+ {
+  "name": "lcg1_perf_fp32",
+  "cmd": [
+   "$S/parity.py",
+   "--data",
+   "items_long.pt",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "full",
+   "--precision",
+   "fp32",
+   "--opts",
+   "long_ctx,trainer_compile",
+   "--gc",
+   "true",
+   "--out",
+   "$ROOT/out/lcg1_perf_fp32.json"
+  ]
+ },
+ {
+  "name": "lcg1_perf_bf16",
+  "cmd": [
+   "$S/parity.py",
+   "--data",
+   "items_long.pt",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "full",
+   "--precision",
+   "bf16",
+   "--opts",
+   "long_ctx,trainer_compile,recompile_hi",
+   "--out",
+   "$ROOT/out/lcg1_perf_bf16.json"
+  ]
+ },
+ {
+  "name": "lcg1_unpad_bf16",
+  "cmd": [
+   "$S/parity.py",
+   "--data",
+   "items_long.pt",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "full",
+   "--precision",
+   "bf16",
+   "--opts",
+   "long_ctx,trainer_compile,recompile_hi,unpad_vb",
+   "--out",
+   "$ROOT/out/lcg1_unpad_bf16.json"
+  ]
+ }
+]

@@ -13,6 +13,7 @@ p.add_argument("--gc", default = "unsloth", choices = ["unsloth", "true", "off"]
 p.add_argument("--opts", default = "")
 p.add_argument("--optim", default = "adamw_torch")
 p.add_argument("--items", default = "bench", choices = ["bench", "train"])
+p.add_argument("--data", default = "items.pt", help = "data file under $LP_ROOT/data (items_long.pt: make_long.py)")
 p.add_argument("--eval", action = "store_true")
 p.add_argument("--dropout-off", action = "store_true")
 p.add_argument("--save-curve", default = "")
@@ -61,7 +62,7 @@ MODEL = f"{LP}/model"
 names = [o for o in args.opts.split(",") if o]
 O.pre(names, D, args)
 
-data = torch.load(f"{LP}/data/items.pt", weights_only = False)
+data = torch.load(f"{LP}/data/{args.data}", weights_only = False)
 items, holdout = data[args.items], data["holdout"]
 gc = {"unsloth": "unsloth", "true": True, "off": False}[args.gc]
 t_load = time.perf_counter()
