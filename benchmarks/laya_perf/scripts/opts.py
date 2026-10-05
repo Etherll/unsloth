@@ -830,3 +830,77 @@ def geo_buckets(D, args):
 
 PRE["dyn_layers"] = dyn_layers
 PRE["geo_buckets"] = geo_buckets
+
+
+# X10: padding-free encoder, reusing transformers' own machinery: _get_unpad_data / _pad_input for the gather and
+# scatter, the padding-free convention (packed ids + position_ids + cu_seq_lens_q/k, max_length_q/k kwargs; masks
+# skipped with the dict form ModernBertModel.forward accepts), and the flash path's window conversion
+# (window_size = sliding_window - 1 per side). Attention is torch's built-in varlen FlashAttention (no flash-attn
+# dependency), registered through AttentionInterface like the perf tree's SDPA wrapper. Local layers then only compute
+# their 128-token window instead of a masked L x L.
+_HF_ATTN = "unsloth_decision_varlen"
+_HF_SDPA = []
+
+
+def _varlen_attention(module, query, key, value, attention_mask, scaling = None, sliding_window = None,
+                      cu_seq_lens_q = None, cu_seq_lens_k = None, max_length_q = None, max_length_k = None, **kwargs):
+    if cu_seq_lens_q is None:
+        # Padded batches (eval, fp32) keep the perf tree's own SDPA wrapper.
+        return _HF_SDPA[0](module, query, key, value, attention_mask, scaling = scaling, **kwargs)
+    from torch.nn.attention.varlen import varlen_attn
+    q, k, v = (x.squeeze(0).transpose(0, 1) for x in (query, key, value))
+    window = (sliding_window - 1, sliding_window - 1) if sliding_window and max_length_k > sliding_window else (-1, -1)
+    out = varlen_attn(q, k, v, cu_seq_lens_q, cu_seq_lens_k, max_length_q, max_length_k, scale = scaling, window_size = window)
+    return out.unsqueeze(0), None
+
+
+def _padding_free_forward(self, input_ids = None, attention_mask = None, **kwargs):
+    from transformers.modeling_flash_attention_utils import _get_unpad_data, _pad_input
+    if not self.training or input_ids is None or attention_mask is None or not torch.is_autocast_enabled():
+        return self._laya_padded_forward(input_ids = input_ids, attention_mask = attention_mask, **kwargs)
+    batch, width = input_ids.shape
+    indices, cu, max_len = _get_unpad_data(attention_mask)
+    # Only an upper bound for the kernel; a power of two keeps the compiled layers to a few int specializations.
+    max_len = 1 << (int(max_len) - 1).bit_length()
+    position_ids = torch.arange(width, device = input_ids.device).expand(batch, width).flatten()[indices].unsqueeze(0)
+    out = self._laya_padded_forward(
+        input_ids = input_ids.flatten()[indices].unsqueeze(0), position_ids = position_ids,
+        attention_mask = {"full_attention": None, "sliding_attention": None},
+        cu_seq_lens_q = cu, cu_seq_lens_k = cu, max_length_q = max_len, max_length_k = max_len, **kwargs,
+    )
+    out.last_hidden_state = _pad_input(out.last_hidden_state.squeeze(0), indices, batch, width)
+    return out
+
+
+def unpad_hf(model, D, args):
+    from types import MethodType
+    from transformers import AttentionInterface, AttentionMaskInterface
+    from transformers.masking_utils import sdpa_mask
+    _HF_SDPA[:] = [D._encoder_sdpa]
+    AttentionInterface.register(_HF_ATTN, _varlen_attention)
+    AttentionMaskInterface.register(_HF_ATTN, sdpa_mask)
+    base = _base_encoder(model)
+    base.config._attn_implementation = _HF_ATTN
+    base._laya_padded_forward = base.forward
+    base.forward = MethodType(_padding_free_forward, base)
+    return model
+
+
+def unpad_hf_pre(D, args):
+    # The perf tree's compile step re-points the encoder at its SDPA wrapper; keep ours, and skip the pad-to-64
+    # (packed shapes vary anyway, so this path compiles with dynamic shapes: see dyn_layers).
+    orig = D._compile_encoder_layers
+
+    def comp(model):
+        impl = model.encoder.config._attn_implementation
+        done = orig(model)
+        model.encoder.config._attn_implementation = impl
+        if done:
+            model._unsloth_pad_multiple = 0
+        return done
+
+    D._compile_encoder_layers = comp
+
+
+PRE["unpad_hf"] = unpad_hf_pre
+POST["unpad_hf"] = unpad_hf

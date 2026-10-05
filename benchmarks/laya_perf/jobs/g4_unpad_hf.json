@@ -1,0 +1,645 @@
+[
+ {
+  "name": "make_long",
+  "cmd": [
+   "$S/make_long.py"
+  ]
+ },
+ {
+  "name": "smoke_unpad_hf",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "4",
+   "--steps",
+   "4",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "unpad_hf,dyn_layers",
+   "--out",
+   "$ROOT/out/smoke_unpad_hf.json"
+  ]
+ },
+ {
+  "name": "g1_short_perf_fp32",
+  "cmd": [
+   "$S/parity.py",
+   "--data",
+   "items.pt",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "full",
+   "--precision",
+   "fp32",
+   "--opts",
+   "trainer_compile",
+   "--gc",
+   "true",
+   "--out",
+   "$ROOT/out/g1_short_perf_fp32.json"
+  ]
+ },
+ {
+  "name": "g1_short_perf_bf16",
+  "cmd": [
+   "$S/parity.py",
+   "--data",
+   "items.pt",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "full",
+   "--precision",
+   "bf16",
+   "--opts",
+   "trainer_compile,recompile_hi",
+   "--out",
+   "$ROOT/out/g1_short_perf_bf16.json"
+  ]
+ },
+ {
+  "name": "g1_short_unpad_bf16",
+  "cmd": [
+   "$S/parity.py",
+   "--data",
+   "items.pt",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "full",
+   "--precision",
+   "bf16",
+   "--opts",
+   "trainer_compile,unpad_hf,dyn_layers",
+   "--out",
+   "$ROOT/out/g1_short_unpad_bf16.json"
+  ]
+ },
+ {
+  "name": "g1_long_perf_fp32",
+  "cmd": [
+   "$S/parity.py",
+   "--data",
+   "items_long.pt",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "full",
+   "--precision",
+   "fp32",
+   "--opts",
+   "long_ctx,trainer_compile",
+   "--gc",
+   "true",
+   "--out",
+   "$ROOT/out/g1_long_perf_fp32.json"
+  ]
+ },
+ {
+  "name": "g1_long_perf_bf16",
+  "cmd": [
+   "$S/parity.py",
+   "--data",
+   "items_long.pt",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "full",
+   "--precision",
+   "bf16",
+   "--opts",
+   "long_ctx,trainer_compile,recompile_hi",
+   "--out",
+   "$ROOT/out/g1_long_perf_bf16.json"
+  ]
+ },
+ {
+  "name": "g1_long_unpad_bf16",
+  "cmd": [
+   "$S/parity.py",
+   "--data",
+   "items_long.pt",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "full",
+   "--precision",
+   "bf16",
+   "--opts",
+   "long_ctx,trainer_compile,unpad_hf,dyn_layers",
+   "--out",
+   "$ROOT/out/g1_long_unpad_bf16.json"
+  ]
+ },
+ {
+  "name": "u_long_A_final_0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx",
+   "--out",
+   "$ROOT/out/u_long_A_final_0.json"
+  ]
+ },
+ {
+  "name": "u_long_A_dyn_0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,dyn_layers",
+   "--out",
+   "$ROOT/out/u_long_A_dyn_0.json"
+  ]
+ },
+ {
+  "name": "u_long_A_unpad_0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,unpad_hf,dyn_layers",
+   "--out",
+   "$ROOT/out/u_long_A_unpad_0.json"
+  ]
+ },
+ {
+  "name": "u_long_A_final_1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx",
+   "--out",
+   "$ROOT/out/u_long_A_final_1.json"
+  ]
+ },
+ {
+  "name": "u_long_A_dyn_1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,dyn_layers",
+   "--out",
+   "$ROOT/out/u_long_A_dyn_1.json"
+  ]
+ },
+ {
+  "name": "u_long_A_unpad_1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,unpad_hf,dyn_layers",
+   "--out",
+   "$ROOT/out/u_long_A_unpad_1.json"
+  ]
+ },
+ {
+  "name": "u_short_A_final_0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "",
+   "--out",
+   "$ROOT/out/u_short_A_final_0.json"
+  ]
+ },
+ {
+  "name": "u_short_A_unpad_0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "unpad_hf,dyn_layers",
+   "--out",
+   "$ROOT/out/u_short_A_unpad_0.json"
+  ]
+ },
+ {
+  "name": "u_short_A_final_1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "",
+   "--out",
+   "$ROOT/out/u_short_A_final_1.json"
+  ]
+ },
+ {
+  "name": "u_short_A_unpad_1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "unpad_hf,dyn_layers",
+   "--out",
+   "$ROOT/out/u_short_A_unpad_1.json"
+  ]
+ },
+ {
+  "name": "u_long_B_final_0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx",
+   "--out",
+   "$ROOT/out/u_long_B_final_0.json"
+  ]
+ },
+ {
+  "name": "u_long_B_dyn_0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,dyn_layers",
+   "--out",
+   "$ROOT/out/u_long_B_dyn_0.json"
+  ]
+ },
+ {
+  "name": "u_long_B_unpad_0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,unpad_hf,dyn_layers",
+   "--out",
+   "$ROOT/out/u_long_B_unpad_0.json"
+  ]
+ },
+ {
+  "name": "u_long_B_final_1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx",
+   "--out",
+   "$ROOT/out/u_long_B_final_1.json"
+  ]
+ },
+ {
+  "name": "u_long_B_dyn_1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,dyn_layers",
+   "--out",
+   "$ROOT/out/u_long_B_dyn_1.json"
+  ]
+ },
+ {
+  "name": "u_long_B_unpad_1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,unpad_hf,dyn_layers",
+   "--out",
+   "$ROOT/out/u_long_B_unpad_1.json"
+  ]
+ },
+ {
+  "name": "u_short_B_final_0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "",
+   "--out",
+   "$ROOT/out/u_short_B_final_0.json"
+  ]
+ },
+ {
+  "name": "u_short_B_unpad_0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "unpad_hf,dyn_layers",
+   "--out",
+   "$ROOT/out/u_short_B_unpad_0.json"
+  ]
+ },
+ {
+  "name": "u_short_B_final_1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "",
+   "--out",
+   "$ROOT/out/u_short_B_final_1.json"
+  ]
+ },
+ {
+  "name": "u_short_B_unpad_1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "unpad_hf,dyn_layers",
+   "--out",
+   "$ROOT/out/u_short_B_unpad_1.json"
+  ]
+ }
+]
