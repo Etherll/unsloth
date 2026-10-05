@@ -1,0 +1,74 @@
+{
+ "tag": "",
+ "tree": "E:/orca/workspaces/unsloth/laya-decision-perf",
+ "mode": "full",
+ "mb": 2,
+ "acc": 16,
+ "gc": "unsloth",
+ "opts": [
+  "compile_always"
+ ],
+ "optim": "adamw_torch",
+ "steps": 6,
+ "load_s": 2.764791500001593,
+ "wall_s": 12.565287699999317,
+ "s_step": 1.0369436999990285,
+ "s_step_mean": 1.0363296499999706,
+ "first_step_s": 7.123275600002671,
+ "tok_s": 8943.26921189198,
+ "pad_frac": 0.011301041259461964,
+ "peak_alloc_mib": 6935.55517578125,
+ "peak_res_mib": 7402.0,
+ "loss": [
+  1.5394231081008911,
+  1.2719165086746216,
+  1.0389840602874756,
+  1.0506809949874878,
+  1.0924038887023926,
+  1.1400043964385986
+ ],
+ "grad_norm": [
+  21.39852523803711,
+  9.286941528320312,
+  5.76133918762207,
+  6.725823879241943,
+  2.853402614593506,
+  3.3248748779296875
+ ],
+ "step_times": [
+  7.123275600002671,
+  1.057785099998,
+  1.039719000000332,
+  1.0317122000014933,
+  1.0343188999977428,
+  1.039568500000314
+ ],
+ "peak_fwdbwd_mib": 6935.55517578125,
+ "peak_opt_mib": 6465.78271484375,
+ "smi_start": "37, 3561",
+ "torch": "2.10.0+cu128",
+ "file": "E:\\orca/workspaces/unsloth/laya-decision-perf\\unsloth\\models\\decision.py",
+ "dynamo_counters": {
+  "frames": {
+   "total": 13,
+   "ok": 11
+  },
+  "stats": {
+   "calls_captured": 362,
+   "unique_graphs": 10
+  },
+  "inductor": {
+   "triton_bundler_load_static_autotuner": 30,
+   "async_compile_cache_miss": 68,
+   "async_compile_cache_hit": 30,
+   "extern_calls": 40,
+   "fxgraph_cache_hit": 14
+  },
+  "aot_autograd": {
+   "total": 14,
+   "autograd_cache_miss": 4,
+   "autograd_cache_hit": 10,
+   "ok": 10
+  }
+ }
+}

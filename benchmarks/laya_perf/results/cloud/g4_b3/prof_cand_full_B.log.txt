@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/content/repo/benchmarks/laya_perf/scripts/prof.py", line 5, in <module>
+    tr = json.load(open(path, encoding = "utf-8"))
+                   ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/kaggle/working/lp/out/prof_cand_full_B/trace.json'

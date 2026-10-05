@@ -1,0 +1,448 @@
+[
+ {
+  "name": "pytest_final",
+  "cmd": [
+   "$PY",
+   "-m",
+   "pytest",
+   "tests/test_decision_model.py",
+   "-q",
+   "-p",
+   "no:cacheprovider"
+  ],
+  "cwd": "$ROOT/perf",
+  "print_log": 3000
+ },
+ {
+  "name": "fin_full_A_pr0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/fin_full_A_pr0.json"
+  ]
+ },
+ {
+  "name": "fin_full_A_final0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/fin_full_A_final0.json"
+  ]
+ },
+ {
+  "name": "fin_full_A_pr1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/fin_full_A_pr1.json"
+  ]
+ },
+ {
+  "name": "fin_full_A_final1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/fin_full_A_final1.json"
+  ]
+ },
+ {
+  "name": "fin_full_A_pr2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/fin_full_A_pr2.json"
+  ]
+ },
+ {
+  "name": "fin_full_A_final2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/fin_full_A_final2.json"
+  ]
+ },
+ {
+  "name": "fin_full_B_pr0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/fin_full_B_pr0.json"
+  ]
+ },
+ {
+  "name": "fin_full_B_final0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/fin_full_B_final0.json"
+  ]
+ },
+ {
+  "name": "fin_full_B_pr1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/fin_full_B_pr1.json"
+  ]
+ },
+ {
+  "name": "fin_full_B_final1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/fin_full_B_final1.json"
+  ]
+ },
+ {
+  "name": "fin_full_B_pr2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/fin_full_B_pr2.json"
+  ]
+ },
+ {
+  "name": "fin_full_B_final2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/fin_full_B_final2.json"
+  ]
+ },
+ {
+  "name": "fin_lora_A_pr0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/fin_lora_A_pr0.json"
+  ]
+ },
+ {
+  "name": "fin_lora_A_final0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/fin_lora_A_final0.json"
+  ]
+ },
+ {
+  "name": "fin_lora_A_pr1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/fin_lora_A_pr1.json"
+  ]
+ },
+ {
+  "name": "fin_lora_A_final1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/fin_lora_A_final1.json"
+  ]
+ },
+ {
+  "name": "fin_lora_A_pr2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/fin_lora_A_pr2.json"
+  ]
+ },
+ {
+  "name": "fin_lora_A_final2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/fin_lora_A_final2.json"
+  ]
+ },
+ {
+  "name": "fin_lora_B_pr0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/fin_lora_B_pr0.json"
+  ]
+ },
+ {
+  "name": "fin_lora_B_final0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/fin_lora_B_final0.json"
+  ]
+ },
+ {
+  "name": "fin_lora_B_pr1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/fin_lora_B_pr1.json"
+  ]
+ },
+ {
+  "name": "fin_lora_B_final1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/fin_lora_B_final1.json"
+  ]
+ },
+ {
+  "name": "fin_lora_B_pr2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/fin_lora_B_pr2.json"
+  ]
+ },
+ {
+  "name": "fin_lora_B_final2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/fin_lora_B_final2.json"
+  ]
+ }
+]

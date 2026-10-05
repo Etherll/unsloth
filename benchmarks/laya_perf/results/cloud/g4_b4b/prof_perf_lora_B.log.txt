@@ -1,0 +1,75 @@
+trace /kaggle/working/lp/out/prof_perf_lora_B/trace.json
+steps 3  wall/step 1279.8 ms  GPU busy 39.1%  kernel-sum/step 501.3 ms
+
+## GPU time by phase/region (ms/step, % of wall)
+  backward                            208.6   16.3%
+  forward/enc_layer                   130.8   10.2%
+  backward/enc_recompute              129.9   10.2%
+  forward/other                        23.5    1.8%
+  forward/head_layer                    6.8    0.5%
+  optimizer_step                        1.1    0.1%
+  forward/scorer                        0.2    0.0%
+  forward/enc_embed                     0.2    0.0%
+  forward/act_head                      0.1    0.0%
+  forward/enc_final_norm                0.1    0.0%
+
+## GPU time by kernel category
+  gemm                                199.5   15.6%
+  elementwise                         192.6   15.0%
+  attention                            51.0    4.0%
+  memcpy                               38.1    3.0%
+  norm                                 12.5    1.0%
+  reduce                                5.8    0.5%
+  optimizer                             1.6    0.1%
+  memset                                0.3    0.0%
+
+## memcpy kinds
+  Memcpy HtoD (Pinned -> Device)               19.0
+  Memcpy DtoH (Device -> Pinned)               19.0
+  Memcpy DtoD (Device -> Device)                0.1
+
+## top kernels
+     40.55 ms  void at::native::unrolled_elementwise_kernel<at::native::direct_copy_kernel_cuda(at::Tenso
+     38.34 ms  void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_256x128_32x3_tn_align8
+     34.50 ms  void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_128x256_32x3_tn_align8
+     33.99 ms  void at::native::elementwise_kernel<128, 2, at::native::gpu_kernel_impl_nocast<at::native:
+     27.23 ms  fmha_cutlassB_bf16_aligned_64x64_k64_sm80(PyTorchMemEffAttention::AttentionBackwardKernel<
+     26.79 ms  void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_128x128_32x4_tn_align8
+     24.28 ms  void at::native::elementwise_kernel<128, 4, at::native::gpu_kernel_impl_nocast<at::native:
+     24.04 ms  void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_256x128_32x3_nn_align8
+     20.59 ms  void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at
+     19.09 ms  fmha_cutlassF_bf16_aligned_64x64_rf_sm80(PyTorchMemEffAttention::AttentionKernel<cutlass::
+     19.04 ms  Memcpy HtoD (Pinned -> Device)
+     18.97 ms  Memcpy DtoH (Device -> Pinned)
+     14.58 ms  void at::native::(anonymous namespace)::CatArrayBatchedCopy<at::native::(anonymous namespa
+     13.55 ms  void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_128x128_32x4_nn_align8
+     12.47 ms  void at::native::vectorized_elementwise_kernel<4, at::native::CUDAFunctor_add<c10::BFloat1
+     12.21 ms  void at::native::vectorized_elementwise_kernel<4, at::native::CUDAFunctor_add<float>, std:
+     11.36 ms  void at::native::elementwise_kernel<128, 4, at::native::gpu_kernel_impl<at::native::direct
+      9.85 ms  void at::native::unrolled_elementwise_kernel<at::native::CUDAFunctor_add<float>, std::arra
+      9.19 ms  void cutlass::Kernel2<cutlass_80_wmma_tensorop_bf16_s161616gemm_bf16_32x32_128x2_tn_align8
+      9.05 ms  void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_128x128_32x5_nn_align8
+      7.19 ms  void at::native::(anonymous namespace)::vectorized_layer_norm_kernel<float, float, false>(
+      5.52 ms  void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_128x64_32x6_nt_align8>
+      5.26 ms  void at::native::(anonymous namespace)::layer_norm_grad_input_kernel_vectorized<float, flo
+      4.81 ms  void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_128x128_64x3_tn_align8
+      3.85 ms  void cublasLt::splitKreduce_kernel<32, 16, int, __nv_bfloat16, __nv_bfloat16, float, __nv_
+
+## CUDA runtime API time (ms/step)
+  cudaLaunchKernel                            120.7
+  cuLaunchKernel                               27.4
+  cudaLaunchKernelExC                           7.2
+  cudaMemcpyAsync                               4.9
+  cudaMemsetAsync                               2.9
+  cudaDeviceGetAttribute                        1.8
+  cudaStreamIsCapturing                         1.2
+  cudaEventRecordWithFlags                      1.0
+  cudaStreamWaitEvent                           0.9
+  cudaFuncGetAttributes                         0.7
+
+## CPU wall split (ms/step, % of wall)
+  collate                               4.9    0.4%
+  backward                            798.7   62.4%
+  optimizer_step                        2.1    0.2%
+  forward enc_layer (main thread)     268.9   21.0%
+  rest                                474.2   37.0%

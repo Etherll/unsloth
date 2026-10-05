@@ -1,0 +1,71 @@
+args, **kwargs)
+  File "/usr/local/lib/python3.13/dist-packages/torch/_inductor/compile_fx.py", line 2757, in bw_compiler
+    return compile_fx_backward(
+        gm,
+    ...<2 lines>...
+        inner_compile=inner_compile,
+    )
+  File "/usr/local/lib/python3.13/dist-packages/torch/_inductor/compile_fx.py", line 2436, in compile_fx_backward
+    return inner_compile(
+        gm,
+    ...<5 lines>...
+        boxed_forward_device_index=compiler_config_extra.forward_device,
+    )
+  File "/usr/lib/python3.13/contextlib.py", line 85, in inner
+    return func(*args, **kwds)
+  File "/usr/local/lib/python3.13/dist-packages/torch/_inductor/compile_fx.py", line 826, in compile_fx_inner
+    return wrap_compiler_debug(_compile_fx_inner, compiler_name="inductor")(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        gm,
+        ^^^
+        example_inputs,
+        ^^^^^^^^^^^^^^^
+        **kwargs,
+        ^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.13/dist-packages/torch/_dynamo/repro/after_aot.py", line 273, in debug_wrapper
+    inner_compiled_fn = compiler_fn(gm, example_inputs)
+  File "/usr/local/lib/python3.13/dist-packages/torch/_inductor/compile_fx.py", line 1053, in _compile_fx_inner
+    raise InductorError(e, currentframe()).with_traceback(
+        e.__traceback__
+    ) from None
+  File "/usr/local/lib/python3.13/dist-packages/torch/_inductor/compile_fx.py", line 1037, in _compile_fx_inner
+    mb_compiled_graph = fx_codegen_and_compile(
+        gm, example_inputs, inputs_to_check, **graph_kwargs
+    )
+  File "/usr/local/lib/python3.13/dist-packages/torch/_inductor/compile_fx.py", line 1798, in fx_codegen_and_compile
+    return scheme.codegen_and_compile(gm, example_inputs, inputs_to_check, graph_kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/_inductor/compile_fx.py", line 1570, in codegen_and_compile
+    compiled_module = graph.compile_to_module()
+  File "/usr/local/lib/python3.13/dist-packages/torch/_inductor/graph.py", line 2499, in compile_to_module
+    return self._compile_to_module()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/_inductor/graph.py", line 2505, in _compile_to_module
+    self.codegen_with_cpp_wrapper() if self.cpp_wrapper else self.codegen()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/_inductor/graph.py", line 2417, in codegen_with_cpp_wrapper
+    return self.codegen()
+           ~~~~~~~~~~~~^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/_inductor/graph.py", line 2448, in codegen
+    result = self.wrapper_code.generate(self.is_inference)
+  File "/usr/local/lib/python3.13/dist-packages/torch/_inductor/codegen/cpp_wrapper_gpu.py", line 531, in generate
+    return super().generate(is_inference)
+           ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/_inductor/codegen/cpp_wrapper_cpu.py", line 1042, in generate
+    return super().generate(is_inference)
+           ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/_inductor/codegen/wrapper.py", line 1787, in generate
+    return self._generate(is_inference)
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/_inductor/codegen/wrapper.py", line 1875, in _generate
+    self.finalize_prefix()
+    ~~~~~~~~~~~~~~~~~~~~^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/_inductor/codegen/cpp_wrapper_gpu.py", line 543, in finalize_prefix
+    kernel.generate(self)
+    ~~~~~~~~~~~~~~~^^^^^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/_inductor/codegen/cpp_wrapper_gpu.py", line 101, in generate
+    assert params, f"CudaKernelParamCache not populated for {self.kernel_name}"
+           ^^^^^^
+torch._inductor.exc.InductorError: AssertionError: CudaKernelParamCache not populated for triton_poi_fused__to_copy_view_0

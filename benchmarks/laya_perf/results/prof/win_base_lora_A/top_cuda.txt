@@ -1,0 +1,46 @@
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                          ProfilerStep*         0.00%       0.000us         0.00%       0.000us       0.000us        8.127s       584.37%        8.127s        2.709s             3  
+                                              enc_layer         0.00%       0.000us         0.00%       0.000us       0.000us        4.085s       293.74%        4.085s       1.520ms          2688  
+                                               aten::mm         5.88%     790.792ms         9.73%        1.309s      21.743us     634.796ms        45.65%     634.828ms      10.547us         60192  
+                                            aten::copy_         2.31%     310.476ms         8.77%        1.179s       9.590us     307.658ms        22.12%     307.679ms       2.502us        122986  
+_ZN2at6native27unrolled_elementwise_kernelIZZZNS0_23...         0.00%       0.000us         0.00%       0.000us       0.000us     102.441ms         7.37%     102.441ms       9.528us         10752  
+                                             head_layer         0.00%       0.000us         0.00%       0.000us       0.000us      90.573ms         6.51%      90.573ms     943.464us            96  
+_ZN2at6native27unrolled_elementwise_kernelIZZZNS0_23...         0.00%       0.000us         0.00%       0.000us       0.000us      82.537ms         5.93%      82.537ms       2.362us         34944  
+                                              aten::mul         1.56%     209.471ms         3.52%     473.430ms      11.671us      79.732ms         5.73%      79.732ms       1.966us         40563  
+_ZN2at6native29vectorized_elementwise_kernelILi4EZNS...         0.00%       0.000us         0.00%       0.000us       0.000us      79.317ms         5.70%      79.317ms       1.429us         55488  
+_ZN7cutlass7Kernel2I68cutlass_80_tensorop_bf16_s1681...         0.00%       0.000us         0.00%       0.000us       0.000us      73.116ms         5.26%      73.116ms      52.226us          1400  
+                    aten::_efficient_attention_backward         0.13%      17.730ms         0.46%      61.421ms      42.653us      72.953ms         5.25%      74.987ms      52.074us          1440  
+_ZN7cutlass7Kernel2I68cutlass_80_tensorop_bf16_s1681...         0.00%       0.000us         0.00%       0.000us       0.000us      68.940ms         4.96%      68.940ms      26.825us          2570  
+_Z41fmha_cutlassB_bf16_aligned_64x64_k64_sm80N22PyTo...         0.00%       0.000us         0.00%       0.000us       0.000us      66.394ms         4.77%      66.394ms      49.400us          1344  
+_ZN7cutlass7Kernel2I68cutlass_80_tensorop_bf16_s1681...         0.00%       0.000us         0.00%       0.000us       0.000us      65.529ms         4.71%      65.529ms      22.864us          2866  
+_ZN7cutlass7Kernel2I68cutlass_80_tensorop_bf16_s1681...         0.00%       0.000us         0.00%       0.000us       0.000us      57.581ms         4.14%      57.581ms      16.266us          3540  
+                     aten::_efficient_attention_forward         0.18%      24.426ms         0.46%      61.370ms      22.044us      56.543ms         4.07%      56.543ms      20.310us          2784  
+_Z40fmha_cutlassF_bf16_aligned_64x64_rf_sm80N22PyTor...         0.00%       0.000us         0.00%       0.000us       0.000us      56.543ms         4.07%      56.543ms      20.310us          2784  
+_ZN7cutlass7Kernel2I68cutlass_80_wmma_tensorop_bf16_...         0.00%       0.000us         0.00%       0.000us       0.000us      52.835ms         3.80%      52.835ms       5.934us          8904  
+                                              aten::add         0.84%     113.274ms         1.97%     264.531ms      11.344us      50.835ms         3.66%      50.835ms       2.180us         23319  
+                                             aten::add_         0.48%      65.212ms         1.53%     205.454ms       8.279us      43.902ms         3.16%      43.902ms       1.769us         24816  
+_ZN2at6native29vectorized_elementwise_kernelILi4ENS0...         0.00%       0.000us         0.00%       0.000us       0.000us      35.240ms         2.53%      35.240ms       1.786us         19734  
+_ZN2at6native18elementwise_kernelILi128ELi2EZNS0_22g...         0.00%       0.000us         0.00%       0.000us       0.000us      35.047ms         2.52%      35.047ms       2.167us         16176  
+_ZN8cublasLt19splitKreduce_kernelILi32ELi16Ei13__nv_...         0.00%       0.000us         0.00%       0.000us       0.000us      34.529ms         2.48%      34.529ms       2.510us         13758  
+                                              aten::cat         0.52%      69.969ms         1.01%     136.130ms      14.319us      32.994ms         2.37%      32.994ms       3.470us          9507  
+_ZN7cutlass7Kernel2I68cutlass_80_wmma_tensorop_bf16_...         0.00%       0.000us         0.00%       0.000us       0.000us      30.698ms         2.21%      30.698ms       5.178us          5928  
+_ZN7cutlass7Kernel2I68cutlass_80_wmma_tensorop_bf16_...         0.00%       0.000us         0.00%       0.000us       0.000us      30.569ms         2.20%      30.569ms       5.449us          5610  
+_ZN2at6native29vectorized_elementwise_kernelILi4ENS0...         0.00%       0.000us         0.00%       0.000us       0.000us      27.182ms         1.95%      27.182ms       1.685us         16128  
+_ZN2at6native18elementwise_kernelILi128ELi4EZNS0_15g...         0.00%       0.000us         0.00%       0.000us       0.000us      26.568ms         1.91%      26.568ms       2.471us         10752  
+_ZN7cutlass7Kernel2I68cutlass_80_wmma_tensorop_bf16_...         0.00%       0.000us         0.00%       0.000us       0.000us      25.295ms         1.82%      25.295ms       6.713us          3768  
+_ZN2at6native29vectorized_elementwise_kernelILi4ENS0...         0.00%       0.000us         0.00%       0.000us       0.000us      25.283ms         1.82%      25.283ms       1.848us         13680  
+_ZN7cutlass7Kernel2I67cutlass_80_tensorop_bf16_s1681...         0.00%       0.000us         0.00%       0.000us       0.000us      21.484ms         1.54%      21.484ms       7.613us          2822  
+_ZN7cutlass7Kernel2I67cutlass_80_wmma_tensorop_bf16_...         0.00%       0.000us         0.00%       0.000us       0.000us      21.212ms         1.53%      21.212ms      17.217us          1232  
+_ZN7cutlass7Kernel2I67cutlass_80_wmma_tensorop_bf16_...         0.00%       0.000us         0.00%       0.000us       0.000us      19.661ms         1.41%      19.661ms       8.738us          2250  
+                                aten::native_layer_norm         0.47%      62.708ms         1.02%     137.671ms      24.514us      19.237ms         1.38%      19.237ms       3.425us          5616  
+_ZN2at6native53_GLOBAL__N__87a90936_20_layer_norm_ke...         0.00%       0.000us         0.00%       0.000us       0.000us      19.237ms         1.38%      19.237ms       3.425us          5616  
+_ZN2at6native40_GLOBAL__N__0b46c3ea_8_Shape_cu_85d9f...         0.00%       0.000us         0.00%       0.000us       0.000us      17.977ms         1.29%      17.977ms       3.344us          5376  
+_ZN7cutlass7Kernel2I68cutlass_80_tensorop_bf16_s1681...         0.00%       0.000us         0.00%       0.000us       0.000us      17.484ms         1.26%      17.484ms      26.253us           666  
+_ZN7cutlass7Kernel2I67cutlass_80_wmma_tensorop_bf16_...         0.00%       0.000us         0.00%       0.000us       0.000us      15.796ms         1.14%      15.796ms      19.077us           828  
+_ZN2at6native27unrolled_elementwise_kernelINS0_15CUD...         0.00%       0.000us         0.00%       0.000us       0.000us      15.616ms         1.12%      15.616ms       2.854us          5472  
+_ZN7cutlass7Kernel2I67cutlass_80_wmma_tensorop_bf16_...         0.00%       0.000us         0.00%       0.000us       0.000us      15.611ms         1.12%      15.611ms       2.568us          6080  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 13.455s
+Self CUDA time total: 1.391s

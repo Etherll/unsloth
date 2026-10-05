@@ -1,0 +1,490 @@
+[
+ {
+  "name": "long_pr_full_A_3408",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--warmup",
+   "4",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "200",
+   "--eval-at",
+   "60,120,200",
+   "--tree",
+   "$ROOT/base",
+   "--seed",
+   "3408",
+   "--out",
+   "$ROOT/out/long_pr_full_A_3408.json"
+  ]
+ },
+ {
+  "name": "long_final_full_A_3408",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--warmup",
+   "4",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "200",
+   "--eval-at",
+   "60,120,200",
+   "--tree",
+   "$ROOT/perf",
+   "--seed",
+   "3408",
+   "--out",
+   "$ROOT/out/long_final_full_A_3408.json"
+  ]
+ },
+ {
+  "name": "long_pr_full_A_3409",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--warmup",
+   "4",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "200",
+   "--eval-at",
+   "60,120,200",
+   "--tree",
+   "$ROOT/base",
+   "--seed",
+   "3409",
+   "--out",
+   "$ROOT/out/long_pr_full_A_3409.json"
+  ]
+ },
+ {
+  "name": "long_final_full_A_3409",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--warmup",
+   "4",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "200",
+   "--eval-at",
+   "60,120,200",
+   "--tree",
+   "$ROOT/perf",
+   "--seed",
+   "3409",
+   "--out",
+   "$ROOT/out/long_final_full_A_3409.json"
+  ]
+ },
+ {
+  "name": "long_pr_full_A_3410",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--warmup",
+   "4",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "200",
+   "--eval-at",
+   "60,120,200",
+   "--tree",
+   "$ROOT/base",
+   "--seed",
+   "3410",
+   "--out",
+   "$ROOT/out/long_pr_full_A_3410.json"
+  ]
+ },
+ {
+  "name": "long_final_full_A_3410",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--warmup",
+   "4",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "200",
+   "--eval-at",
+   "60,120,200",
+   "--tree",
+   "$ROOT/perf",
+   "--seed",
+   "3410",
+   "--out",
+   "$ROOT/out/long_final_full_A_3410.json"
+  ]
+ },
+ {
+  "name": "long400_pr_full_A",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--warmup",
+   "4",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "400",
+   "--eval-at",
+   "60,120,200,300,400",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/long400_pr_full_A.json"
+  ]
+ },
+ {
+  "name": "long400_final_full_A",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--warmup",
+   "4",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "400",
+   "--eval-at",
+   "60,120,200,300,400",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/long400_final_full_A.json"
+  ]
+ },
+ {
+  "name": "g1_pr_lora_fp32",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/base",
+   "--mode",
+   "lora",
+   "--precision",
+   "fp32",
+   "--gc",
+   "true",
+   "--out",
+   "$ROOT/out/g1_pr_lora_fp32.json"
+  ]
+ },
+ {
+  "name": "g1_lstatic_lora_fp32",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "lora",
+   "--precision",
+   "fp32",
+   "--opts",
+   "lora_compile,trainer_compile",
+   "--gc",
+   "true",
+   "--out",
+   "$ROOT/out/g1_lstatic_lora_fp32.json"
+  ]
+ },
+ {
+  "name": "g1_pr_full_fp32",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/base",
+   "--mode",
+   "full",
+   "--precision",
+   "fp32",
+   "--gc",
+   "true",
+   "--out",
+   "$ROOT/out/g1_pr_full_fp32.json"
+  ]
+ },
+ {
+  "name": "g1_enccomp_full_fp32",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "full",
+   "--precision",
+   "fp32",
+   "--gc",
+   "true",
+   "--opts",
+   "enc_compile,trainer_compile",
+   "--out",
+   "$ROOT/out/g1_enccomp_full_fp32.json"
+  ]
+ },
+ {
+  "name": "g1_pr_lora_bf16",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/base",
+   "--mode",
+   "lora",
+   "--precision",
+   "bf16",
+   "--out",
+   "$ROOT/out/g1_pr_lora_bf16.json"
+  ]
+ },
+ {
+  "name": "g1_lstatic_lora_bf16",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "lora",
+   "--precision",
+   "bf16",
+   "--opts",
+   "lora_compile,trainer_compile",
+   "--out",
+   "$ROOT/out/g1_lstatic_lora_bf16.json"
+  ]
+ },
+ {
+  "name": "g1_pr_full_bf16",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/base",
+   "--mode",
+   "full",
+   "--precision",
+   "bf16",
+   "--out",
+   "$ROOT/out/g1_pr_full_bf16.json"
+  ]
+ },
+ {
+  "name": "g1_enccomp_full_bf16",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "full",
+   "--precision",
+   "bf16",
+   "--gc",
+   "true",
+   "--opts",
+   "enc_compile,trainer_compile",
+   "--out",
+   "$ROOT/out/g1_enccomp_full_bf16.json"
+  ]
+ },
+ {
+  "name": "scr_enccg_full_A",
+  "env": {
+   "PYTHONFAULTHANDLER": "1"
+  },
+  "print_log": 4000,
+  "cmd": [
+   "$S/bench.py",
+   "--steps",
+   "24",
+   "--warmup",
+   "6",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "enc_cg",
+   "--out",
+   "$ROOT/out/scr_enccg_full_A.json"
+  ]
+ },
+ {
+  "name": "attn_mb2",
+  "print_log": 3000,
+  "cmd": [
+   "bash",
+   "-c",
+   "[ -d $ROOT/xfpkgs/xformers ] || ($PY -m pip install -q --no-deps --target $ROOT/xfpkgs xformers==0.0.35 && ($PY -m pip install -q --no-deps --target $ROOT/xfpkgs 'fbgemm-gpu-genai==1.6.0' --index-url https://download.pytorch.org/whl/cu130 || echo no-fbgemm)); export PYTHONPATH=$ROOT/xfpkgs; $PY -c 'import torch, xformers; print(\"torch\", torch.__version__, \"xformers\", xformers.__version__)'; $PY -m xformers.info 2>&1 | grep -E 'blackwell|fa2F|cutlassF-pt|pytorch.version'; $PY $S/attn_bench.py --mb 2 --variants sdpa_eff,sdpa_cudnn,varlen_fa2,xf_padded,xf_bd --out $ROOT/out/attn_mb2.json"
+  ],
+  "out": "$ROOT/out/attn_mb2.json"
+ },
+ {
+  "name": "attn_mb8",
+  "print_log": 3000,
+  "cmd": [
+   "bash",
+   "-c",
+   "[ -d $ROOT/xfpkgs/xformers ] || ($PY -m pip install -q --no-deps --target $ROOT/xfpkgs xformers==0.0.35 && ($PY -m pip install -q --no-deps --target $ROOT/xfpkgs 'fbgemm-gpu-genai==1.6.0' --index-url https://download.pytorch.org/whl/cu130 || echo no-fbgemm)); export PYTHONPATH=$ROOT/xfpkgs; $PY -c 'import torch, xformers; print(\"torch\", torch.__version__, \"xformers\", xformers.__version__)'; $PY -m xformers.info 2>&1 | grep -E 'blackwell|fa2F|cutlassF-pt|pytorch.version'; $PY $S/attn_bench.py --mb 8 --variants sdpa_eff,sdpa_cudnn,varlen_fa2,xf_padded,xf_bd --out $ROOT/out/attn_mb8.json"
+  ],
+  "out": "$ROOT/out/attn_mb8.json"
+ },
+ {
+  "name": "c3_eager_full_A0",
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 2 --acc 16 --steps 24 --warmup 6 --tree $ROOT/base  --out $ROOT/out/c3_eager_full_A0.json"
+  ],
+  "out": "$ROOT/out/c3_eager_full_A0.json"
+ },
+ {
+  "name": "c3_varlen_full_A0",
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 2 --acc 16 --steps 24 --warmup 6 --tree $ROOT/base --opts unpad_varlen --out $ROOT/out/c3_varlen_full_A0.json"
+  ],
+  "out": "$ROOT/out/c3_varlen_full_A0.json"
+ },
+ {
+  "name": "c3_xf_full_A0",
+  "cmd": [
+   "bash",
+   "-c",
+   "export PYTHONPATH=$ROOT/xfpkgs; $PY $S/bench.py --mode full --mb 2 --acc 16 --steps 24 --warmup 6 --tree $ROOT/base --opts unpad_xf --out $ROOT/out/c3_xf_full_A0.json"
+  ],
+  "out": "$ROOT/out/c3_xf_full_A0.json"
+ },
+ {
+  "name": "c3_eager_full_A1",
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 2 --acc 16 --steps 24 --warmup 6 --tree $ROOT/base  --out $ROOT/out/c3_eager_full_A1.json"
+  ],
+  "out": "$ROOT/out/c3_eager_full_A1.json"
+ },
+ {
+  "name": "c3_varlen_full_A1",
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 2 --acc 16 --steps 24 --warmup 6 --tree $ROOT/base --opts unpad_varlen --out $ROOT/out/c3_varlen_full_A1.json"
+  ],
+  "out": "$ROOT/out/c3_varlen_full_A1.json"
+ },
+ {
+  "name": "c3_xf_full_A1",
+  "cmd": [
+   "bash",
+   "-c",
+   "export PYTHONPATH=$ROOT/xfpkgs; $PY $S/bench.py --mode full --mb 2 --acc 16 --steps 24 --warmup 6 --tree $ROOT/base --opts unpad_xf --out $ROOT/out/c3_xf_full_A1.json"
+  ],
+  "out": "$ROOT/out/c3_xf_full_A1.json"
+ },
+ {
+  "name": "c3_eager_full_B0",
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 8 --acc 8 --steps 16 --warmup 6 --tree $ROOT/base  --out $ROOT/out/c3_eager_full_B0.json"
+  ],
+  "out": "$ROOT/out/c3_eager_full_B0.json"
+ },
+ {
+  "name": "c3_varlen_full_B0",
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 8 --acc 8 --steps 16 --warmup 6 --tree $ROOT/base --opts unpad_varlen --out $ROOT/out/c3_varlen_full_B0.json"
+  ],
+  "out": "$ROOT/out/c3_varlen_full_B0.json"
+ },
+ {
+  "name": "c3_xf_full_B0",
+  "cmd": [
+   "bash",
+   "-c",
+   "export PYTHONPATH=$ROOT/xfpkgs; $PY $S/bench.py --mode full --mb 8 --acc 8 --steps 16 --warmup 6 --tree $ROOT/base --opts unpad_xf --out $ROOT/out/c3_xf_full_B0.json"
+  ],
+  "out": "$ROOT/out/c3_xf_full_B0.json"
+ },
+ {
+  "name": "c3_eager_full_B1",
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 8 --acc 8 --steps 16 --warmup 6 --tree $ROOT/base  --out $ROOT/out/c3_eager_full_B1.json"
+  ],
+  "out": "$ROOT/out/c3_eager_full_B1.json"
+ },
+ {
+  "name": "c3_varlen_full_B1",
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 8 --acc 8 --steps 16 --warmup 6 --tree $ROOT/base --opts unpad_varlen --out $ROOT/out/c3_varlen_full_B1.json"
+  ],
+  "out": "$ROOT/out/c3_varlen_full_B1.json"
+ },
+ {
+  "name": "c3_xf_full_B1",
+  "cmd": [
+   "bash",
+   "-c",
+   "export PYTHONPATH=$ROOT/xfpkgs; $PY $S/bench.py --mode full --mb 8 --acc 8 --steps 16 --warmup 6 --tree $ROOT/base --opts unpad_xf --out $ROOT/out/c3_xf_full_B1.json"
+  ],
+  "out": "$ROOT/out/c3_xf_full_B1.json"
+ }
+]

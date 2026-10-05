@@ -1,0 +1,88 @@
+{
+ "tag": "",
+ "tree": "E:/orca/workspaces/unsloth/laya-decision-perf",
+ "mode": "full",
+ "mb": 8,
+ "acc": 8,
+ "gc": "unsloth",
+ "opts": [
+  "compile_always"
+ ],
+ "optim": "adamw_torch",
+ "steps": 6,
+ "load_s": 2.721473199999309,
+ "wall_s": 20.524779799998214,
+ "s_step": 0.6586862000003748,
+ "s_step_mean": 0.65530039999976,
+ "first_step_s": 16.912484000000404,
+ "tok_s": 29923.454699150298,
+ "pad_frac": 0.027394894400947445,
+ "peak_alloc_mib": 7282.52685546875,
+ "peak_res_mib": 8084.0,
+ "loss": [
+  1.5046123266220093,
+  1.2228182554244995,
+  1.2603846788406372,
+  1.1396712064743042,
+  1.2169216871261597,
+  1.1018993854522705
+ ],
+ "grad_norm": [
+  13.116448402404785,
+  4.808935642242432,
+  4.963095188140869,
+  5.936515808105469,
+  5.253028392791748,
+  3.489534616470337
+ ],
+ "step_times": [
+  16.912484000000404,
+  0.7619537999999011,
+  0.6647478000013507,
+  0.6348861000005854,
+  0.6526245999993989,
+  0.6689430999977048
+ ],
+ "peak_fwdbwd_mib": 7282.52685546875,
+ "peak_opt_mib": 6505.32958984375,
+ "smi_start": "77, 3568",
+ "torch": "2.10.0+cu128",
+ "file": "E:\\orca/workspaces/unsloth/laya-decision-perf\\unsloth\\models\\decision.py",
+ "dynamo_counters": {
+  "frames": {
+   "total": 11,
+   "ok": 9
+  },
+  "stats": {
+   "calls_captured": 352,
+   "unique_graphs": 8
+  },
+  "inductor": {
+   "pattern_matcher_count": 32,
+   "pattern_matcher_nodes": 36,
+   "fxgraph_cache_miss": 11,
+   "extern_calls": 29,
+   "async_compile_cache_miss": 34,
+   "triton_bundler_save_kernel": 536,
+   "triton_bundler_save_static_autotuner": 10,
+   "benchmarking.InductorBenchmarker.benchmark": 34,
+   "benchmarking.InductorBenchmarker.benchmark_gpu": 34
+  },
+  "aot_autograd": {
+   "total": 12,
+   "autograd_cache_miss": 12,
+   "autograd_cache_saved": 8,
+   "ok": 8
+  },
+  "aten_mm_info": {
+   "aten.mm_s47*s87_3072_1024": 2,
+   "aten.mm_s47*s87_1024_((1024//s37))*((1024//((1024//s37))))": 2,
+   "aten.mm_s47*s87_5248_1024": 3,
+   "aten.mm_s47*s87_1024_2624": 3,
+   "aten.mm_1024_2624_s47*s87": 1,
+   "aten.mm_s47*s87_2624_1024": 1,
+   "aten.mm_5248_1024_s47*s87": 1,
+   "aten.mm_s47*s87_1024_5248": 1
+  }
+ }
+}

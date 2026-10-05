@@ -1,0 +1,10 @@
+Error: Command '['/kaggle/working/lp/xf/bin/python3', '-m', 'ensurepip', '--upgrade', '--default-pip']' returned non-zero exit status 1.
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import torch; print("torch", torch.__version__)
+    ^^^^^^^^^^^^
+ModuleNotFoundError: No module named 'torch'
+Traceback (most recent call last):
+  File "/content/repo/benchmarks/laya_perf/scripts/attn_bench.py", line 13, in <module>
+    import torch
+ModuleNotFoundError: No module named 'torch'

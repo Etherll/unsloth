@@ -1,0 +1,75 @@
+trace /mnt/disks/unslothai/etherl/laya-perf/out/gpu6/prof/perf_full_A_try1/trace.json
+steps 3  wall/step 3047.4 ms  GPU busy 7.3%  kernel-sum/step 222.3 ms
+
+## GPU time by phase/region (ms/step, % of wall)
+  backward                            159.6    5.2%
+  forward/## Call CompiledFxGraph fyhmz6jymll7eshyqgeoa2wmknsybyans5jjw22fjzlem63frdnh ##     41.9    1.4%
+  forward/other                        10.2    0.3%
+  forward/head_layer                    4.8    0.2%
+  optimizer_step                        2.0    0.1%
+  forward/## Call CompiledFxGraph fxfjkmbjcva3utg2w6yr6nwfqabj5gsfed7bkgbstecejmr6enx2 ##      1.5    0.0%
+  forward/## Call CompiledFxGraph fbl66by2lhb64ips4rdzcdqybqbhh2ezuhqxtf3uty7nvhji7qay ##      1.3    0.0%
+  forward/scorer                        0.4    0.0%
+  forward/act_head                      0.3    0.0%
+  forward/## Call CompiledFxGraph fc3hyrv4dzq26jp4db6al7ngfm56iyuxl4ggqyocpuj4sw2je66r ##      0.2    0.0%
+  forward/enc_embed                     0.1    0.0%
+  forward/enc_final_norm                0.1    0.0%
+
+## GPU time by kernel category
+  elementwise                          96.4    3.2%
+  attention                            55.0    1.8%
+  gemm                                 50.3    1.7%
+  norm                                 14.8    0.5%
+  optimizer                             2.8    0.1%
+  reduce                                2.3    0.1%
+  memcpy                                0.6    0.0%
+
+## memcpy kinds
+  Memcpy DtoD (Device -> Device)                0.3
+  Memcpy DtoH (Device -> Pinned)                0.2
+  Memcpy HtoD (Pinned -> Device)                0.1
+
+## top kernels
+     20.73 ms  fmha_cutlassB_bf16_aligned_64x64_k64_sm80(PyTorchMemEffAttention::AttentionBackwardKernel<
+     19.07 ms  fmha_cutlassF_bf16_aligned_64x64_rf_sm80(PyTorchMemEffAttention::AttentionKernel<cutlass::
+     15.31 ms  triton_poi_fused__to_copy_add_mul_neg_slice_slice_backward_stack_transpose_unsqueeze_3
+     14.60 ms  void at::native::vectorized_elementwise_kernel<4, at::native::CUDAFunctor_add<float>, std:
+     12.07 ms  triton_poi_fused__scaled_dot_product_efficient_attention__to_copy__unsafe_view_add_cat_con
+      4.96 ms  triton_poi_fused__to_copy__unsafe_view_add_mul_transpose_unbind_unsqueeze_view_6
+      4.11 ms  nvjet_sm100_tst_128x160_64x5_4x1_v_bz_NTT
+      4.03 ms  triton_poi_fused__unsafe_view_cat_gelu_gelu_backward_mul_split_view_1
+      4.03 ms  triton_poi_fused__to_copy_6
+      3.75 ms  triton_per_fused__to_copy__unsafe_view_add_native_layer_norm_native_layer_norm_backward_vi
+      3.40 ms  triton_red_fused__to_copy__unsafe_view_add_native_layer_norm_native_layer_norm_backward_vi
+      3.20 ms  triton_poi_fused__to_copy_8
+      3.15 ms  nvjet_sm100_tst_48x64_64x16_2x2_2cta_h_bz_TNN
+      3.09 ms  void at::native::unrolled_elementwise_kernel<at::native::direct_copy_kernel_cuda(at::Tenso
+      2.99 ms  triton_poi_fused__to_copy_t_10
+      2.96 ms  nvjet_sm100_tst_128x192_64x6_2x2_2cta_h_bz_NTT
+      2.83 ms  void at::native::(anonymous namespace)::multi_tensor_apply_kernel<at::native::(anonymous n
+      2.44 ms  triton_per_fused__to_copy_native_layer_norm_0
+      2.21 ms  triton_poi_fused__to_copy_10
+      2.21 ms  void at::native::elementwise_kernel<128, 4, at::native::gpu_kernel_impl_nocast<at::native:
+      2.17 ms  triton_poi_fused__to_copy_t_1
+      2.08 ms  nvjet_sm100_tst_128x64_64x10_2x2_2cta_h_bz_NTT
+      2.02 ms  nvjet_sm100_tst_64x48_64x16_2x2_2cta_h_bz_NNT
+      2.01 ms  nvjet_sm100_tst_64x80_64x16_2x1_2cta_v_bz_TNT
+      2.00 ms  triton_poi_fused__to_copy__unsafe_view_neg_slice_transpose_unbind_view_2
+
+## CUDA runtime API time (ms/step)
+  cuLaunchKernel                               88.9
+  cudaLaunchKernel                             69.9
+  cuLaunchKernelEx                             57.1
+  cudaMemcpyAsync                               2.9
+  cudaStreamGetCaptureInfo                      2.0
+  cudaFuncGetAttributes                         1.9
+  cudaStreamSynchronize                         1.7
+  cudaStreamIsCapturing                         1.0
+  cudaLaunchKernelExC                           0.3
+  cudaFuncSetAttribute                          0.3
+## CPU wall split (ms/step, % of wall)
+  collate                               5.0    0.2%
+  backward                           1976.6   64.9%
+  optimizer_step                        3.4    0.1%
+  forward enc_layer (main thread)       0.0    0.0%
+  rest                               1062.4   34.9%

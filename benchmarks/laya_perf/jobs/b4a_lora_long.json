@@ -1,0 +1,575 @@
+[
+ {
+  "name": "g1_cand_full_fp32",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/cand",
+   "--mode",
+   "full",
+   "--precision",
+   "fp32",
+   "--opts",
+   "trainer_compile",
+   "--gc",
+   "true",
+   "--out",
+   "$ROOT/out/g1_cand_full_fp32.json"
+  ]
+ },
+ {
+  "name": "g1_cand_full_bf16",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/cand",
+   "--mode",
+   "full",
+   "--precision",
+   "bf16",
+   "--opts",
+   "trainer_compile",
+   "--out",
+   "$ROOT/out/g1_cand_full_bf16.json"
+  ]
+ },
+ {
+  "name": "g1_pr_full_fp32",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/base",
+   "--mode",
+   "full",
+   "--precision",
+   "fp32",
+   "--gc",
+   "true",
+   "--out",
+   "$ROOT/out/g1_pr_full_fp32.json"
+  ]
+ },
+ {
+  "name": "g1_pr_full_bf16",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/base",
+   "--mode",
+   "full",
+   "--precision",
+   "bf16",
+   "--out",
+   "$ROOT/out/g1_pr_full_bf16.json"
+  ]
+ },
+ {
+  "name": "race_cand_alone_1",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/cand",
+   "--mode",
+   "full",
+   "--precision",
+   "bf16",
+   "--opts",
+   "trainer_compile",
+   "--out",
+   "$ROOT/out/race_cand_alone_1.json"
+  ]
+ },
+ {
+  "name": "race_cand_stress_1",
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/gpu_stress.py 900 & s=$!; sleep 5; $PY $S/parity.py --tree $ROOT/cand --mode full --precision bf16 --opts trainer_compile --out $ROOT/out/race_cand_stress_1.json; rc=$?; kill $s; wait $s 2>/dev/null; exit $rc"
+  ],
+  "out": "$ROOT/out/race_cand_stress_1.json"
+ },
+ {
+  "name": "race_cand_alone_2",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/cand",
+   "--mode",
+   "full",
+   "--precision",
+   "bf16",
+   "--opts",
+   "trainer_compile",
+   "--out",
+   "$ROOT/out/race_cand_alone_2.json"
+  ]
+ },
+ {
+  "name": "race_cand_stress_2",
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/gpu_stress.py 900 & s=$!; sleep 5; $PY $S/parity.py --tree $ROOT/cand --mode full --precision bf16 --opts trainer_compile --out $ROOT/out/race_cand_stress_2.json; rc=$?; kill $s; wait $s 2>/dev/null; exit $rc"
+  ],
+  "out": "$ROOT/out/race_cand_stress_2.json"
+ },
+ {
+  "name": "race_cand_alone_3",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/cand",
+   "--mode",
+   "full",
+   "--precision",
+   "bf16",
+   "--opts",
+   "trainer_compile",
+   "--out",
+   "$ROOT/out/race_cand_alone_3.json"
+  ]
+ },
+ {
+  "name": "race_cand_stress_3",
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/gpu_stress.py 900 & s=$!; sleep 5; $PY $S/parity.py --tree $ROOT/cand --mode full --precision bf16 --opts trainer_compile --out $ROOT/out/race_cand_stress_3.json; rc=$?; kill $s; wait $s 2>/dev/null; exit $rc"
+  ],
+  "out": "$ROOT/out/race_cand_stress_3.json"
+ },
+ {
+  "name": "long_pr_lora_A_3407",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "200",
+   "--eval-at",
+   "60,120,200",
+   "--warmup",
+   "4",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--seed",
+   "3407",
+   "--out",
+   "$ROOT/out/long_pr_lora_A_3407.json"
+  ]
+ },
+ {
+  "name": "long_perf_lora_A_3407",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "200",
+   "--eval-at",
+   "60,120,200",
+   "--warmup",
+   "4",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--seed",
+   "3407",
+   "--out",
+   "$ROOT/out/long_perf_lora_A_3407.json"
+  ]
+ },
+ {
+  "name": "long_pr_lora_A_3408",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "200",
+   "--eval-at",
+   "60,120,200",
+   "--warmup",
+   "4",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--seed",
+   "3408",
+   "--out",
+   "$ROOT/out/long_pr_lora_A_3408.json"
+  ]
+ },
+ {
+  "name": "long_perf_lora_A_3408",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "200",
+   "--eval-at",
+   "60,120,200",
+   "--warmup",
+   "4",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--seed",
+   "3408",
+   "--out",
+   "$ROOT/out/long_perf_lora_A_3408.json"
+  ]
+ },
+ {
+  "name": "long_pr_lora_A_3409",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "200",
+   "--eval-at",
+   "60,120,200",
+   "--warmup",
+   "4",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--seed",
+   "3409",
+   "--out",
+   "$ROOT/out/long_pr_lora_A_3409.json"
+  ]
+ },
+ {
+  "name": "long_perf_lora_A_3409",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "200",
+   "--eval-at",
+   "60,120,200",
+   "--warmup",
+   "4",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--seed",
+   "3409",
+   "--out",
+   "$ROOT/out/long_perf_lora_A_3409.json"
+  ]
+ },
+ {
+  "name": "long_pr_lora_A_3410",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "200",
+   "--eval-at",
+   "60,120,200",
+   "--warmup",
+   "4",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--seed",
+   "3410",
+   "--out",
+   "$ROOT/out/long_pr_lora_A_3410.json"
+  ]
+ },
+ {
+  "name": "long_perf_lora_A_3410",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "200",
+   "--eval-at",
+   "60,120,200",
+   "--warmup",
+   "4",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--seed",
+   "3410",
+   "--out",
+   "$ROOT/out/long_perf_lora_A_3410.json"
+  ]
+ },
+ {
+  "name": "long_pr_lora_A_3411",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "200",
+   "--eval-at",
+   "60,120,200",
+   "--warmup",
+   "4",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--seed",
+   "3411",
+   "--out",
+   "$ROOT/out/long_pr_lora_A_3411.json"
+  ]
+ },
+ {
+  "name": "long_perf_lora_A_3411",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "200",
+   "--eval-at",
+   "60,120,200",
+   "--warmup",
+   "4",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--seed",
+   "3411",
+   "--out",
+   "$ROOT/out/long_perf_lora_A_3411.json"
+  ]
+ },
+ {
+  "name": "long_pr_lora_B",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "200",
+   "--eval-at",
+   "60,120,200",
+   "--warmup",
+   "4",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/long_pr_lora_B.json"
+  ]
+ },
+ {
+  "name": "long_perf_lora_B",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "200",
+   "--eval-at",
+   "60,120,200",
+   "--warmup",
+   "4",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/long_perf_lora_B.json"
+  ]
+ },
+ {
+  "name": "g2_pr_lora_A",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/g2_pr_lora_A.json"
+  ]
+ },
+ {
+  "name": "g2_pr2_lora_A",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/g2_pr2_lora_A.json"
+  ]
+ },
+ {
+  "name": "g2_perf_lora_A",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/g2_perf_lora_A.json"
+  ]
+ },
+ {
+  "name": "g2_pr_lora_B",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/g2_pr_lora_B.json"
+  ]
+ },
+ {
+  "name": "g2_pr2_lora_B",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/g2_pr2_lora_B.json"
+  ]
+ },
+ {
+  "name": "g2_perf_lora_B",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/g2_perf_lora_B.json"
+  ]
+ }
+]

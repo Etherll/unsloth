@@ -1,0 +1,28 @@
+/sbin/ldconfig.real: /usr/local/lib/libhwloc.so.15 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libur_adapter_level_zero.so.0 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtbbmalloc.so.2 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libur_adapter_level_zero_v2.so.0 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtbbbind_2_5.so.3 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libur_loader.so.0 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libumf.so.1 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtcm_debug.so.1 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtbb.so.12 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtbbmalloc_proxy.so.2 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtbbbind.so.3 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libur_adapter_opencl.so.0 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtcm.so.1 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtbbbind_2_0.so.3 is not a symbolic link
+

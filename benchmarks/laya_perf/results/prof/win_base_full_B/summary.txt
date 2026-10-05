@@ -1,0 +1,74 @@
+trace out/prof/win_base_full_B/trace.json
+steps 3  wall/step 936.1 ms  GPU busy 68.0%  kernel-sum/step 656.7 ms
+
+## GPU time by phase/region (ms/step, % of wall)
+  backward                            324.2   34.6%
+  backward/enc_recompute              137.6   14.7%
+  forward/enc_layer                   136.9   14.6%
+  forward/other                        25.9    2.8%
+  optimizer_step                       22.2    2.4%
+  forward/head_layer                    9.5    1.0%
+  forward/scorer                        0.2    0.0%
+  forward/enc_embed                     0.1    0.0%
+  forward/act_head                      0.1    0.0%
+  forward/enc_final_norm                0.1    0.0%
+
+## GPU time by kernel category
+  gemm                                351.9   37.6%
+  elementwise                         160.6   17.2%
+  attention                            59.4    6.3%
+  memcpy                               37.8    4.0%
+  optimizer                            25.4    2.7%
+  norm                                 19.8    2.1%
+  reduce                                1.8    0.2%
+  memset                                0.0    0.0%
+
+## memcpy kinds
+  Memcpy DtoH (Device -> Pinned)               18.9
+  Memcpy HtoD (Pinned -> Device)               18.8
+  Memcpy DtoD (Device -> Device)                0.1
+
+## top kernels
+    103.31 ms  _ZN7cutlass7Kernel2I68cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_256x128_32x3_tn_align8
+     60.23 ms  _ZN7cutlass7Kernel2I67cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_64x256_32x4_nn_align8E
+     56.04 ms  _ZN7cutlass7Kernel2I67cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_64x256_32x4_nt_align8E
+     37.42 ms  _ZN7cutlass7Kernel2I67cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_64x256_32x4_tn_align8E
+     32.26 ms  _Z41fmha_cutlassB_bf16_aligned_64x64_k64_sm80N22PyTorchMemEffAttention23AttentionBackwardK
+     28.23 ms  _ZN2at6native29vectorized_elementwise_kernelILi4EZNS0_25bfloat16_copy_kernel_cudaERNS_18Te
+     22.08 ms  _Z40fmha_cutlassF_bf16_aligned_64x64_rf_sm80N22PyTorchMemEffAttention15AttentionKernelIN7c
+     18.89 ms  Memcpy DtoH (Device -> Pinned)
+     18.79 ms  Memcpy HtoD (Pinned -> Device)
+     17.00 ms  _ZN2at6native27unrolled_elementwise_kernelIZZZNS0_23direct_copy_kernel_cudaERNS_18TensorIt
+     16.63 ms  _ZN7cutlass7Kernel2I68cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_256x128_32x3_nn_align8
+     15.96 ms  _ZN2at6native18elementwise_kernelILi128ELi2EZNS0_22gpu_kernel_impl_nocastINS0_13BinaryFunc
+     14.60 ms  _ZN2at6native29vectorized_elementwise_kernelILi4ENS0_15CUDAFunctor_addIfEESt5arrayIPcLy3EE
+     14.23 ms  _ZN7cutlass7Kernel2I68cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_128x128_32x5_tn_align8
+     14.02 ms  _ZN2at6native40_GLOBAL__N__0b46c3ea_8_Shape_cu_85d9f36c19CatArrayBatchedCopyINS1_10OpaqueT
+     10.62 ms  _ZN2at6native18elementwise_kernelILi128ELi4EZNS0_15gpu_kernel_implIZZZNS0_23direct_copy_ke
+     10.03 ms  _ZN7cutlass7Kernel2I67cutlass_80_wmma_tensorop_bf16_s161616gemm_bf16_32x32_32x1_nn_align8E
+      9.69 ms  _ZN7cutlass7Kernel2I68cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_128x128_32x5_nn_align8
+      8.45 ms  _ZN2at6native18elementwise_kernelILi128ELi4EZNS0_22gpu_kernel_impl_nocastINS0_13BinaryFunc
+      7.51 ms  _ZN2at6native54_GLOBAL__N__b60354b3_21_ForeachPointwiseOp_cu_ef478fac25multi_tensor_apply_
+      7.47 ms  _ZN7cutlass7Kernel2I68cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_128x128_32x5_nt_align8
+      7.39 ms  _ZN2at6native53_GLOBAL__N__87a90936_20_layer_norm_kernel_cu_3ff0b71f35GammaBetaBackwardCUD
+      7.39 ms  _ZN7cutlass7Kernel2I68cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_128x128_32x4_nt_align8
+      7.24 ms  _ZN2at6native53_GLOBAL__N__87a90936_20_layer_norm_kernel_cu_3ff0b71f28vectorized_layer_nor
+      6.79 ms  _ZN2at6native57_GLOBAL__N__25943659_24_ForeachBinaryOpScalar_cu_86b9896c25multi_tensor_app
+
+## CUDA runtime API time (ms/step)
+  cudaLaunchKernel                            213.4
+  cuLaunchKernel                               26.4
+  cudaDeviceSynchronize                        19.5
+  cudaStreamSynchronize                        14.7
+  cudaMemcpyAsync                               8.0
+  cudaEventRecordWithFlags                      1.1
+  cudaStreamIsCapturing                         1.1
+  cudaDeviceGetAttribute                        0.9
+  cudaStreamWaitEvent                           0.9
+  cudaFuncGetAttributes                         0.5
+## CPU wall split (ms/step, % of wall)
+  collate                               4.2    0.4%
+  backward                            589.0   62.9%
+  optimizer_step                        5.1    0.5%
+  forward enc_layer (main thread)     187.1   20.0%
+  rest                                337.8   36.1%

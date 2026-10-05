@@ -1,0 +1,10 @@
+{
+ "tag": "k2_t4",
+ "backend": "kaggle",
+ "gpu": "T4x2",
+ "rc": 130,
+ "status": null,
+ "minutes": 15.3,
+ "summary": null,
+ "failures": []
+}

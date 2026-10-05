@@ -1,0 +1,40 @@
+ython3.13/dist-packages/torch/_inductor/codegen/cpp_wrapper_gpu.py:531: in generate
+    return super().generate(is_inference)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.13/dist-packages/torch/_inductor/codegen/cpp_wrapper_cpu.py:1042: in generate
+    return super().generate(is_inference)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.13/dist-packages/torch/_inductor/codegen/wrapper.py:1787: in generate
+    return self._generate(is_inference)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.13/dist-packages/torch/_inductor/codegen/wrapper.py:1875: in _generate
+    self.finalize_prefix()
+/usr/local/lib/python3.13/dist-packages/torch/_inductor/codegen/cpp_wrapper_gpu.py:543: in finalize_prefix
+    kernel.generate(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = DeferredTritonCallWrapper(wrapper_name='call_triton_poi_fused__unsafe_view_cat_gelu_gelu_backward_mul_split_view_0', k... device_str='cuda')\n"}, arg_types=[torch.float32, torch.float32, torch.float32, <class 'sympy.core.numbers.Integer'>])
+wrapper = <torch._inductor.codegen.cpp_wrapper_gpu.CppWrapperGpu object at 0x7fe54c3d2210>
+
+    def generate(self, wrapper: CppWrapperGpu):
+        """
+        Generate the GPU kernel definition, as well as load and launch code.
+        """
+        prefix = wrapper.prefix
+        if self.kernel_name.startswith("multi_kernel_"):
+            # MultiKernel will select one kernel after running the autotune block
+            self.kernel_name = MultiKernelCall.lookup_choice(self.kernel_name)
+        params = CudaKernelParamCache.get(self.kernel_name)
+>       assert params, f"CudaKernelParamCache not populated for {self.kernel_name}"
+               ^^^^^^
+E       torch._inductor.exc.InductorError: AssertionError: CudaKernelParamCache not populated for triton_poi_fused__unsafe_view_cat_gelu_gelu_backward_mul_split_view_0
+
+/usr/local/lib/python3.13/dist-packages/torch/_inductor/codegen/cpp_wrapper_gpu.py:101: InductorError
+----------------------------- Captured stdout call -----------------------------
+Unsloth: Full finetuning is enabled, so .get_peft_model has no effect
+----------------------------- Captured stderr call -----------------------------
+
+  0%|          | 0/4 [00:00<?, ?it/s]
+=========================== short test summary info ============================
+FAILED tests/test_decision_model.py::test_train_calibrate_save_and_serve[False]
+1 failed, 32 passed in 27.71s

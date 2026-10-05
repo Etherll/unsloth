@@ -1,0 +1,80 @@
+{
+ "tag": "",
+ "tree": "E:/orca/workspaces/unsloth/studio-fine-tune-laya-decision-models-and-serve",
+ "mode": "full",
+ "mb": 8,
+ "acc": 8,
+ "gc": "unsloth",
+ "opts": [
+  "compile"
+ ],
+ "optim": "adamw_torch",
+ "steps": 8,
+ "load_s": 2.8044836000008218,
+ "wall_s": 11.922150200000033,
+ "s_step": 0.7330687499998021,
+ "s_step_mean": 0.7248894749995998,
+ "first_step_s": 6.715020200001163,
+ "tok_s": 26895.669744488936,
+ "pad_frac": 0.025292910816689718,
+ "peak_alloc_mib": 8006.63671875,
+ "peak_res_mib": 8544.0,
+ "loss": [
+  1.5046123266220093,
+  1.2232942581176758,
+  1.2529531717300415,
+  1.153428554534912,
+  1.2104408740997314,
+  1.105298399925232,
+  1.1284067630767822,
+  1.2179889678955078
+ ],
+ "grad_norm": [
+  13.115946769714355,
+  5.007241725921631,
+  5.522825241088867,
+  4.827709674835205,
+  3.26564884185791,
+  4.717341423034668,
+  4.4972381591796875,
+  4.4165263175964355
+ ],
+ "step_times": [
+  6.715020200001163,
+  0.7710208999997121,
+  0.6808560999998008,
+  0.6496334000003117,
+  0.6717588999999862,
+  0.7178586999998515,
+  0.7482787999997527,
+  0.7616614999988087
+ ],
+ "peak_fwdbwd_mib": 7278.3505859375,
+ "peak_opt_mib": 8006.63671875,
+ "smi_start": "0, 3693",
+ "torch": "2.10.0+cu128",
+ "file": "E:\\orca/workspaces/unsloth/studio-fine-tune-laya-decision-models-and-serve\\unsloth\\models\\decision.py",
+ "dynamo_counters": {
+  "frames": {
+   "total": 11,
+   "ok": 9
+  },
+  "stats": {
+   "calls_captured": 352,
+   "unique_graphs": 8
+  },
+  "inductor": {
+   "triton_bundler_load_static_autotuner": 30,
+   "async_compile_cache_miss": 68,
+   "async_compile_cache_hit": 30,
+   "extern_calls": 29,
+   "fxgraph_cache_hit": 11
+  },
+  "aot_autograd": {
+   "total": 12,
+   "autograd_cache_miss": 4,
+   "autograd_cache_hit": 8,
+   "ok": 8
+  }
+ }
+}

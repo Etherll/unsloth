@@ -1,0 +1,46 @@
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                               backward        39.83%        2.821s        39.91%        2.826s     117.767ms       0.000us         0.00%      63.296us       2.637us            24  
+                                       cudaLaunchKernel        12.81%     906.993ms        12.81%     907.366ms       7.190us       0.000us         0.00%      16.448us       0.000us        126205  
+                                               aten::mm         6.28%     444.715ms         9.96%     705.066ms      23.427us        1.054s        54.54%        1.054s      35.017us         30096  
+                      UnslothCheckpointFunctionBackward         5.02%     355.404ms        38.15%        2.702s       4.021ms       0.000us         0.00%        1.263s       1.879ms           672  
+                                              enc_layer         4.90%     346.820ms        29.27%        2.073s       1.542ms       0.000us         0.00%     987.669ms     734.872us          1344  
+                                         cuLaunchKernel         3.27%     231.747ms         3.28%     232.103ms       7.669us       0.000us         0.00%       5.312us       0.000us         30264  
+                                            aten::copy_         2.53%     179.160ms         9.18%     650.305ms      10.960us     331.569ms        17.16%     389.853ms       6.571us         59332  
+                                    aten::empty_strided         1.68%     119.088ms         1.68%     119.260ms       2.308us       0.000us         0.00%       0.000us       0.000us         51672  
+                                          ProfilerStep*         1.62%     114.875ms        60.38%        4.276s        1.425s       0.000us         0.00%     599.038ms     199.679ms             3  
+                                         aten::_to_copy         1.60%     113.632ms        10.88%     770.520ms      15.016us       0.000us         0.00%     203.152ms       3.959us         51312  
+                              UnslothCheckpointFunction         1.10%      78.211ms        15.69%        1.111s       1.654ms       0.000us         0.00%     552.001ms     821.429us           672  
+                                              aten::add         1.03%      72.779ms         2.23%     157.599ms      12.135us      80.691ms         4.18%      80.691ms       6.213us         12987  
+                                              aten::mul         0.93%      66.005ms         2.08%     147.614ms      12.081us      76.651ms         3.97%      76.651ms       6.273us         12219  
+                                           aten::linear         0.83%      59.058ms        20.76%        1.470s      44.776us       0.000us         0.00%        1.309s      39.860us         32832  
+                                            aten::empty         0.80%      56.702ms         0.80%      56.702ms       1.920us       0.000us         0.00%       0.000us       0.000us         29527  
+                                        aten::transpose         0.78%      54.946ms         1.02%      71.936ms       1.156us       0.000us         0.00%       0.000us       0.000us         62208  
+                                                aten::t         0.69%      48.639ms         1.31%      92.884ms       2.235us       0.000us         0.00%       0.000us       0.000us         41568  
+                                           aten::matmul         0.65%      45.988ms         6.97%     493.306ms      29.280us       0.000us         0.00%     595.939ms      35.371us         16848  
+                                             aten::view         0.60%      42.652ms         0.60%      42.652ms       0.899us       0.000us         0.00%       0.000us       0.000us         47448  
+autograd::engine::evaluate_function: ToCopyBackward0...         0.57%      40.468ms         4.19%     297.052ms      21.267us       0.000us         0.00%      66.481ms       4.760us         13968  
+                                              aten::cat         0.54%      38.164ms         1.05%      74.354ms      15.637us      47.855ms         2.48%      47.855ms      10.064us          4755  
+                                               aten::to         0.52%      36.692ms        11.40%     807.212ms      13.806us       0.000us         0.00%     203.152ms       3.475us         58467  
+                                             aten::add_         0.46%      32.555ms         1.42%     100.239ms       9.710us      36.915ms         1.91%      36.915ms       3.576us         10323  
+       autograd::engine::evaluate_function: MmBackward0         0.46%      32.322ms         5.71%     404.309ms      49.841us       0.000us         0.00%     431.473ms      53.189us          8112  
+                                            aten::slice         0.45%      31.785ms         0.55%      38.791ms       2.091us       0.000us         0.00%       0.000us       0.000us         18554  
+                                aten::native_layer_norm         0.43%      30.702ms         1.00%      71.133ms      25.332us      19.721ms         1.02%      19.721ms       7.023us          2808  
+                                       aten::as_strided         0.41%      29.370ms         0.41%      29.370ms       0.301us       0.000us         0.00%       0.000us       0.000us         97469  
+                                            MmBackward0         0.40%      28.531ms         5.25%     371.987ms      45.856us       0.000us         0.00%     431.473ms      53.189us          8112  
+                                          aten::reshape         0.37%      26.141ms         0.94%      66.663ms       1.786us       0.000us         0.00%       2.310ms       0.062us         37320  
+                                        cudaMemcpyAsync         0.35%      24.716ms         0.35%      24.716ms      13.870us       0.000us         0.00%       0.000us       0.000us          1782  
+                                              aten::neg         0.32%      22.378ms         0.78%      55.135ms      13.434us      13.526ms         0.70%      13.526ms       3.296us          4104  
+     autograd::engine::evaluate_function: ViewBackward0         0.31%      21.964ms         0.93%      65.822ms       6.499us       0.000us         0.00%       7.710ms       0.761us         10128  
+                                            aten::fill_         0.28%      20.007ms         1.10%      78.009ms       9.580us      16.228ms         0.84%      16.228ms       1.993us          8143  
+                     aten::scaled_dot_product_attention         0.25%      17.781ms         2.78%     197.005ms     136.809us       0.000us         0.00%      79.154ms      54.968us          1440  
+                                            aten::where         0.23%      16.401ms         1.06%      74.713ms      27.795us       4.877ms         0.25%      10.779ms       4.010us          2688  
+autograd::engine::evaluate_function: UnsafeViewBackw...         0.20%      14.408ms         0.45%      32.023ms       3.924us       0.000us         0.00%       0.000us       0.000us          8160  
+                     aten::_efficient_attention_forward         0.19%      13.589ms         0.48%      34.107ms      24.502us      65.255ms         3.38%      65.255ms      46.879us          1392  
+          aten::_scaled_dot_product_efficient_attention         0.19%      13.108ms         0.76%      53.691ms      38.571us       0.000us         0.00%      65.255ms      46.879us          1392  
+      autograd::engine::evaluate_function: AddBackward0         0.18%      13.011ms         0.27%      19.352ms       3.491us       0.000us         0.00%       1.057ms       0.191us          5544  
+                                     aten::_unsafe_view         0.18%      12.803ms         0.18%      12.803ms       0.739us       0.000us         0.00%       0.000us       0.000us         17328  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 7.082s
+Self CUDA time total: 1.932s

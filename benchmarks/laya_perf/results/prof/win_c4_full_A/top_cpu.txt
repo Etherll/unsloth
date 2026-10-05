@@ -1,0 +1,46 @@
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                               backward        39.28%        3.247s        39.36%        3.253s      67.774ms       0.000us         0.00%     129.600us       2.700us            48  
+                                       cudaLaunchKernel         8.01%     662.136ms         8.02%     662.824ms       7.824us       0.000us         0.00%       1.056us       0.000us         84714  
+                                               aten::mm         4.56%     376.999ms         7.37%     608.960ms      26.993us     622.408ms        50.62%     622.459ms      27.591us         22560  
+                                         cuLaunchKernel         4.41%     364.643ms         4.41%     364.680ms       7.993us       0.000us         0.00%      14.625us       0.000us         45624  
+                      UnslothCheckpointFunctionBackward         3.77%     311.528ms        36.65%        3.030s       2.254ms       0.000us         0.00%     796.046ms     592.296us          1344  
+                                              enc_layer         3.05%     252.504ms        29.51%        2.440s     907.572us       0.000us         0.00%     477.386ms     177.599us          2688  
+                               TorchDynamo Cache Lookup         2.03%     167.774ms         2.27%     187.956ms      17.481us       0.000us         0.00%       0.000us       0.000us         10752  
+                               CompiledFunctionBackward         1.84%     152.013ms         8.33%     688.706ms     170.810us       0.000us         0.00%     300.983ms      74.649us          4032  
+                                          ProfilerStep*         1.70%     140.441ms        61.14%        5.054s        1.685s       0.000us         0.00%     354.145ms     118.048ms             3  
+                                       CompiledFunction         1.57%     130.158ms         6.79%     561.030ms     139.144us       0.000us         0.00%     156.301ms      38.765us          4032  
+## Call CompiledFxGraph faicny2wk546wa4cl3b75aiblmso...         1.26%     104.236ms         2.80%     231.380ms     172.158us       0.000us         0.00%     118.612ms      88.253us          1344  
+## Call CompiledFxGraph fuju77xo7da7ykng3azig2oxwdyn...         1.18%      97.783ms         3.25%     269.017ms     200.162us       0.000us         0.00%     222.905ms     165.852us          1344  
+                                            aten::empty         1.11%      91.571ms         1.11%      91.571ms       1.641us       0.000us         0.00%       0.000us       0.000us         55787  
+                                            aten::copy_         1.09%      90.489ms         3.64%     300.812ms      11.902us      81.189ms         6.60%      81.194ms       3.213us         25274  
+## Call CompiledFxGraph ferr7e64ctb3otf5cikz3wq44lty...         1.02%      84.545ms         2.54%     209.964ms     156.223us       0.000us         0.00%     120.043ms      89.318us          1344  
+                              UnslothCheckpointFunction         0.94%      77.411ms        14.61%        1.208s     898.662us       0.000us         0.00%     237.475ms     176.693us          1344  
+                                aten::native_layer_norm         0.73%      60.389ms         1.95%     161.135ms      28.692us      20.771ms         1.69%      20.771ms       3.699us          5616  
+## Call CompiledFxGraph fps5qot77ifmlfl2kcqgehq7nxsn...         0.69%      57.412ms         1.09%      90.050ms      67.001us       0.000us         0.00%       8.038ms       5.981us          1344  
+## Call CompiledFxGraph f4vwulpimdhsq4dow5mdr6zmz7pp...         0.69%      56.928ms         1.74%     144.106ms     112.232us       0.000us         0.00%      66.400ms      51.714us          1284  
+                                  cudaDeviceSynchronize         0.68%      56.369ms         0.68%      56.369ms      14.092ms       0.000us         0.00%       0.000us       0.000us             4  
+## Call CompiledFxGraph ffdnjhcd5z77vngivga7mmgkowfp...         0.66%      54.524ms         1.56%     128.949ms     100.427us       0.000us         0.00%      27.444ms      21.374us          1284  
+                                        aten::transpose         0.66%      54.243ms         0.87%      71.523ms       1.280us       0.000us         0.00%       0.000us       0.000us         55872  
+                                         aten::_to_copy         0.64%      52.681ms         4.15%     342.992ms      17.386us       0.000us         0.00%      72.022ms       3.651us         19728  
+## Call CompiledFxGraph fttzjwwommqbeidtjir2jtuuzlkz...         0.63%      52.452ms         1.46%     121.023ms      94.255us       0.000us         0.00%      27.784ms      21.638us          1284  
+                                              aten::add         0.62%      51.349ms         1.28%     105.531ms      14.774us      19.567ms         1.59%      19.567ms       2.739us          7143  
+## Call CompiledFxGraph fhcw3tscd7mxh5wvjjmit6a4lgwl...         0.60%      49.328ms         0.99%      81.594ms      60.710us       0.000us         0.00%       8.049ms       5.989us          1344  
+                                    aten::empty_strided         0.59%      48.659ms         0.59%      48.659ms       2.311us       0.000us         0.00%       0.000us       0.000us         21051  
+## Call CompiledFxGraph fapwuge5x5io3wclxjy5oiq4mlxi...         0.50%      41.376ms         0.82%      68.001ms      50.596us       0.000us         0.00%       3.958ms       2.945us          1344  
+                             Torch-Compiled Region: 3/1         0.49%      40.458ms         2.17%     178.962ms     133.156us       0.000us         0.00%       8.049ms       5.989us          1344  
+                                      Pregraph bytecode         0.48%      39.650ms         0.48%      39.650ms       4.917us       0.000us         0.00%       0.000us       0.000us          8064  
+                                             aten::view         0.47%      38.587ms         0.47%      38.587ms       1.035us       0.000us         0.00%       0.000us       0.000us         37296  
+                             Torch-Compiled Region: 3/0         0.43%      35.716ms         1.65%     136.075ms     101.246us       0.000us         0.00%       8.038ms       5.981us          1344  
+                             Torch-Compiled Region: 5/1         0.43%      35.605ms         3.57%     295.085ms     219.557us       0.000us         0.00%     120.043ms      89.318us          1344  
+                                             aten::add_         0.42%      34.685ms         1.27%     105.120ms       9.125us      82.489ms         6.71%      82.489ms       7.160us         11520  
+                             Torch-Compiled Region: 5/0         0.40%      33.098ms         3.28%     271.043ms     201.669us       0.000us         0.00%     118.612ms      88.253us          1344  
+                             Torch-Compiled Region: 4/1         0.35%      29.119ms         2.68%     221.549ms     172.546us       0.000us         0.00%      27.444ms      21.374us          1284  
+                                           aten::linear         0.35%      28.976ms         9.12%     753.894ms      63.331us       0.000us         0.00%     253.288ms      21.278us         11904  
+                                                aten::t         0.32%      26.502ms         0.60%      49.341ms       2.649us       0.000us         0.00%       0.000us       0.000us         18624  
+                     aten::_efficient_attention_forward         0.31%      25.802ms         0.84%      69.279ms      24.885us      55.939ms         4.55%      55.939ms      20.093us          2784  
+                             Torch-Compiled Region: 4/0         0.30%      25.173ms         1.88%     155.013ms     120.726us       0.000us         0.00%      27.784ms      21.638us          1284  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 8.266s
+Self CUDA time total: 1.230s

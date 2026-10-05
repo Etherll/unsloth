@@ -1,0 +1,878 @@
+[
+ {
+  "name": "ab_full_A_pr0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_full_A_pr0.json"
+  ]
+ },
+ {
+  "name": "ab_full_A_perf0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_full_A_perf0.json"
+  ]
+ },
+ {
+  "name": "ab_full_A_cand0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/cand",
+   "--out",
+   "$ROOT/out/ab_full_A_cand0.json"
+  ]
+ },
+ {
+  "name": "ab_full_A_candoff0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/cand",
+   "--out",
+   "$ROOT/out/ab_full_A_candoff0.json"
+  ],
+  "env": {
+   "LP_CAND_CPP": "off"
+  }
+ },
+ {
+  "name": "ab_full_A_pr1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_full_A_pr1.json"
+  ]
+ },
+ {
+  "name": "ab_full_A_perf1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_full_A_perf1.json"
+  ]
+ },
+ {
+  "name": "ab_full_A_cand1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/cand",
+   "--out",
+   "$ROOT/out/ab_full_A_cand1.json"
+  ]
+ },
+ {
+  "name": "ab_full_A_candoff1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/cand",
+   "--out",
+   "$ROOT/out/ab_full_A_candoff1.json"
+  ],
+  "env": {
+   "LP_CAND_CPP": "off"
+  }
+ },
+ {
+  "name": "ab_full_A_pr2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_full_A_pr2.json"
+  ]
+ },
+ {
+  "name": "ab_full_A_perf2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_full_A_perf2.json"
+  ]
+ },
+ {
+  "name": "ab_full_A_cand2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/cand",
+   "--out",
+   "$ROOT/out/ab_full_A_cand2.json"
+  ]
+ },
+ {
+  "name": "ab_full_A_candoff2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/cand",
+   "--out",
+   "$ROOT/out/ab_full_A_candoff2.json"
+  ],
+  "env": {
+   "LP_CAND_CPP": "off"
+  }
+ },
+ {
+  "name": "ab_lora_A_pr0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_lora_A_pr0.json"
+  ]
+ },
+ {
+  "name": "ab_lora_A_perf0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_lora_A_perf0.json"
+  ]
+ },
+ {
+  "name": "ab_lora_A_pr1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_lora_A_pr1.json"
+  ]
+ },
+ {
+  "name": "ab_lora_A_perf1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_lora_A_perf1.json"
+  ]
+ },
+ {
+  "name": "ab_lora_A_pr2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_lora_A_pr2.json"
+  ]
+ },
+ {
+  "name": "ab_lora_A_perf2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_lora_A_perf2.json"
+  ]
+ },
+ {
+  "name": "ab_full_B_pr0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_full_B_pr0.json"
+  ]
+ },
+ {
+  "name": "ab_full_B_perf0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_full_B_perf0.json"
+  ]
+ },
+ {
+  "name": "ab_full_B_cand0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/cand",
+   "--out",
+   "$ROOT/out/ab_full_B_cand0.json"
+  ]
+ },
+ {
+  "name": "ab_full_B_candoff0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/cand",
+   "--out",
+   "$ROOT/out/ab_full_B_candoff0.json"
+  ],
+  "env": {
+   "LP_CAND_CPP": "off"
+  }
+ },
+ {
+  "name": "ab_full_B_pr1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_full_B_pr1.json"
+  ]
+ },
+ {
+  "name": "ab_full_B_perf1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_full_B_perf1.json"
+  ]
+ },
+ {
+  "name": "ab_full_B_cand1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/cand",
+   "--out",
+   "$ROOT/out/ab_full_B_cand1.json"
+  ]
+ },
+ {
+  "name": "ab_full_B_candoff1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/cand",
+   "--out",
+   "$ROOT/out/ab_full_B_candoff1.json"
+  ],
+  "env": {
+   "LP_CAND_CPP": "off"
+  }
+ },
+ {
+  "name": "ab_full_B_pr2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_full_B_pr2.json"
+  ]
+ },
+ {
+  "name": "ab_full_B_perf2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_full_B_perf2.json"
+  ]
+ },
+ {
+  "name": "ab_full_B_cand2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/cand",
+   "--out",
+   "$ROOT/out/ab_full_B_cand2.json"
+  ]
+ },
+ {
+  "name": "ab_full_B_candoff2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/cand",
+   "--out",
+   "$ROOT/out/ab_full_B_candoff2.json"
+  ],
+  "env": {
+   "LP_CAND_CPP": "off"
+  }
+ },
+ {
+  "name": "ab_lora_B_pr0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_lora_B_pr0.json"
+  ]
+ },
+ {
+  "name": "ab_lora_B_perf0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_lora_B_perf0.json"
+  ]
+ },
+ {
+  "name": "ab_lora_B_pr1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_lora_B_pr1.json"
+  ]
+ },
+ {
+  "name": "ab_lora_B_perf1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_lora_B_perf1.json"
+  ]
+ },
+ {
+  "name": "ab_lora_B_pr2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_lora_B_pr2.json"
+  ]
+ },
+ {
+  "name": "ab_lora_B_perf2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_lora_B_perf2.json"
+  ]
+ },
+ {
+  "name": "official_A",
+  "cmd": [
+   "bash",
+   "-c",
+   "[ -d $ROOT/laya-official ] || (git clone -q https://github.com/NandhaKishorM/laya.git $ROOT/laya-official && git -C $ROOT/laya-official checkout -q 2e4d9c8); $PY $S/official_bench.py --mb 2 --acc 16 --steps 24 --out $ROOT/out/official_A.json"
+  ],
+  "out": "$ROOT/out/official_A.json"
+ },
+ {
+  "name": "official_B",
+  "cmd": [
+   "bash",
+   "-c",
+   "[ -d $ROOT/laya-official ] || (git clone -q https://github.com/NandhaKishorM/laya.git $ROOT/laya-official && git -C $ROOT/laya-official checkout -q 2e4d9c8); $PY $S/official_bench.py --mb 8 --acc 8 --steps 16 --out $ROOT/out/official_B.json"
+  ],
+  "out": "$ROOT/out/official_B.json"
+ },
+ {
+  "name": "compile_cold_cand_A",
+  "cmd": [
+   "bash",
+   "-c",
+   "rm -rf $TMPDIR/torchinductor_* ~/.triton/cache $TRITON_CACHE_DIR; $PY $S/bench.py --mode full --mb 2 --acc 16 --steps 24 --tree $ROOT/cand --eval-at 12,20 --out $ROOT/out/compile_cold_cand_A.json"
+  ],
+  "out": "$ROOT/out/compile_cold_cand_A.json"
+ },
+ {
+  "name": "compile_cold_candoff_A",
+  "cmd": [
+   "bash",
+   "-c",
+   "rm -rf $TMPDIR/torchinductor_* ~/.triton/cache $TRITON_CACHE_DIR; $PY $S/bench.py --mode full --mb 2 --acc 16 --steps 24 --tree $ROOT/cand --eval-at 12,20 --out $ROOT/out/compile_cold_candoff_A.json"
+  ],
+  "out": "$ROOT/out/compile_cold_candoff_A.json",
+  "env": {
+   "LP_CAND_CPP": "off"
+  }
+ },
+ {
+  "name": "compile_warm_cand_A",
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 2 --acc 16 --steps 24 --tree $ROOT/cand --eval-at 12,20 --out $ROOT/out/compile_warm_cand_A.json"
+  ],
+  "out": "$ROOT/out/compile_warm_cand_A.json"
+ },
+ {
+  "name": "compile_warm_candoff_A",
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 2 --acc 16 --steps 24 --tree $ROOT/cand --eval-at 12,20 --out $ROOT/out/compile_warm_candoff_A.json"
+  ],
+  "out": "$ROOT/out/compile_warm_candoff_A.json",
+  "env": {
+   "LP_CAND_CPP": "off"
+  }
+ },
+ {
+  "name": "compile_cold_cand_B",
+  "cmd": [
+   "bash",
+   "-c",
+   "rm -rf $TMPDIR/torchinductor_* ~/.triton/cache $TRITON_CACHE_DIR; $PY $S/bench.py --mode full --mb 8 --acc 8 --steps 16 --tree $ROOT/cand --eval-at 8,12 --out $ROOT/out/compile_cold_cand_B.json"
+  ],
+  "out": "$ROOT/out/compile_cold_cand_B.json"
+ },
+ {
+  "name": "compile_cold_candoff_B",
+  "cmd": [
+   "bash",
+   "-c",
+   "rm -rf $TMPDIR/torchinductor_* ~/.triton/cache $TRITON_CACHE_DIR; $PY $S/bench.py --mode full --mb 8 --acc 8 --steps 16 --tree $ROOT/cand --eval-at 8,12 --out $ROOT/out/compile_cold_candoff_B.json"
+  ],
+  "out": "$ROOT/out/compile_cold_candoff_B.json",
+  "env": {
+   "LP_CAND_CPP": "off"
+  }
+ },
+ {
+  "name": "compile_warm_cand_B",
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 8 --acc 8 --steps 16 --tree $ROOT/cand --eval-at 8,12 --out $ROOT/out/compile_warm_cand_B.json"
+  ],
+  "out": "$ROOT/out/compile_warm_cand_B.json"
+ },
+ {
+  "name": "compile_warm_candoff_B",
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 8 --acc 8 --steps 16 --tree $ROOT/cand --eval-at 8,12 --out $ROOT/out/compile_warm_candoff_B.json"
+  ],
+  "out": "$ROOT/out/compile_warm_candoff_B.json",
+  "env": {
+   "LP_CAND_CPP": "off"
+  }
+ },
+ {
+  "name": "compile_cold_perf_A",
+  "cmd": [
+   "bash",
+   "-c",
+   "rm -rf $TMPDIR/torchinductor_* ~/.triton/cache $TRITON_CACHE_DIR; $PY $S/bench.py --mode full --mb 2 --acc 16 --steps 24 --tree $ROOT/perf --eval-at 12,20 --out $ROOT/out/compile_cold_perf_A.json"
+  ],
+  "out": "$ROOT/out/compile_cold_perf_A.json"
+ },
+ {
+  "name": "compile_warm_perf_A",
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 2 --acc 16 --steps 24 --tree $ROOT/perf --eval-at 12,20 --out $ROOT/out/compile_warm_perf_A.json"
+  ],
+  "out": "$ROOT/out/compile_warm_perf_A.json"
+ },
+ {
+  "name": "compile_cold_perf_B",
+  "cmd": [
+   "bash",
+   "-c",
+   "rm -rf $TMPDIR/torchinductor_* ~/.triton/cache $TRITON_CACHE_DIR; $PY $S/bench.py --mode full --mb 8 --acc 8 --steps 16 --tree $ROOT/perf --eval-at 8,12 --out $ROOT/out/compile_cold_perf_B.json"
+  ],
+  "out": "$ROOT/out/compile_cold_perf_B.json"
+ },
+ {
+  "name": "compile_warm_perf_B",
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 8 --acc 8 --steps 16 --tree $ROOT/perf --eval-at 8,12 --out $ROOT/out/compile_warm_perf_B.json"
+  ],
+  "out": "$ROOT/out/compile_warm_perf_B.json"
+ },
+ {
+  "name": "prof_pr_full_A",
+  "env": {
+   "LP_LAYER_RANGES": "1"
+  },
+  "print_log": 6000,
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 2 --acc 16 --steps 9 --warmup 2 --tree $ROOT/base --prof $ROOT/out/prof_pr_full_A --out $ROOT/out/prof_pr_full_A.json > /dev/null 2>&1; $PY $S/prof.py $ROOT/out/prof_pr_full_A/trace.json; rm -f $ROOT/out/prof_pr_full_A/trace.json"
+  ]
+ },
+ {
+  "name": "prof_cand_full_A",
+  "env": {
+   "LP_LAYER_RANGES": "0"
+  },
+  "print_log": 6000,
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 2 --acc 16 --steps 9 --warmup 2 --tree $ROOT/cand --prof $ROOT/out/prof_cand_full_A --out $ROOT/out/prof_cand_full_A.json > /dev/null 2>&1; $PY $S/prof.py $ROOT/out/prof_cand_full_A/trace.json; rm -f $ROOT/out/prof_cand_full_A/trace.json"
+  ]
+ },
+ {
+  "name": "prof_pr_full_B",
+  "env": {
+   "LP_LAYER_RANGES": "1"
+  },
+  "print_log": 6000,
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 8 --acc 8 --steps 9 --warmup 2 --tree $ROOT/base --prof $ROOT/out/prof_pr_full_B --out $ROOT/out/prof_pr_full_B.json > /dev/null 2>&1; $PY $S/prof.py $ROOT/out/prof_pr_full_B/trace.json; rm -f $ROOT/out/prof_pr_full_B/trace.json"
+  ]
+ },
+ {
+  "name": "prof_cand_full_B",
+  "env": {
+   "LP_LAYER_RANGES": "0"
+  },
+  "print_log": 6000,
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 8 --acc 8 --steps 9 --warmup 2 --tree $ROOT/cand --prof $ROOT/out/prof_cand_full_B --out $ROOT/out/prof_cand_full_B.json > /dev/null 2>&1; $PY $S/prof.py $ROOT/out/prof_cand_full_B/trace.json; rm -f $ROOT/out/prof_cand_full_B/trace.json"
+  ]
+ },
+ {
+  "name": "prof_pr_lora_A",
+  "env": {
+   "LP_LAYER_RANGES": "1"
+  },
+  "print_log": 6000,
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode lora --mb 2 --acc 16 --steps 9 --warmup 2 --tree $ROOT/base --prof $ROOT/out/prof_pr_lora_A --out $ROOT/out/prof_pr_lora_A.json > /dev/null 2>&1; $PY $S/prof.py $ROOT/out/prof_pr_lora_A/trace.json; rm -f $ROOT/out/prof_pr_lora_A/trace.json"
+  ]
+ },
+ {
+  "name": "prof_perf_lora_A",
+  "env": {
+   "LP_LAYER_RANGES": "1"
+  },
+  "print_log": 6000,
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode lora --mb 2 --acc 16 --steps 9 --warmup 2 --tree $ROOT/perf --prof $ROOT/out/prof_perf_lora_A --out $ROOT/out/prof_perf_lora_A.json > /dev/null 2>&1; $PY $S/prof.py $ROOT/out/prof_perf_lora_A/trace.json; rm -f $ROOT/out/prof_perf_lora_A/trace.json"
+  ]
+ }
+]

@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/content/repo/benchmarks/laya_perf/scripts/sdpa_probe.py", line 6, in <module>
+    names = {int(b): b.name for b in SDPBackend}
+                                     ^^^^^^^^^^
+TypeError: 'pybind11_type' object is not iterable

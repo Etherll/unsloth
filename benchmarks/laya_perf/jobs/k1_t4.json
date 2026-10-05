@@ -1,0 +1,806 @@
+[
+ {
+  "name": "pytest_perf",
+  "cmd": [
+   "$PY",
+   "-m",
+   "pytest",
+   "tests/test_decision_model.py",
+   "-q",
+   "-p",
+   "no:cacheprovider"
+  ],
+  "cwd": "$ROOT/perf",
+  "print_log": 2500
+ },
+ {
+  "name": "sdpa_probe",
+  "cmd": [
+   "$S/sdpa_probe.py",
+   "--out",
+   "$ROOT/out/sdpa_probe.json"
+  ]
+ },
+ {
+  "name": "g1_pr_full_fp32",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/base",
+   "--mode",
+   "full",
+   "--precision",
+   "fp32",
+   "--gc",
+   "true",
+   "--out",
+   "$ROOT/out/g1_pr_full_fp32.json"
+  ]
+ },
+ {
+  "name": "g1_perf_full_fp32",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "full",
+   "--precision",
+   "fp32",
+   "--opts",
+   "trainer_compile",
+   "--gc",
+   "true",
+   "--out",
+   "$ROOT/out/g1_perf_full_fp32.json"
+  ]
+ },
+ {
+  "name": "g1_pr_full_bf16",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/base",
+   "--mode",
+   "full",
+   "--precision",
+   "bf16",
+   "--out",
+   "$ROOT/out/g1_pr_full_bf16.json"
+  ]
+ },
+ {
+  "name": "g1_perf_full_bf16",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "full",
+   "--precision",
+   "bf16",
+   "--opts",
+   "trainer_compile",
+   "--out",
+   "$ROOT/out/g1_perf_full_bf16.json"
+  ]
+ },
+ {
+  "name": "g1_pr2_full_bf16",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/base",
+   "--mode",
+   "full",
+   "--precision",
+   "bf16",
+   "--out",
+   "$ROOT/out/g1_pr2_full_bf16.json"
+  ]
+ },
+ {
+  "name": "g1_pr_lora_fp32",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/base",
+   "--mode",
+   "lora",
+   "--precision",
+   "fp32",
+   "--gc",
+   "true",
+   "--out",
+   "$ROOT/out/g1_pr_lora_fp32.json"
+  ]
+ },
+ {
+  "name": "g1_perf_lora_fp32",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "lora",
+   "--precision",
+   "fp32",
+   "--opts",
+   "trainer_compile",
+   "--gc",
+   "true",
+   "--out",
+   "$ROOT/out/g1_perf_lora_fp32.json"
+  ]
+ },
+ {
+  "name": "g1_pr_lora_bf16",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/base",
+   "--mode",
+   "lora",
+   "--precision",
+   "bf16",
+   "--out",
+   "$ROOT/out/g1_pr_lora_bf16.json"
+  ]
+ },
+ {
+  "name": "g1_perf_lora_bf16",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "lora",
+   "--precision",
+   "bf16",
+   "--opts",
+   "trainer_compile",
+   "--out",
+   "$ROOT/out/g1_perf_lora_bf16.json"
+  ]
+ },
+ {
+  "name": "g1_cand_full_fp32",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/cand",
+   "--mode",
+   "full",
+   "--precision",
+   "fp32",
+   "--opts",
+   "trainer_compile",
+   "--gc",
+   "true",
+   "--out",
+   "$ROOT/out/g1_cand_full_fp32.json"
+  ]
+ },
+ {
+  "name": "g1_cand_full_bf16",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/cand",
+   "--mode",
+   "full",
+   "--precision",
+   "bf16",
+   "--opts",
+   "trainer_compile",
+   "--out",
+   "$ROOT/out/g1_cand_full_bf16.json"
+  ]
+ },
+ {
+  "name": "ab_full_A_pr0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_full_A_pr0.json"
+  ]
+ },
+ {
+  "name": "ab_full_A_perf0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_full_A_perf0.json"
+  ]
+ },
+ {
+  "name": "ab_full_A_cand0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/cand",
+   "--out",
+   "$ROOT/out/ab_full_A_cand0.json"
+  ]
+ },
+ {
+  "name": "ab_full_A_pr1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_full_A_pr1.json"
+  ]
+ },
+ {
+  "name": "ab_full_A_perf1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_full_A_perf1.json"
+  ]
+ },
+ {
+  "name": "ab_full_A_cand1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/cand",
+   "--out",
+   "$ROOT/out/ab_full_A_cand1.json"
+  ]
+ },
+ {
+  "name": "ab_full_A_pr2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_full_A_pr2.json"
+  ]
+ },
+ {
+  "name": "ab_full_A_perf2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_full_A_perf2.json"
+  ]
+ },
+ {
+  "name": "ab_full_A_cand2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/cand",
+   "--out",
+   "$ROOT/out/ab_full_A_cand2.json"
+  ]
+ },
+ {
+  "name": "ab_lora_A_pr0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_lora_A_pr0.json"
+  ]
+ },
+ {
+  "name": "ab_lora_A_perf0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_lora_A_perf0.json"
+  ]
+ },
+ {
+  "name": "ab_lora_A_pr1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_lora_A_pr1.json"
+  ]
+ },
+ {
+  "name": "ab_lora_A_perf1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_lora_A_perf1.json"
+  ]
+ },
+ {
+  "name": "ab_lora_A_pr2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_lora_A_pr2.json"
+  ]
+ },
+ {
+  "name": "ab_lora_A_perf2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_lora_A_perf2.json"
+  ]
+ },
+ {
+  "name": "ab_full_B_pr0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_full_B_pr0.json"
+  ]
+ },
+ {
+  "name": "ab_full_B_perf0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_full_B_perf0.json"
+  ]
+ },
+ {
+  "name": "ab_full_B_cand0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/cand",
+   "--out",
+   "$ROOT/out/ab_full_B_cand0.json"
+  ]
+ },
+ {
+  "name": "ab_full_B_pr1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_full_B_pr1.json"
+  ]
+ },
+ {
+  "name": "ab_full_B_perf1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_full_B_perf1.json"
+  ]
+ },
+ {
+  "name": "ab_full_B_cand1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/cand",
+   "--out",
+   "$ROOT/out/ab_full_B_cand1.json"
+  ]
+ },
+ {
+  "name": "ab_full_B_pr2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_full_B_pr2.json"
+  ]
+ },
+ {
+  "name": "ab_full_B_perf2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_full_B_perf2.json"
+  ]
+ },
+ {
+  "name": "ab_full_B_cand2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/cand",
+   "--out",
+   "$ROOT/out/ab_full_B_cand2.json"
+  ]
+ },
+ {
+  "name": "ab_lora_B_pr0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_lora_B_pr0.json"
+  ]
+ },
+ {
+  "name": "ab_lora_B_perf0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_lora_B_perf0.json"
+  ]
+ },
+ {
+  "name": "ab_lora_B_pr1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_lora_B_pr1.json"
+  ]
+ },
+ {
+  "name": "ab_lora_B_perf1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_lora_B_perf1.json"
+  ]
+ },
+ {
+  "name": "ab_lora_B_pr2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/ab_lora_B_pr2.json"
+  ]
+ },
+ {
+  "name": "ab_lora_B_perf2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/ab_lora_B_perf2.json"
+  ]
+ },
+ {
+  "name": "official_A",
+  "cmd": [
+   "bash",
+   "-c",
+   "[ -d $ROOT/laya-official ] || (git clone -q https://github.com/NandhaKishorM/laya.git $ROOT/laya-official && git -C $ROOT/laya-official checkout -q 2e4d9c8); $PY $S/official_bench.py --mb 2 --acc 16 --steps 24 --out $ROOT/out/official_A.json"
+  ],
+  "out": "$ROOT/out/official_A.json"
+ },
+ {
+  "name": "official_B",
+  "cmd": [
+   "bash",
+   "-c",
+   "[ -d $ROOT/laya-official ] || (git clone -q https://github.com/NandhaKishorM/laya.git $ROOT/laya-official && git -C $ROOT/laya-official checkout -q 2e4d9c8); $PY $S/official_bench.py --mb 8 --acc 8 --steps 16 --out $ROOT/out/official_B.json"
+  ],
+  "out": "$ROOT/out/official_B.json"
+ },
+ {
+  "name": "prof_pr_full_A",
+  "env": {
+   "LP_LAYER_RANGES": "1"
+  },
+  "print_log": 6000,
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 2 --acc 16 --steps 9 --warmup 2 --tree $ROOT/base --prof $ROOT/out/prof_pr_full_A --out $ROOT/out/prof_pr_full_A.json > /dev/null 2>&1; $PY $S/prof.py $ROOT/out/prof_pr_full_A/trace.json; rm -f $ROOT/out/prof_pr_full_A/trace.json"
+  ]
+ },
+ {
+  "name": "prof_cand_full_A",
+  "env": {
+   "LP_LAYER_RANGES": "0"
+  },
+  "print_log": 6000,
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 2 --acc 16 --steps 9 --warmup 2 --tree $ROOT/cand --prof $ROOT/out/prof_cand_full_A --out $ROOT/out/prof_cand_full_A.json > /dev/null 2>&1; $PY $S/prof.py $ROOT/out/prof_cand_full_A/trace.json; rm -f $ROOT/out/prof_cand_full_A/trace.json"
+  ]
+ },
+ {
+  "name": "prof_pr_full_B",
+  "env": {
+   "LP_LAYER_RANGES": "1"
+  },
+  "print_log": 6000,
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 8 --acc 8 --steps 9 --warmup 2 --tree $ROOT/base --prof $ROOT/out/prof_pr_full_B --out $ROOT/out/prof_pr_full_B.json > /dev/null 2>&1; $PY $S/prof.py $ROOT/out/prof_pr_full_B/trace.json; rm -f $ROOT/out/prof_pr_full_B/trace.json"
+  ]
+ },
+ {
+  "name": "prof_cand_full_B",
+  "env": {
+   "LP_LAYER_RANGES": "0"
+  },
+  "print_log": 6000,
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 8 --acc 8 --steps 9 --warmup 2 --tree $ROOT/cand --prof $ROOT/out/prof_cand_full_B --out $ROOT/out/prof_cand_full_B.json > /dev/null 2>&1; $PY $S/prof.py $ROOT/out/prof_cand_full_B/trace.json; rm -f $ROOT/out/prof_cand_full_B/trace.json"
+  ]
+ }
+]
