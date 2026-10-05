@@ -1232,3 +1232,44 @@ def test_lean_lora_forward_matches_peft(checkpoint, scaling):
     with model.encoder.disable_adapter():
         x = torch.randn(2, 5, layer.in_features, device = device)
         torch.testing.assert_close(layer(x), layer.base_layer(x))
+
+
+
+
+def test_encoder_layers_compile_only_for_full_finetuning(checkpoint, tmp_path, monkeypatch):
+    model, tokenizer = FastDecisionModel.from_pretrained(
+        str(checkpoint), full_finetuning = True, use_gradient_checkpointing = False
+    )
+    compiled_models = []
+    monkeypatch.setattr(decision, "_compile_encoder_layers", compiled_models.append)
+    items, _ = FastDecisionModel.build_dataset([_row(i) for i in range(8)], tokenizer, model)
+    trainer = DecisionTrainer(
+        model = model, args = _args(tmp_path), train_dataset = items, processing_class = tokenizer
+    )
+    trainer.train()
+    assert compiled_models == [model]
+    monkeypatch.undo()
+
+    lora, _ = FastDecisionModel.from_pretrained(str(checkpoint), use_gradient_checkpointing = False)
+    lora = FastDecisionModel.get_peft_model(lora, r = 4, lora_alpha = 4)
+    assert not decision._compile_encoder_layers(lora)
+    monkeypatch.setenv("UNSLOTH_COMPILE_DISABLE", "1")
+    assert not decision._compile_encoder_layers(model)
+    monkeypatch.delenv("UNSLOTH_COMPILE_DISABLE")
+    from torch.utils._triton import has_triton
+
+    compiled = decision._compile_encoder_layers(model)
+    assert compiled == (decision._device().type == "cuda" and has_triton())
+    assert all((layer._compiled_call_impl is not None) == compiled for layer in model.encoder.layers)
+    attention = model.encoder.config._attn_implementation
+    assert attention == ("unsloth_decision_sdpa" if compiled else "sdpa")
+    # The compiled layers' attention is transformers' SDPA attention.
+    from transformers.integrations.sdpa_attention import sdpa_attention_forward
+
+    q, k, v = (torch.randn(2, 4, 6, 8) for _ in range(3))
+    mask = torch.ones(2, 1, 6, 6, dtype = torch.bool)
+    mask[1, ..., 4:] = False
+    module = model.encoder.layers[0].attn
+    ours, _ = decision._encoder_sdpa(module, q, k, v, mask, scaling = 0.5)
+    reference, _ = sdpa_attention_forward(module, q, k, v, mask, scaling = 0.5)
+    torch.testing.assert_close(ours, reference)

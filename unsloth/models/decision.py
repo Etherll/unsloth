@@ -218,6 +218,45 @@ def _gradient_checkpointing(model, use_gradient_checkpointing) -> None:
         model.encoder.gradient_checkpointing_disable()
 
 
+def _encoder_sdpa(module, query, key, value, attention_mask, dropout = 0.0, scaling = None, **kwargs):
+    # transformers' SDPA attention without unsloth_zoo's wrappers, which carry a __module__ that
+    # torch 2.11's dynamo cannot guard, so the compiled layers fell back to eager on Linux.
+    out = torch.nn.functional.scaled_dot_product_attention(
+        query, key, value, attn_mask = attention_mask, dropout_p = dropout, scale = scaling
+    )
+    return out.transpose(1, 2).contiguous(), None
+
+
+def _compile_encoder_layers(model) -> bool:
+    # Regional: each layer alone, so gradient checkpointing still wraps whole layers. Only for
+    # full finetuning on CUDA; LoRA measured no gain.
+    encoder = model.encoder
+    layers = getattr(encoder, "layers", None)
+    if (
+        os.environ.get("UNSLOTH_COMPILE_DISABLE", "0") == "1"
+        or not getattr(model, "_unsloth_full_finetuning", False)
+        or getattr(encoder.config, "model_type", None) != "modernbert"
+        or not isinstance(layers, torch.nn.ModuleList)
+        or next(model.parameters()).device.type != "cuda"
+    ):
+        return False
+    from torch.utils._triton import has_triton
+
+    if not has_triton():
+        return False
+    if encoder.config._attn_implementation == "sdpa":
+        from transformers import AttentionInterface, AttentionMaskInterface
+        from transformers.masking_utils import sdpa_mask
+
+        AttentionInterface.register("unsloth_decision_sdpa", _encoder_sdpa)
+        AttentionMaskInterface.register("unsloth_decision_sdpa", sdpa_mask)
+        encoder.config._attn_implementation = "unsloth_decision_sdpa"
+    for layer in layers:
+        if getattr(layer, "_compiled_call_impl", None) is None:
+            layer.compile(dynamic = True)
+    return True
+
+
 def _lean_lora_forward(self, x, *args, **kwargs):
     adapter = self._unsloth_adapter
     if (
@@ -1041,6 +1080,10 @@ class DecisionTrainer(Trainer):
     def predict(self, *args, **kwargs):
         with self._dataset_field_order():
             return super().predict(*args, **kwargs)
+
+    def train(self, *args, **kwargs):
+        _compile_encoder_layers(self.model)
+        return super().train(*args, **kwargs)
 
     def _get_train_sampler(self, train_dataset = None):
         dataset = self.train_dataset if train_dataset is None else train_dataset
