@@ -8,6 +8,7 @@ p.add_argument("--mb", type = int, default = 2)
 p.add_argument("--batches", type = int, default = 32)
 p.add_argument("--variants", default = "sdpa_eff,sdpa_cudnn,sdpa_math_free,varlen_fa2,xf_padded,xf_bd,fa4_varlen")
 p.add_argument("--out", required = True)
+p.add_argument("--data", default = "items.pt")
 args = p.parse_args()
 sys.path.insert(0, os.environ["PERF"])
 import torch
@@ -17,7 +18,7 @@ from triton.testing import do_bench
 
 H, D, W = 16, 64, 64
 dev, dt = "cuda", torch.bfloat16
-data = torch.load(f"{os.environ['LP_ROOT']}/data/items.pt", weights_only = False)["bench"]
+data = torch.load(f"{os.environ['LP_ROOT']}/data/{args.data}", weights_only = False)["bench"]
 from transformers.trainer_pt_utils import get_length_grouped_indices
 
 lens = [len(i["input_ids"]) for i in data]
@@ -75,6 +76,29 @@ def varlen_fa2():
     return step
 
 
+def varlen_global():
+    # Global layers only and no window argument, so it also runs on torch 2.10 (window_size arrived in 2.11).
+    from torch.nn.attention.varlen import varlen_attn
+    sets = [packed(ls) for ls in mbs]
+
+    def step():
+        for q, k, v, cu, mx in sets:
+            o = varlen_attn(q, k, v, cu, cu, mx, mx)
+            o.backward(torch.ones_like(o))
+    return step
+
+
+def sdpa_eff_global():
+    sets = [padded(ls) for ls in mbs]
+
+    def step():
+        for q, k, v, g, l, keep in sets:
+            with sdpa_kernel([SDPBackend.EFFICIENT_ATTENTION]):
+                o = F.scaled_dot_product_attention(q, k, v, attn_mask = g)
+            o.backward(torch.ones_like(o))
+    return step
+
+
 def xf_padded():
     import xformers.ops as xops
     sets = []
@@ -120,7 +144,7 @@ builders = {
     "sdpa_eff": lambda: run_padded(sdpa(SDPBackend.EFFICIENT_ATTENTION)),
     "sdpa_cudnn": lambda: run_padded(sdpa(SDPBackend.CUDNN_ATTENTION)),
     "sdpa_math_free": lambda: run_padded(sdpa(SDPBackend.MATH)),
-    "varlen_fa2": varlen_fa2, "xf_padded": xf_padded, "xf_bd": xf_bd, "fa4_varlen": fa4_varlen,
+    "varlen_fa2": varlen_fa2, "varlen_global": varlen_global, "sdpa_eff_global": sdpa_eff_global, "xf_padded": xf_padded, "xf_bd": xf_bd, "fa4_varlen": fa4_varlen,
 }
 for name in args.variants.split(","):
     try:
