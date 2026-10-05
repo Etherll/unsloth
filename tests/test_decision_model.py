@@ -714,3 +714,33 @@ def test_adamw_runs_fused_unless_the_caller_chose(checkpoint, tmp_path, lora):
         optimizer = trainer.create_optimizer()
         assert isinstance(optimizer, torch.optim.AdamW)
         assert optimizer.defaults.get("fused") is fused
+
+
+@pytest.mark.parametrize("scaling", [1, 2])
+def test_lean_lora_forward_matches_peft(checkpoint, scaling):
+    model, _ = FastDecisionModel.from_pretrained(
+        str(checkpoint), dtype = torch.float32, use_gradient_checkpointing = False
+    )
+    model = FastDecisionModel.get_peft_model(model, r = 4, lora_alpha = 4 * scaling)
+    layers = [m for m in model.encoder.modules() if hasattr(m, "_unsloth_peft_forward")]
+    assert layers and all(m.forward.__func__ is decision._lean_lora_forward for m in layers)
+    layer = layers[0]
+    torch.manual_seed(0)
+    with torch.no_grad():
+        layer.lora_B["default"].weight.normal_()
+    device = layer.lora_A["default"].weight.device
+    autocast = [False] + ([True] if device.type == "cuda" else [])
+    for enabled in autocast:
+        x = torch.randn(2, 5, layer.in_features, device = device, requires_grad = True)
+        outputs = []
+        for forward in (layer.forward, layer._unsloth_peft_forward):
+            with torch.autocast(device.type, dtype = torch.bfloat16, enabled = enabled):
+                out = forward(x)
+            grads = torch.autograd.grad(out.float().square().sum(), [x, layer.lora_A["default"].weight])
+            outputs.append((out, *grads))
+        for lean, peft in zip(*outputs):
+            assert lean.dtype == peft.dtype and torch.equal(lean, peft)
+    # Disabled or merged adapters take PEFT's own path.
+    with model.encoder.disable_adapter():
+        x = torch.randn(2, 5, layer.in_features, device = device)
+        torch.testing.assert_close(layer(x), layer.base_layer(x))
