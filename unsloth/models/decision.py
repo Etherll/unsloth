@@ -36,6 +36,7 @@ TRAIN_MAX_LEN, TRAIN_HEAD_MAX_LEN = 1024, 256
 HOLDOUT_MAX = 400
 MIN_CALIBRATION_ITEMS = 10
 HEAD_LEARNING_RATE = 1e-4
+STATIC_LENGTH_MULTIPLE = 64
 QUESTION_TYPES = ("choice", "score", "noul")
 # DecisionTrainer defaults for Clef; every key is also a DecisionTrainer argument.
 CLEF_RECIPE = {}
@@ -253,8 +254,34 @@ def _compile_encoder_layers(model) -> bool:
         encoder.config._attn_implementation = "unsloth_decision_sdpa"
     for layer in layers:
         if getattr(layer, "_compiled_call_impl", None) is None:
-            layer.compile(dynamic = True)
+            layer._compiled_call_impl = _training_only(
+                layer, torch.compile(layer._call_impl, dynamic = False)
+            )
+    # Static shapes launch far cheaper than dynamic ones; lengths are padded to a few buckets.
+    model._unsloth_pad_multiple = STATIC_LENGTH_MULTIPLE
     return True
+
+
+def _training_only(layer, compiled):
+    # Evaluation batches have arbitrary lengths, which static graphs would compile one by one.
+    def call(*args, **kwargs):
+        return compiled(*args, **kwargs) if layer.training else layer._call_impl(*args, **kwargs)
+
+    return call
+
+
+def _pad_length(model, inputs: dict) -> dict:
+    multiple = getattr(model, "_unsloth_pad_multiple", 0)
+    extra = -inputs["input_ids"].shape[1] % multiple if multiple and model.training else 0
+    if extra:
+        # Padded positions are masked keys and never gathered, so the loss is unchanged.
+        pad = model.encoder.config.pad_token_id or 0
+        inputs = {
+            **inputs,
+            "input_ids": torch.nn.functional.pad(inputs["input_ids"], (0, extra), value = pad),
+            "attention_mask": torch.nn.functional.pad(inputs["attention_mask"], (0, extra)),
+        }
+    return inputs
 
 
 def _lean_lora_forward(self, x, *args, **kwargs):
@@ -1111,6 +1138,7 @@ class DecisionTrainer(Trainer):
     ):
         target = inputs.pop("target")
         ordinal = inputs.pop("ordinal", None)
+        inputs = _pad_length(model, inputs)
         with _no_cudnn_attention():
             logits, _ = model(**inputs)
         mask = inputs["marker_mask"]
