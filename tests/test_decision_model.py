@@ -647,3 +647,26 @@ def test_rope_parameters_build_the_trained_rope_on_every_transformers(tmp_path):
     outputs = [model.eval()(input_ids = ids).last_hidden_state for model in (saved, both, default)]
     torch.testing.assert_close(outputs[0], outputs[1])
     assert not torch.allclose(outputs[0], outputs[2], atol = 1e-2)
+
+
+def test_decision_forward_never_picks_cudnn_attention(checkpoint, tmp_path):
+    model, tokenizer = FastDecisionModel.from_pretrained(
+        str(checkpoint), full_finetuning = True, use_gradient_checkpointing = False
+    )
+    items, _ = FastDecisionModel.build_dataset([_row(i) for i in range(4)], tokenizer, model)
+    cudnn = []
+    forward = model.forward
+
+    def spy(*args, **kwargs):
+        cudnn.append(torch.backends.cuda.cudnn_sdp_enabled())
+        return forward(*args, **kwargs)
+
+    model.forward = spy
+    trainer = DecisionTrainer(
+        model = model, args = _args(tmp_path), train_dataset = items, processing_class = tokenizer
+    )
+    device = next(model.parameters()).device
+    batch = {k: v.to(device) for k, v in DecisionDataCollator(tokenizer.pad_token_id)(items).items()}
+    trainer.compute_loss(model, batch)
+    decision._logits(model, items, tokenizer.pad_token_id)
+    assert cudnn and not any(cudnn)

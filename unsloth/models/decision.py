@@ -139,6 +139,13 @@ def _amp_dtype(device):
     return torch.bfloat16 if device.type == "xpu" else None
 
 
+def _no_cudnn_attention():
+    # cuDNN SDPA rebuilds its bf16 plan for every new sequence length, about 100x slower steps on a B200.
+    from torch.nn.attention import SDPBackend, sdpa_kernel
+
+    return sdpa_kernel([SDPBackend.FLASH_ATTENTION, SDPBackend.EFFICIENT_ATTENTION, SDPBackend.MATH])
+
+
 def _gradient_checkpointing(model, use_gradient_checkpointing) -> None:
     device = next(model.parameters()).device
     # Unsloth's offloaded checkpointing needs an accelerator, and its re-entrant backward breaks DDP (#3713).
@@ -350,7 +357,8 @@ class DecisionTrainer(Trainer):
         num_items_in_batch = None,
     ):
         target = inputs.pop("target")
-        logits, _ = model(**inputs)
+        with _no_cudnn_attention():
+            logits, _ = model(**inputs)
         loss = _soft_cross_entropy(logits, target, inputs["marker_mask"])
         return (loss, {"loss": loss, "logits": logits}) if return_outputs else loss
 
@@ -398,7 +406,8 @@ def _logits(
         chunk = items[start : start + batch_size]
         batch = collate(chunk)
         batch.pop("target")
-        with torch.autocast(device.type, dtype = amp_dtype, enabled = amp_dtype is not None):
+        autocast = torch.autocast(device.type, dtype = amp_dtype, enabled = amp_dtype is not None)
+        with autocast, _no_cudnn_attention():
             logits, _ = model(**{k: v.to(device) for k, v in batch.items()})
         logits = logits.float().cpu()
         out.extend(logits[row, : len(item["markers"])] for row, item in enumerate(chunk))
