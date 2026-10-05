@@ -238,6 +238,69 @@ which seeds fall off it. No perf change is responsible, so nothing is reverted; 
 | ca7303431 | Compile the decision encoder layers for static shapes (D1) |
 | 43f60472b | Test the lean LoRA forward in the GPU's own autocast dtype (T4 fix) |
 
+## Long-context data (synthetic, 512-4,094 tokens)
+
+`scripts/make_long.py` inserts filler context after [CLS] (option markers shifted, so each item stays a valid decision):
+lengths log-uniform in [512, 4096], median 1,471. Full fine-tune, Colab G4, torch 2.11, `max_seq_length` 4,096. The
+length-grouped sampler keeps padding at **1.0% of tokens** even here.
+
+| G4, long data | A p25 s | A wall, cold / warm (24 steps) | B p25 s | B wall, warm | reserved A / B |
+|---|---|---|---|---|---|
+| PR | 1.751 | 49 s | 3.227 | 95 s | 8,314 / 11,556 |
+| final (D1 static, pad 64) | 1.672 | **256 s** / 97 s | 2.978 | 134 s (cold 286 s) | 7,894 / 11,258 |
+| final, recompile limit 256 | 1.659 | 98 s / 97 s | 2.979 | 134 s | 7,894 / 11,258 |
+| final, pad 256 | 1.590 | 57 s (warm) | 2.683 | 91 s | 7,894 / 11,278 |
+| final, geometric buckets (~7 shapes) | 1.732 | 56 s (warm) | 3.020 | 93 s | 7,794 / 11,178 |
+| **final, dynamic shapes** | 1.652 | 78 s / **58 s** | **2.856** | 96 s | 7,874 / 11,278 |
+| **padding-free, varlen FA2, compiled (static 256-token buckets)** | **1.036** | 165 s / 59 s | 3.438 | 174 s | 7,834 / 11,092 |
+| padding-free, eager | 1.338 | 36 s | **2.378** | **67 s** | 8,294 / 11,412 |
+| padded, eager | 1.737 | 48 s | 3.209 | 95 s | 8,316 / 11,556 |
+
+100 steps at A: PR 200 s, final 220 s, dynamic 202 s, geometric 206 s wall.
+
+- **D1's static shapes regress long data**: every new 64-token bucket compiles (about 56 buckets here vs about 9 on the Laya
+  data); torch's default `recompile_limit` of 8 then sends later shapes to eager. A cold 24-step run takes 5x the PR's
+  wall time. Dynamic shapes (one graph) fix it at equal or better step time (fp32 G1 exact: dloss 2e-6). On short data
+  static shapes were +11% (D1), so this needs a length-aware choice (decision 10).
+- **Padding-free attention is the long-context lever**, not the 1% of padding: ModernBERT's local layers (2 of 3) use a
+  128-token window that padded SDPA implements as a mask over the full L x L, while varlen FlashAttention skips it; and on
+  global layers FA2 varlen is 2.3x faster than padded mem-eff SDPA at these lengths (microbench below). +61% at A
+  compiled, +25% at B eager. With static buckets the compiled version recompiles too often at B (mb8).
+- **G1 on long data** (8 batches, bf16 vs fp32): loss matches (dloss 0.011-0.013 both), but the padding-free gradients
+  sit about 2x further from fp32 than the padded ones (median 0.044 vs 0.020 on G4, 0.089 vs 0.051 on L4). Long-data G2
+  over 3 seeds decides it (below).
+
+Global-layer attention kernel, fwd+bwd per micro-batch (L4, torch 2.10 + xFormers 0.0.35):
+
+| ms | padded SDPA mem-eff | torch varlen FA2 | xFormers BlockDiagonalMask |
+|---|---|---|---|
+| long, mb2 | 10.76 | **4.60** | 4.65 |
+| long, mb8 | 35.14 | **15.12** | 15.21 |
+| short, mb2 | **0.378** | 0.617 | 1.011 |
+| short, mb8 | 1.122 | **0.638** | 0.988 |
+
+**xFormers** dispatches to `fa2F/fa2B@2.5.7-pt`, i.e. PyTorch's own FlashAttention-2 kernels, so it can only tie torch's
+varlen. It has no bidirectional local (sliding-window) block mask, so ModernBERT's local layers cannot use it (Unsloth's
+`utils/packing._get_cached_block_mask` would silently skip the window for a non-causal mask: harmless today, since the
+SentenceTransformer path only admits BERT / RoBERTa, but a trap for windowed encoders), and there is no xFormers build for
+torch 2.11 (Colab / Kaggle). The padding-free prototype therefore reuses transformers' padding-free machinery
+(`_get_unpad_data`, `_pad_input`, `cu_seq_lens_*` / `max_length_*` kwargs, the flash path's window conversion) with
+torch's built-in `varlen_attn` (window support needs torch >= 2.11, sm80+).
+
+**Padding-free encoder, transformers-reuse version (`unpad_hf` + dynamic-shape compile)**:
+
+| | final | final, dynamic | padding-free, dynamic | vs final |
+|---|---|---|---|---|
+| L4 long A, p25 (rep 1, warm) | 8.802 s, wall 333 s (cold 686 s) | 8.546 s | **5.804 s**, wall 182 s (cold 204 s) | **+52%** |
+| L4 short A, p25 | **1.804 s** (wall 114 s) | | 1.969 s (wall 67 s) | **-8.4%** |
+| G4 long A, G2 runs (3 seeds) | 1.51-1.56 s | | **1.05-1.11 s** | **+43%** |
+
+Long-data G2 (G4, 60 steps, seeds 3407 / 11 / 12, seed-averaged windows): final vs final control 0.0105, **padding-free
+(dynamic) 0.0125 PASS** (holdout CE 1.003 [0.991..1.027] vs 1.009 [0.995..1.032], dCE 0.006), padding-free eager 0.0146
+PASS. The G1 gradient-distance gap does not show in training. Short-data G1 (L4): dloss 0.012 vs perf 0.025, grad
+distance 0.035 vs 0.031. On short inputs padded SDPA is faster (microbench), so the path must switch on by length, the way
+the SentenceTransformer path gates on `_MIN_AUTO_TOKENS`.
+
 ## Kaggle T4 (fp16)
 
 Tesla T4 (sm_75, 15 GB, one of the two used), 4 vCPU, torch 2.11.0+cu128, cuDNN 9.19. The T4 has no native bf16, so Unsloth's
@@ -312,6 +375,12 @@ All Linux GPU work after the move ran on Colab or Kaggle; every Colab VM was rel
 | k5_t4 | Kaggle T4x2 | LoRA compile 2+2 pairs A/B, G2 seeds 3407 / 11 / 12 (20 jobs) | timing PASS (+24-34%); G2 A PASS, B 0.092 (LoRA-compile seed 3407 collapsed) |
 | g4_x9 / l4_x9 / k7_x9 | Colab G4, Colab L4, Kaggle T4x2 | X9 fused accumulation (custom_op version): G1, 3+3 pairs, profile (17 jobs each) | REJECTED on G4/L4 (A slower), T4 +8.8% A |
 | g4_x9b | Colab G4 | X9 with a raw Library op (4x less dispatch): 3+3 pairs, G1 | A -2.3%, B +2.7%: REJECTED |
+| g4_long | Colab G4 | long data: PR / final / limit 256 / pad 256 / bucketed varlen unpad / eager pad / eager unpad at A and B, G1 (26 jobs) | COMPLETE (found the D1 long-data recompile regression; unpad +61% A) |
+| g4_long2 | Colab G4 | long data: dynamic-shape and geometric-bucket compile, 100-step runs, G1 (22 jobs) | COMPLETE (dynamic shapes fix the regression) |
+| g4_unpad | Colab G4 | padding-free (transformers reuse) screen | CANCELLED: no G4 capacity, never allocated; moved to L4 |
+| l4_xf210 | Colab L4, torch 2.10 | padding-free via Unsloth's xFormers dispatcher | STOPPED: torch 2.10 varlen has no window; replaced by the kernel microbench |
+| l4_xfattn | Colab L4, torch 2.10 + xFormers 0.0.35 (2 VMs: first lost its connection) | global-layer kernel microbench (6 jobs) | COMPLETE: xFormers = PyTorch's FA2 kernel, no gain |
+| g4_lg2 | Colab G4 | long-data G2: final, final control, padding-free dynamic / eager, 3 seeds (13 jobs) | PASS (0.0125 / 0.0146 vs control 0.0105) |
 <!--CLOUDROWS-->
 
 ### Discarded measurements
@@ -351,6 +420,12 @@ All Linux GPU work after the move ran on Colab or Kaggle; every Colab VM was rel
    ~13% of kernel time at B, so even a 2x attention kernel is worth <= 6%.
 8. **adamw_8bit**: -32% VRAM at the same speed (W); a user optimizer choice.
 9. **unsloth_zoo `misc.py` fix**: already fixed in unsloth_zoo 2026.9.9; nothing to send upstream.
+10. **Long-context compile mode** (new): D1's static shapes cost a cold 24-step run 256 s vs the PR's 49 s on 512-4,096-token
+    data (G4); dynamic shapes give the same step time with one compile. Options: dynamic above a length (e.g. when the
+    longest training item exceeds 1,024 tokens), or always dynamic (gives up D1's +11% on short data).
+11. **Padding-free encoder for long inputs** (new): +61% (A, compiled) / +25% (B, eager) on long data, neutral-to-negative
+    on short data (-8.4% at 307-token median); torch >= 2.11 and sm80+ only (not T4). Long-data G2 PASS (0.0125, 3 seeds). Needs a
+    length gate; built as a bench option on transformers' padding-free machinery + torch varlen, not committed. <!--UNPADDEC-->
 
 ## Studio-pass open items
 

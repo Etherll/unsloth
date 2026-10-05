@@ -1,0 +1,157 @@
+[
+ {
+  "name": "stack_torch210",
+  "print_log": 3000,
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY -m pip install -q 'torch==2.10.0' 'torchvision==0.25.0' 'xformers==0.0.35' && ($PY -m pip uninstall -y -q torchaudio || true); $PY -c 'import torch, xformers; print(\"LAYA_STACK torch\", torch.__version__, \"xformers\", xformers.__version__, torch.cuda.get_device_name())'; $PY -m xformers.info 2>&1 | grep -E 'memory_efficient_attention.(cutlassF|fa2F)' | head -4"
+  ]
+ },
+ {
+  "name": "make_long",
+  "cmd": [
+   "$S/make_long.py"
+  ]
+ },
+ {
+  "name": "t4attn_long_mb2",
+  "print_log": 2000,
+  "cmd": [
+   "$S/attn_bench.py",
+   "--data",
+   "items_long.pt",
+   "--mb",
+   "2",
+   "--batches",
+   "16",
+   "--variants",
+   "sdpa_eff_global,xf_bd,flex_global,sdpa_eff_local,flex_local",
+   "--out",
+   "$ROOT/out/t4attn_long_mb2.json"
+  ]
+ },
+ {
+  "name": "t4attn_long_mb2_random",
+  "print_log": 2000,
+  "cmd": [
+   "$S/attn_bench.py",
+   "--data",
+   "items_long.pt",
+   "--mb",
+   "2",
+   "--batches",
+   "16",
+   "--variants",
+   "sdpa_eff_global,xf_bd,flex_global,sdpa_eff_local,flex_local",
+   "--random",
+   "--out",
+   "$ROOT/out/t4attn_long_mb2_random.json"
+  ]
+ },
+ {
+  "name": "t4attn_long_mb8",
+  "print_log": 2000,
+  "cmd": [
+   "$S/attn_bench.py",
+   "--data",
+   "items_long.pt",
+   "--mb",
+   "8",
+   "--batches",
+   "16",
+   "--variants",
+   "sdpa_eff_global,xf_bd,flex_global,sdpa_eff_local,flex_local",
+   "--out",
+   "$ROOT/out/t4attn_long_mb8.json"
+  ]
+ },
+ {
+  "name": "t4attn_long_mb8_random",
+  "print_log": 2000,
+  "cmd": [
+   "$S/attn_bench.py",
+   "--data",
+   "items_long.pt",
+   "--mb",
+   "8",
+   "--batches",
+   "16",
+   "--variants",
+   "sdpa_eff_global,xf_bd,flex_global,sdpa_eff_local,flex_local",
+   "--random",
+   "--out",
+   "$ROOT/out/t4attn_long_mb8_random.json"
+  ]
+ },
+ {
+  "name": "t4attn_short_mb2",
+  "print_log": 2000,
+  "cmd": [
+   "$S/attn_bench.py",
+   "--data",
+   "items.pt",
+   "--mb",
+   "2",
+   "--batches",
+   "16",
+   "--variants",
+   "sdpa_eff_global,xf_bd,flex_global,sdpa_eff_local,flex_local",
+   "--out",
+   "$ROOT/out/t4attn_short_mb2.json"
+  ]
+ },
+ {
+  "name": "t4attn_short_mb2_random",
+  "print_log": 2000,
+  "cmd": [
+   "$S/attn_bench.py",
+   "--data",
+   "items.pt",
+   "--mb",
+   "2",
+   "--batches",
+   "16",
+   "--variants",
+   "sdpa_eff_global,xf_bd,flex_global,sdpa_eff_local,flex_local",
+   "--random",
+   "--out",
+   "$ROOT/out/t4attn_short_mb2_random.json"
+  ]
+ },
+ {
+  "name": "t4attn_short_mb8",
+  "print_log": 2000,
+  "cmd": [
+   "$S/attn_bench.py",
+   "--data",
+   "items.pt",
+   "--mb",
+   "8",
+   "--batches",
+   "16",
+   "--variants",
+   "sdpa_eff_global,xf_bd,flex_global,sdpa_eff_local,flex_local",
+   "--out",
+   "$ROOT/out/t4attn_short_mb8.json"
+  ]
+ },
+ {
+  "name": "t4attn_short_mb8_random",
+  "print_log": 2000,
+  "cmd": [
+   "$S/attn_bench.py",
+   "--data",
+   "items.pt",
+   "--mb",
+   "8",
+   "--batches",
+   "16",
+   "--variants",
+   "sdpa_eff_global,xf_bd,flex_global,sdpa_eff_local,flex_local",
+   "--random",
+   "--out",
+   "$ROOT/out/t4attn_short_mb8_random.json"
+  ]
+ }
+]

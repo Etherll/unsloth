@@ -9,6 +9,7 @@ p.add_argument("--batches", type = int, default = 32)
 p.add_argument("--variants", default = "sdpa_eff,sdpa_cudnn,sdpa_math_free,varlen_fa2,xf_padded,xf_bd,fa4_varlen")
 p.add_argument("--out", required = True)
 p.add_argument("--data", default = "items.pt")
+p.add_argument("--random", action = "store_true", help = "random batches (SentenceTransformer-style) instead of length-grouped")
 args = p.parse_args()
 sys.path.insert(0, os.environ["PERF"])
 import torch
@@ -17,12 +18,15 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 from triton.testing import do_bench
 
 H, D, W = 16, 64, 64
-dev, dt = "cuda", torch.bfloat16
+dev = "cuda"
+dt = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
 data = torch.load(f"{os.environ['LP_ROOT']}/data/{args.data}", weights_only = False)["bench"]
 from transformers.trainer_pt_utils import get_length_grouped_indices
 
 lens = [len(i["input_ids"]) for i in data]
 order = get_length_grouped_indices(lens, args.mb, generator = torch.Generator().manual_seed(3407))
+if args.random:
+    order = torch.randperm(len(lens), generator = torch.Generator().manual_seed(3407)).tolist()
 mbs = [[lens[j] for j in order[i:i + args.mb]] for i in range(0, args.mb * args.batches, args.mb)]
 torch.manual_seed(0)
 
@@ -99,6 +103,40 @@ def sdpa_eff_global():
     return step
 
 
+def sdpa_eff_local():
+    sets = [padded(ls) for ls in mbs]
+
+    def step():
+        for q, k, v, g, l, keep in sets:
+            with sdpa_kernel([SDPBackend.EFFICIENT_ATTENTION]):
+                o = F.scaled_dot_product_attention(q, k, v, attn_mask = l)
+            o.backward(torch.ones_like(o))
+    return step
+
+
+def _flex(local):
+    # Packed tokens with a document (+ |i-j| <= W window) block mask: Triton, so it also runs on sm75 (T4).
+    from torch.nn.attention.flex_attention import create_block_mask, flex_attention
+    fa = torch.compile(flex_attention, dynamic = False)
+    sets = []
+    for ls in mbs:
+        T = sum(ls)
+        q, k, v = (torch.randn(1, H, T, D, device = dev, dtype = dt, requires_grad = True) for _ in range(3))
+        doc = torch.repeat_interleave(torch.arange(len(ls), device = dev), torch.tensor(ls, device = dev))
+        pos = torch.cat([torch.arange(n, device = dev) for n in ls])
+        if local:
+            mod = lambda b, h, qi, ki: (doc[qi] == doc[ki]) & ((pos[qi] - pos[ki]).abs() <= W)
+        else:
+            mod = lambda b, h, qi, ki: doc[qi] == doc[ki]
+        sets.append((q, k, v, create_block_mask(mod, None, None, T, T, device = dev)))
+
+    def step():
+        for q, k, v, bm in sets:
+            o = fa(q, k, v, block_mask = bm)
+            o.backward(torch.ones_like(o))
+    return step
+
+
 def xf_padded():
     import xformers.ops as xops
     sets = []
@@ -144,7 +182,7 @@ builders = {
     "sdpa_eff": lambda: run_padded(sdpa(SDPBackend.EFFICIENT_ATTENTION)),
     "sdpa_cudnn": lambda: run_padded(sdpa(SDPBackend.CUDNN_ATTENTION)),
     "sdpa_math_free": lambda: run_padded(sdpa(SDPBackend.MATH)),
-    "varlen_fa2": varlen_fa2, "varlen_global": varlen_global, "sdpa_eff_global": sdpa_eff_global, "xf_padded": xf_padded, "xf_bd": xf_bd, "fa4_varlen": fa4_varlen,
+    "varlen_fa2": varlen_fa2, "varlen_global": varlen_global, "sdpa_eff_global": sdpa_eff_global, "sdpa_eff_local": sdpa_eff_local, "flex_global": lambda: _flex(False), "flex_local": lambda: _flex(True), "xf_padded": xf_padded, "xf_bd": xf_bd, "fa4_varlen": fa4_varlen,
 }
 for name in args.variants.split(","):
     try:
