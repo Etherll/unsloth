@@ -789,3 +789,44 @@ def pad_multiple_256(D, args):
 
 PRE["recompile_hi"] = recompile_hi
 PRE["pad256"] = pad_multiple_256
+
+
+# Long-context fixes for D1's per-bucket recompiles. dyn_layers: the shipped regional compile with dynamic shapes (one
+# graph for every length). geo_buckets: keep static shapes, but pad to geometric buckets above 512 so long data needs
+# about 7 shapes (under torch's default limit of 8) instead of one per 64 tokens.
+def dyn_layers(D, args):
+    orig = D._compile_encoder_layers
+
+    def comp(model):
+        if not orig(model):
+            return False
+        for layer in model.encoder.layers:
+            layer._compiled_call_impl = D._training_only(layer, torch.compile(layer._call_impl, dynamic = True))
+        return True
+
+    D._compile_encoder_layers = comp
+
+
+GEO_BUCKETS = [64 * k for k in range(1, 9)] + [768, 1024, 1536, 2048, 3072, 4096, 6144, 8192]
+
+
+def geo_buckets(D, args):
+    import bisect
+
+    def pad_length(model, inputs):
+        if not (getattr(model, "_unsloth_pad_multiple", 0) and model.training):
+            return inputs
+        length = inputs["input_ids"].shape[1]
+        target = GEO_BUCKETS[min(bisect.bisect_left(GEO_BUCKETS, length), len(GEO_BUCKETS) - 1)]
+        extra = max(0, target - length)
+        if not extra:
+            return inputs
+        pad = model.encoder.config.pad_token_id or 0
+        return {**inputs, "input_ids": torch.nn.functional.pad(inputs["input_ids"], (0, extra), value = pad),
+                "attention_mask": torch.nn.functional.pad(inputs["attention_mask"], (0, extra))}
+
+    D._pad_length = pad_length
+
+
+PRE["dyn_layers"] = dyn_layers
+PRE["geo_buckets"] = geo_buckets

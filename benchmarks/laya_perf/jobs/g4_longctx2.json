@@ -1,0 +1,518 @@
+[
+ {
+  "name": "make_long",
+  "cmd": [
+   "$S/make_long.py"
+  ]
+ },
+ {
+  "name": "lc2_A_pr",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/base",
+   "--opts",
+   "long_ctx",
+   "--out",
+   "$ROOT/out/lc2_A_pr.json"
+  ]
+ },
+ {
+  "name": "lc2_A_final_0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx",
+   "--out",
+   "$ROOT/out/lc2_A_final_0.json"
+  ]
+ },
+ {
+  "name": "lc2_A_dyn_0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,dyn_layers",
+   "--out",
+   "$ROOT/out/lc2_A_dyn_0.json"
+  ]
+ },
+ {
+  "name": "lc2_A_geo_0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,geo_buckets",
+   "--out",
+   "$ROOT/out/lc2_A_geo_0.json"
+  ]
+ },
+ {
+  "name": "lc2_A_final_1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx",
+   "--out",
+   "$ROOT/out/lc2_A_final_1.json"
+  ]
+ },
+ {
+  "name": "lc2_A_dyn_1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,dyn_layers",
+   "--out",
+   "$ROOT/out/lc2_A_dyn_1.json"
+  ]
+ },
+ {
+  "name": "lc2_A_geo_1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,geo_buckets",
+   "--out",
+   "$ROOT/out/lc2_A_geo_1.json"
+  ]
+ },
+ {
+  "name": "lc2_B_pr",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/base",
+   "--opts",
+   "long_ctx",
+   "--out",
+   "$ROOT/out/lc2_B_pr.json"
+  ]
+ },
+ {
+  "name": "lc2_B_final_0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx",
+   "--out",
+   "$ROOT/out/lc2_B_final_0.json"
+  ]
+ },
+ {
+  "name": "lc2_B_dyn_0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,dyn_layers",
+   "--out",
+   "$ROOT/out/lc2_B_dyn_0.json"
+  ]
+ },
+ {
+  "name": "lc2_B_geo_0",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,geo_buckets",
+   "--out",
+   "$ROOT/out/lc2_B_geo_0.json"
+  ]
+ },
+ {
+  "name": "lc2_B_final_1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx",
+   "--out",
+   "$ROOT/out/lc2_B_final_1.json"
+  ]
+ },
+ {
+  "name": "lc2_B_dyn_1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,dyn_layers",
+   "--out",
+   "$ROOT/out/lc2_B_dyn_1.json"
+  ]
+ },
+ {
+  "name": "lc2_B_geo_1",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,geo_buckets",
+   "--out",
+   "$ROOT/out/lc2_B_geo_1.json"
+  ]
+ },
+ {
+  "name": "lc2_A100_pr",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "100",
+   "--tree",
+   "$ROOT/base",
+   "--opts",
+   "long_ctx",
+   "--out",
+   "$ROOT/out/lc2_A100_pr.json"
+  ]
+ },
+ {
+  "name": "lc2_A100_final",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "100",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx",
+   "--out",
+   "$ROOT/out/lc2_A100_final.json"
+  ]
+ },
+ {
+  "name": "lc2_A100_dyn",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "100",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,dyn_layers",
+   "--out",
+   "$ROOT/out/lc2_A100_dyn.json"
+  ]
+ },
+ {
+  "name": "lc2_A100_geo",
+  "env": {
+   "LP_TORCH_LOGS": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--data",
+   "items_long.pt",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "100",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "long_ctx,geo_buckets",
+   "--out",
+   "$ROOT/out/lc2_A100_geo.json"
+  ]
+ },
+ {
+  "name": "lc2g1_perf_fp32",
+  "cmd": [
+   "$S/parity.py",
+   "--data",
+   "items_long.pt",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "full",
+   "--precision",
+   "fp32",
+   "--opts",
+   "long_ctx,trainer_compile",
+   "--gc",
+   "true",
+   "--out",
+   "$ROOT/out/lc2g1_perf_fp32.json"
+  ]
+ },
+ {
+  "name": "lc2g1_dyn_fp32",
+  "cmd": [
+   "$S/parity.py",
+   "--data",
+   "items_long.pt",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "full",
+   "--precision",
+   "fp32",
+   "--opts",
+   "long_ctx,trainer_compile,dyn_layers",
+   "--gc",
+   "true",
+   "--out",
+   "$ROOT/out/lc2g1_dyn_fp32.json"
+  ]
+ },
+ {
+  "name": "lc2g1_geo_fp32",
+  "cmd": [
+   "$S/parity.py",
+   "--data",
+   "items_long.pt",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "full",
+   "--precision",
+   "fp32",
+   "--opts",
+   "long_ctx,trainer_compile,geo_buckets",
+   "--gc",
+   "true",
+   "--out",
+   "$ROOT/out/lc2g1_geo_fp32.json"
+  ]
+ }
+]
