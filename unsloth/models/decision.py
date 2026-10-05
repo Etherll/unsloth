@@ -375,6 +375,15 @@ class DecisionTrainer(Trainer):
         optimizer_cls, optimizer_kwargs = (
             self.optimizer_cls_and_kwargs or self.get_optimizer_cls_and_kwargs(self.args, model)
         )
+        trained = [p for params in groups.values() for p in params]
+        # The same AdamW as one fused kernel: foreach's full-size temporaries made the step the VRAM peak.
+        if (
+            optimizer_cls is torch.optim.AdamW
+            and not {"fused", "foreach"} & optimizer_kwargs.keys()
+            and trained
+            and all(p.is_cuda and p.dtype == torch.float32 for p in trained)
+        ):
+            optimizer_kwargs = {**optimizer_kwargs, "fused": True}
         self.optimizer = optimizer_cls(
             [
                 {

@@ -693,3 +693,24 @@ def test_logits_batch_similar_lengths_and_keep_the_callers_order(checkpoint):
         alone = decision._logits(model, [item], tokenizer.pad_token_id)[0]
         assert logits.shape == (len(item["markers"]),)
         torch.testing.assert_close(logits, alone, rtol = 2e-2, atol = 2e-2)
+
+
+@pytest.mark.skipif(not has_real_cuda(), reason = "fused AdamW runs on CUDA")
+@pytest.mark.parametrize("lora", [True, False])
+def test_adamw_runs_fused_unless_the_caller_chose(checkpoint, tmp_path, lora):
+    model, tokenizer = FastDecisionModel.from_pretrained(
+        str(checkpoint), full_finetuning = not lora, use_gradient_checkpointing = False
+    )
+    model = FastDecisionModel.get_peft_model(model, r = 4, lora_alpha = 4)
+    items, _ = FastDecisionModel.build_dataset([_row(i) for i in range(4)], tokenizer, model)
+    for chosen, fused in ((None, True), ((torch.optim.AdamW, {"foreach": True}), None)):
+        trainer = DecisionTrainer(
+            model = model,
+            args = _args(tmp_path),
+            train_dataset = items,
+            processing_class = tokenizer,
+            optimizer_cls_and_kwargs = chosen,
+        )
+        optimizer = trainer.create_optimizer()
+        assert isinstance(optimizer, torch.optim.AdamW)
+        assert optimizer.defaults.get("fused") is fused
