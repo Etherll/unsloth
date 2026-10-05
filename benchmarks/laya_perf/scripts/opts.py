@@ -904,3 +904,35 @@ def unpad_hf_pre(D, args):
 
 PRE["unpad_hf"] = unpad_hf_pre
 POST["unpad_hf"] = unpad_hf
+
+
+# X10b: the same padding-free encoder, but global layers go through Unsloth's own attention dispatcher with the xFormers
+# backend, exactly as the SentenceTransformer unpadding path does (_sentence_transformer_unpadding._sentence_attention).
+# xFormers has no bidirectional *local* block mask (make_local_attention exists only on causal masks, and
+# utils.packing._get_cached_block_mask silently skips it otherwise), so ModernBERT's windowed layers stay on torch varlen.
+def _xformers_global_attention(module, query, key, value, attention_mask, scaling = None, sliding_window = None,
+                               cu_seq_lens_q = None, max_length_q = None, **kwargs):
+    if cu_seq_lens_q is None or sliding_window:
+        return _varlen_attention(module, query, key, value, attention_mask, scaling = scaling, sliding_window = sliding_window,
+                                 cu_seq_lens_q = cu_seq_lens_q, cu_seq_lens_k = kwargs.pop("cu_seq_lens_k", None),
+                                 max_length_q = max_length_q, max_length_k = kwargs.pop("max_length_k", None), **kwargs)
+    from unsloth.utils.attention_dispatch import XFORMERS, AttentionConfig, AttentionContext, run_attention
+    heads, tokens, head_dim = query.shape[1:]
+    config = AttentionConfig(backend = XFORMERS, n_kv_heads = key.shape[1], n_groups = heads // key.shape[1],
+                             flash_varlen_kwargs = {"dropout_p": 0.0, "softmax_scale": scaling},
+                             xformers_kwargs = {"p": 0.0, "scale": scaling}, sdpa_kwargs = {"dropout_p": 0.0, "scale": scaling})
+    context = AttentionContext(bsz = 1, q_len = tokens, kv_seq_len = tokens, n_heads = heads, head_dim = head_dim,
+                               requires_grad = module.training, seq_info = (cu_seq_lens_q.diff(), cu_seq_lens_q, max_length_q),
+                               attention_mask = None, causal_mask = None, is_causal = False)
+    return run_attention(config = config, context = context, Q = query, K = key, V = value), None
+
+
+def unpad_xf2(model, D, args):
+    model = unpad_hf(model, D, args)
+    from transformers import AttentionInterface
+    AttentionInterface.register(_HF_ATTN, _xformers_global_attention)
+    return model
+
+
+PRE["unpad_xf2"] = unpad_hf_pre
+POST["unpad_xf2"] = unpad_xf2
