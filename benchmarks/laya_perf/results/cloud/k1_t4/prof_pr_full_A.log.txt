@@ -1,0 +1,75 @@
+trace /kaggle/working/lp/out/prof_pr_full_A/trace.json
+steps 3  wall/step 5326.2 ms  GPU busy 51.0%  kernel-sum/step 2714.5 ms
+
+## GPU time by phase/region (ms/step, % of wall)
+  backward                           1348.9   25.3%
+  backward/enc_recompute              583.0   10.9%
+  forward/enc_layer                   554.8   10.4%
+  optimizer_step                      142.1    2.7%
+  forward/other                        46.8    0.9%
+  forward/head_layer                   36.9    0.7%
+  forward/scorer                        0.9    0.0%
+  forward/enc_embed                     0.4    0.0%
+  forward/act_head                      0.4    0.0%
+  forward/enc_final_norm                0.2    0.0%
+
+## GPU time by kernel category
+  elementwise                        1470.1   27.6%
+  gemm                                785.6   14.7%
+  attention                           212.6    4.0%
+  optimizer                           177.5    3.3%
+  norm                                 62.5    1.2%
+  reduce                                4.0    0.1%
+  memcpy                                1.2    0.0%
+  memset                                1.1    0.0%
+
+## memcpy kinds
+  Memcpy DtoD (Device -> Device)                1.0
+  Memcpy DtoH (Device -> Pinned)                0.1
+  Memcpy HtoD (Pinned -> Device)                0.1
+
+## top kernels
+    354.57 ms  void at::native::vectorized_elementwise_kernel<4, at::native::CUDAFunctor_add<float>, std:
+    353.67 ms  void at::native::vectorized_elementwise_kernel<4, at::native::float16_copy_kernel_cuda(at:
+    279.76 ms  turing_fp16_s1688gemm_fp16_128x128_ldg8_f2f_tn
+    192.26 ms  void at::native::unrolled_elementwise_kernel<at::native::direct_copy_kernel_cuda(at::Tenso
+    177.46 ms  void at::native::(anonymous namespace)::multi_tensor_apply_kernel<at::native::(anonymous n
+    170.42 ms  void at::native::elementwise_kernel<128, 2, at::native::gpu_kernel_impl_nocast<at::native:
+    131.04 ms  void at::native::elementwise_kernel<128, 4, at::native::gpu_kernel_impl_nocast<at::native:
+    124.13 ms  turing_fp16_s1688gemm_fp16_256x128_ldg8_f2f_stages_32x1_nn
+    115.09 ms  fmha_cutlassB_f16_aligned_64x64_k64_sm75(PyTorchMemEffAttention::AttentionBackwardKernel<c
+     95.80 ms  turing_fp16_s1688gemm_fp16_128x128_ldg8_f2f_stages_32x1_nt
+     88.41 ms  fmha_cutlassF_f16_aligned_64x64_rf_sm75(PyTorchMemEffAttention::AttentionKernel<cutlass::h
+     76.53 ms  turing_fp16_s1688gemm_fp16_256x128_ldg8_f2f_tn
+     62.02 ms  turing_fp16_s1688gemm_fp16_128x256_ldg8_f2f_stages_32x1_nt
+     61.88 ms  void at::native::elementwise_kernel<128, 4, at::native::gpu_kernel_impl<at::native::direct
+     52.81 ms  void at::native::(anonymous namespace)::CatArrayBatchedCopy<at::native::(anonymous namespa
+     42.93 ms  void at::native::unrolled_elementwise_kernel<at::native::CUDAFunctor_add<float>, std::arra
+     32.24 ms  void at::native::(anonymous namespace)::layer_norm_grad_input_kernel_vectorized<float, flo
+     30.21 ms  void at::native::(anonymous namespace)::vectorized_layer_norm_kernel<float, float, false>(
+     27.74 ms  turing_fp16_s1688gemm_fp16_128x128_ldg8_f2f_nn
+     27.70 ms  void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::arr
+     23.88 ms  turing_fp16_s1688gemm_fp16_128x128_ldg8_f2f_nt
+     21.96 ms  void at::native::(anonymous namespace)::GammaBetaBackwardCUDAKernelTemplate<float, float, 
+     18.99 ms  void at::native::(anonymous namespace)::CatArrayBatchedCopy_vectorized<at::native::(anonym
+     17.78 ms  void at::native::vectorized_elementwise_kernel<4, at::native::BinaryFunctor<c10::Half, c10
+     17.68 ms  turing_fp16_s1688gemm_fp16_256x64_sliced1x2_ldg8_f2f_tn
+
+## CUDA runtime API time (ms/step)
+  cudaLaunchKernel                            628.7
+  cudaDeviceSynchronize                       125.1
+  cudaStreamSynchronize                        68.7
+  cudaMemsetAsync                              23.4
+  cudaOccupancyMaxActiveBlocksPerMultiprocessor     11.4
+  cudaStreamIsCapturing                         4.6
+  cudaMemcpyAsync                               4.2
+  cudaFuncGetAttributes                         2.3
+  cuLaunchKernel                                0.3
+  cudaPointerGetAttributes                      0.1
+
+## CPU wall split (ms/step, % of wall)
+  collate                              12.3    0.2%
+  backward                           3285.5   61.7%
+  optimizer_step                       40.3    0.8%
+  forward enc_layer (main thread)    1107.3   20.8%
+  rest                               1988.1   37.3%

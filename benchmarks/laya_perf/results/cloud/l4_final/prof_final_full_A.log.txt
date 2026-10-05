@@ -1,0 +1,83 @@
+trace /kaggle/working/lp/out/prof_final_full_A/trace.json
+steps 3  wall/step 4590.0 ms  GPU busy 27.4%  kernel-sum/step 1258.1 ms
+
+## GPU time by phase/region (ms/step, % of wall)
+  backward                            939.1   20.5%
+  forward/## Call CompiledFxGraph ft7xixe4yv5hpo4uu63zus2iruywgfldagv73o72ox6lvsrf7e3b ##     76.4    1.7%
+  forward/## Call CompiledFxGraph fz2ybmqw6xvilos4xbtwq2j4sfm66s3ixe3nhz76i4ro3dbnela2 ##     66.6    1.5%
+  optimizer_step                       50.4    1.1%
+  forward/## Call CompiledFxGraph fazdvosofkav4beclkhpidsjnwmcpfknirzsbjquozz2mhxaax44 ##     41.6    0.9%
+  forward/other                        29.4    0.6%
+  forward/head_layer                   20.4    0.4%
+  forward/## Call CompiledFxGraph fn3wasb6h6zkvwsaq5eienl74ddbuwf6llgswv3fkfi7azaofmkt ##     16.1    0.4%
+  forward/## Call CompiledFxGraph fu4e24jlr5v3w43bgarh3fj6fsctrcxvjnbwjmingdtqo5t5vmdy ##      8.2    0.2%
+  forward/## Call CompiledFxGraph fp6vy66ggxpf3xlmox5bn6cobwbq3nljqlimz565jikqdg3j3d7n ##      3.1    0.1%
+  forward/## Call CompiledFxGraph frxumozppoiujpyxcccbotqgyhozh4b2famrxup5lghsqd65fato ##      2.6    0.1%
+  forward/## Call CompiledFxGraph f2suoosa65n75pj2nqhp6oxjhhn5a4chkgwf7cjzsdvk3nlixmp7 ##      1.7    0.0%
+  forward/scorer                        0.8    0.0%
+  forward/## Call CompiledFxGraph f23x7u3u6opc5sv4fiugkfbdnohezplerbwuboovtlb26kalorlw ##      0.6    0.0%
+  forward/act_head                      0.4    0.0%
+  forward/## Call CompiledFxGraph fnmhphseedv3n7ibwa5bbvjz5uvbzorwlk7hmiezlwd4lmudyhgr ##      0.3    0.0%
+  forward/enc_embed                     0.3    0.0%
+  forward/enc_final_norm                0.1    0.0%
+
+## GPU time by kernel category
+  elementwise                         673.6   14.7%
+  gemm                                382.0    8.3%
+  attention                            81.0    1.8%
+  optimizer                            71.6    1.6%
+  norm                                 46.4    1.0%
+  reduce                                2.2    0.0%
+  memset                                0.8    0.0%
+  memcpy                                0.4    0.0%
+
+## memcpy kinds
+  Memcpy DtoD (Device -> Device)                0.3
+  Memcpy DtoH (Device -> Pinned)                0.1
+  Memcpy HtoD (Pinned -> Device)                0.0
+
+## top kernels
+    280.86 ms  void at::native::vectorized_elementwise_kernel<4, at::native::CUDAFunctor_add<float>, std:
+     96.19 ms  ampere_bf16_s1688gemm_bf16_128x128_ldg8_f2f_stages_32x1_nt
+     94.91 ms  ampere_bf16_s1688gemm_bf16_128x128_ldg8_f2f_stages_32x1_tn
+     71.58 ms  void at::native::(anonymous namespace)::multi_tensor_apply_kernel<at::native::(anonymous n
+     57.38 ms  triton_poi_fused__to_copy_t_6
+     43.71 ms  fmha_cutlassB_bf16_aligned_64x64_k64_seqaligned_sm80(PyTorchMemEffAttention::AttentionBack
+     42.12 ms  triton_poi_fused__to_copy_6
+     40.16 ms  ampere_bf16_s1688gemm_bf16_128x128_ldg8_f2f_stages_32x1_nn
+     35.29 ms  ampere_bf16_s16816gemm_bf16_128x128_ldg8_f2f_stages_64x3_tn
+     34.20 ms  triton_poi_fused__to_copy_t_1
+     32.11 ms  triton_poi_fused__to_copy_1
+     32.03 ms  ampere_bf16_s16816gemm_bf16_128x64_ldg8_f2f_stages_32x6_tn
+     30.86 ms  ampere_bf16_s16816gemm_bf16_128x128_ldg8_f2f_stages_64x3_nn
+     29.09 ms  fmha_cutlassF_bf16_aligned_64x64_rf_sm80(PyTorchMemEffAttention::AttentionKernel<cutlass::
+     27.53 ms  triton_poi_fused__to_copy_8
+     26.53 ms  triton_poi_fused__to_copy_t_7
+     21.82 ms  triton_poi_fused__to_copy_10
+     20.87 ms  triton_poi_fused__to_copy_3
+     16.03 ms  triton_per_fused__to_copy__unsafe_view_add_native_layer_norm_native_layer_norm_backward_vi
+     15.38 ms  void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_256x128_32x3_tn_align8
+     14.63 ms  triton_poi_fused__unsafe_view_add_9
+     13.27 ms  ampere_bf16_s16816gemm_bf16_128x64_ldg8_f2f_stages_64x3_nn
+     12.59 ms  ampere_bf16_s16816gemm_bf16_128x64_ldg8_f2f_stages_32x6_nn
+     12.25 ms  void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::arr
+     10.85 ms  triton_poi_fused__to_copy_t_4
+
+## CUDA runtime API time (ms/step)
+  cudaLaunchKernel                            206.0
+  cuLaunchKernel                              148.2
+  cudaDeviceSynchronize                        56.8
+  cudaStreamSynchronize                        43.1
+  cudaMemsetAsync                              21.3
+  cudaOccupancyMaxActiveBlocksPerMultiprocessor     11.4
+  cuLaunchKernelEx                             10.1
+  cudaStreamIsCapturing                         5.1
+  cudaMemcpyAsync                               4.6
+  cudaFuncGetAttributes                         3.0
+
+## CPU wall split (ms/step, % of wall)
+  collate                              10.3    0.2%
+  backward                           2773.6   60.4%
+  optimizer_step                        5.1    0.1%
+  forward enc_layer (main thread)       0.0    0.0%
+  rest                               1801.0   39.2%

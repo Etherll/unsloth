@@ -1,0 +1,75 @@
+trace /kaggle/working/lp/out/prof_pr_full_B/trace.json
+steps 3  wall/step 3393.1 ms  GPU busy 72.8%  kernel-sum/step 2542.9 ms
+
+## GPU time by phase/region (ms/step, % of wall)
+  backward                           1255.7   37.0%
+  backward/enc_recompute              528.1   15.6%
+  forward/enc_layer                   470.3   13.9%
+  optimizer_step                      142.1    4.2%
+  forward/other                       110.3    3.3%
+  forward/head_layer                   34.9    1.0%
+  forward/enc_embed                     0.6    0.0%
+  forward/scorer                        0.5    0.0%
+  forward/act_head                      0.2    0.0%
+  forward/enc_final_norm                0.2    0.0%
+
+## GPU time by kernel category
+  elementwise                        1028.7   30.3%
+  gemm                                890.7   26.3%
+  attention                           211.0    6.2%
+  memcpy                              169.2    5.0%
+  optimizer                           163.3    4.8%
+  norm                                 76.4    2.3%
+  memset                                1.8    0.1%
+  reduce                                1.7    0.1%
+
+## memcpy kinds
+  Memcpy HtoD (Pinned -> Device)               87.2
+  Memcpy DtoH (Device -> Pinned)               81.1
+  Memcpy DtoD (Device -> Device)                0.9
+
+## top kernels
+    392.61 ms  ampere_bf16_s1688gemm_bf16_128x128_ldg8_f2f_stages_32x1_tn
+    205.40 ms  ampere_bf16_s1688gemm_bf16_128x128_ldg8_f2f_stages_32x1_nn
+    195.33 ms  void at::native::vectorized_elementwise_kernel<4, at::native::bfloat16_copy_kernel_cuda(at
+    178.35 ms  void at::native::elementwise_kernel<128, 4, at::native::gpu_kernel_impl_nocast<at::native:
+    163.32 ms  void at::native::(anonymous namespace)::multi_tensor_apply_kernel<at::native::(anonymous n
+    138.87 ms  ampere_bf16_s1688gemm_bf16_128x128_ldg8_f2f_stages_32x1_nt
+    127.86 ms  void at::native::vectorized_elementwise_kernel<4, at::native::CUDAFunctor_add<float>, std:
+    125.20 ms  void at::native::elementwise_kernel<128, 2, at::native::gpu_kernel_impl_nocast<at::native:
+    120.70 ms  fmha_cutlassB_bf16_aligned_64x64_k64_sm80(PyTorchMemEffAttention::AttentionBackwardKernel<
+     87.97 ms  void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_256x128_32x3_nt_align8
+     87.18 ms  Memcpy HtoD (Pinned -> Device)
+     86.43 ms  void at::native::unrolled_elementwise_kernel<at::native::direct_copy_kernel_cuda(at::Tenso
+     81.07 ms  Memcpy DtoH (Device -> Pinned)
+     72.72 ms  void at::native::unrolled_elementwise_kernel<at::native::CUDAFunctor_add<float>, std::arra
+     70.78 ms  fmha_cutlassF_bf16_aligned_64x64_rf_sm80(PyTorchMemEffAttention::AttentionKernel<cutlass::
+     61.01 ms  void at::native::(anonymous namespace)::CatArrayBatchedCopy<at::native::(anonymous namespa
+     57.31 ms  void at::native::elementwise_kernel<128, 4, at::native::gpu_kernel_impl<at::native::direct
+     51.59 ms  void at::native::(anonymous namespace)::layer_norm_grad_input_kernel_vectorized<float, flo
+     33.28 ms  void at::native::vectorized_elementwise_kernel<4, at::native::BinaryFunctor<c10::BFloat16,
+     29.68 ms  void at::native::(anonymous namespace)::CatArrayBatchedCopy_vectorized<at::native::(anonym
+     24.85 ms  void at::native::(anonymous namespace)::vectorized_layer_norm_kernel<float, float, false>(
+     22.84 ms  void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::arr
+     20.90 ms  void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_256x64_32x4_nn_align8>
+     16.76 ms  void at::native::(anonymous namespace)::GammaBetaBackwardCUDAKernelTemplate<float, float, 
+     14.78 ms  fmha_cutlassB_bf16_aligned_64x64_k64_dropout_sm80(PyTorchMemEffAttention::AttentionBackwar
+
+## CUDA runtime API time (ms/step)
+  cudaLaunchKernel                            347.6
+  cudaDeviceSynchronize                       138.6
+  cudaStreamSynchronize                       130.0
+  cudaMemsetAsync                              20.0
+  cudaMemcpyAsync                              10.5
+  cudaOccupancyMaxActiveBlocksPerMultiprocessor      8.6
+  cuLaunchKernel                                4.4
+  cudaStreamIsCapturing                         3.8
+  cudaEventRecordWithFlags                      2.3
+  cudaStreamWaitEvent                           2.2
+
+## CPU wall split (ms/step, % of wall)
+  collate                              16.3    0.5%
+  backward                           1958.2   57.7%
+  optimizer_step                       15.1    0.4%
+  forward enc_layer (main thread)     643.6   19.0%
+  rest                               1403.5   41.4%

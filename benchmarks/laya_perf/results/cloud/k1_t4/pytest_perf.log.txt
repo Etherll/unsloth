@@ -1,0 +1,50 @@
+            "get_amp_supported_dtype",
+            ]
+            message = f"Tried to use AMP with the `{self.custom_backend_name}` backend, but the backend has not "
+            message += "registered a module or  the module miss some necessary funcs. The backend should register "
+            message += "a module by `torch._register_device_module`, and the module must have these funcs: \n"
+            message += "`get_amp_supported_dtype() -> List[torch.dtype]`. \n"
+    
+            if not hasattr(torch, self.custom_backend_name):
+                raise AssertionError(message)
+            self.custom_device_mod = getattr(torch, self.custom_backend_name)
+            for func in necessary_funcs:
+                if not hasattr(self.custom_device_mod, func):
+                    raise AssertionError(
+                        message + f"But the func `{func}` is missing. \n"
+                    )
+            device_supported_dtypes = self.custom_device_mod.get_amp_supported_dtype()
+    
+        self._cache_enabled = (
+            torch.is_autocast_cache_enabled()
+            if cache_enabled is None
+            else cache_enabled
+        )
+    
+        device_name = (
+            self.device
+            if self.device == self.custom_backend_name
+            else self.device.upper()
+        )
+        if enabled:
+            # Special case for CUDA AMP and bfloat16 support
+            if self.device == "cuda":
+                if torch.cuda.amp.common.amp_definitely_not_available():
+                    warnings.warn(
+                        "CUDA is not available or torch_xla is imported. Disabling autocast.",
+                        stacklevel=2,
+                    )
+                    enabled = False
+                elif (
+                    self.fast_dtype == torch.bfloat16
+                    and not torch.cuda.is_bf16_supported()
+                ):
+>                   raise RuntimeError(
+                        "Current CUDA Device does not support bfloat16. Please switch dtype to float16."
+E                       RuntimeError: Current CUDA Device does not support bfloat16. Please switch dtype to float16.
+
+/usr/local/lib/python3.13/dist-packages/torch/amp/autocast_mode.py:294: RuntimeError
+=========================== short test summary info ============================
+FAILED tests/test_decision_model.py::test_lean_lora_forward_matches_peft[1]
+FAILED tests/test_decision_model.py::test_lean_lora_forward_matches_peft[2]
+2 failed, 29 passed in 89.61s (0:01:29)

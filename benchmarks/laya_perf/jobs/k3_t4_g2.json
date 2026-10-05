@@ -1,0 +1,286 @@
+[
+ {
+  "name": "g2_pr_full_A",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/g2_pr_full_A.json"
+  ]
+ },
+ {
+  "name": "g2_pr2_full_A",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/g2_pr2_full_A.json"
+  ]
+ },
+ {
+  "name": "g2_final_full_A",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/g2_final_full_A.json"
+  ]
+ },
+ {
+  "name": "g2_pr_full_B",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/g2_pr_full_B.json"
+  ]
+ },
+ {
+  "name": "g2_pr2_full_B",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/g2_pr2_full_B.json"
+  ]
+ },
+ {
+  "name": "g2_final_full_B",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/g2_final_full_B.json"
+  ]
+ },
+ {
+  "name": "g2_pr_lora_A",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/g2_pr_lora_A.json"
+  ]
+ },
+ {
+  "name": "g2_pr2_lora_A",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/g2_pr2_lora_A.json"
+  ]
+ },
+ {
+  "name": "g2_final_lora_A",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/g2_final_lora_A.json"
+  ]
+ },
+ {
+  "name": "g2_pr_lora_B",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/g2_pr_lora_B.json"
+  ]
+ },
+ {
+  "name": "g2_pr2_lora_B",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/base",
+   "--out",
+   "$ROOT/out/g2_pr2_lora_B.json"
+  ]
+ },
+ {
+  "name": "g2_final_lora_B",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/g2_final_lora_B.json"
+  ]
+ },
+ {
+  "name": "sdpa_probe",
+  "cmd": [
+   "$S/sdpa_probe.py",
+   "--out",
+   "$ROOT/out/sdpa_probe.json"
+  ]
+ },
+ {
+  "name": "prof_pr_full_A",
+  "env": {
+   "LP_LAYER_RANGES": "1"
+  },
+  "print_log": 6000,
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 2 --acc 16 --steps 9 --warmup 2 --tree $ROOT/base --prof $ROOT/out/prof_pr_full_A --out $ROOT/out/prof_pr_full_A.json > /dev/null 2>&1; $PY $S/prof.py $ROOT/out/prof_pr_full_A/trace.json; rm -f $ROOT/out/prof_pr_full_A/trace.json"
+  ]
+ },
+ {
+  "name": "prof_final_full_A",
+  "env": {
+   "LP_LAYER_RANGES": "0"
+  },
+  "print_log": 6000,
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 2 --acc 16 --steps 9 --warmup 2 --tree $ROOT/perf --prof $ROOT/out/prof_final_full_A --out $ROOT/out/prof_final_full_A.json > /dev/null 2>&1; $PY $S/prof.py $ROOT/out/prof_final_full_A/trace.json; rm -f $ROOT/out/prof_final_full_A/trace.json"
+  ]
+ }
+]

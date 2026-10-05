@@ -1,0 +1,29 @@
+WARNING[XFORMERS]: xFormers can't load C++/CUDA extensions. xFormers was built for:
+    PyTorch 2.10.0+cu128 with CUDA 1208 (you have 2.11.0+cu130)
+    Python  3.10.19 (you have 3.13.15)
+  Please reinstall xformers (see https://github.com/facebookresearch/xformers#installing-xformers)
+  Memory-efficient attention, SwiGLU, sparse and more won't be available.
+  Set XFORMERS_MORE_DETAILS=1 for more details
+torch 2.11.0+cu130 xformers 0.0.35
+memory_efficient_attention.cutlassF-pt:            available
+memory_efficient_attention.cutlassF-blackwell:     available
+memory_efficient_attention.cutlassB-blackwell:     available
+memory_efficient_attention.fa2F@2.5.7-pt:          available
+pytorch.version:                                   2.11.0+cu130
+sdpa_eff {'ms': 16.481208907233345, 'ms_per_mb': 0.515037778351042}
+sdpa_cudnn {'ms': 16.70398498983944, 'ms_per_mb': 0.5219995309324825}
+varlen_fa2 {'ms': 8.952840059995651, 'ms_per_mb': 0.2797762518748641}
+WARNING[XFORMERS]: xFormers can't load C++/CUDA extensions. xFormers was built for:
+    PyTorch 2.10.0+cu128 with CUDA 1208 (you have 2.11.0+cu130)
+    Python  3.10.19 (you have 3.13.15)
+  Please reinstall xformers (see https://github.com/facebookresearch/xformers#installing-xformers)
+  Memory-efficient attention, SwiGLU, sparse and more won't be available.
+  Set XFORMERS_MORE_DETAILS=1 for more details
+WARNING:root:
+            [33m
+            _fbgemm_torch_compat_table has no entry for 1.6.0+cu130 of FBGEMM;
+            cannot determine compatibility with PyTorch 2.11.0+cu130
+            [0m
+            
+xf_padded {'unavailable': "NotImplementedError: No operator found for `memory_efficient_attention_forward` with inputs:\n     query       : shape=(8, 634, 16, 64) (torch.bfloat16)\n     key         : shape=(8, 634, 16, 64) (torch.bfloat16)\n     value       : shape=(8, 634, 16, 64) (torch.bfloat16)\n     attn_bias   : <class 'torch.Tensor'>\n     p   "}
+xf_bd {'unavailable': "NotImplementedError: No operator found for `memory_efficient_attention_forward` with inputs:\n     query       : shape=(1, 4484, 16, 64) (torch.bfloat16)\n     key         : shape=(1, 4484, 16, 64) (torch.bfloat16)\n     value       : shape=(1, 4484, 16, 64) (torch.bfloat16)\n     attn_bias   : <class 'xformers.ops.fmha.att"}

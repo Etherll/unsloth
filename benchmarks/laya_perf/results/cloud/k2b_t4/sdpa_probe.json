@@ -1,0 +1,1 @@
+{"gpu": "Tesla T4", "torch": "2.11.0+cu128", "cudnn": 91900, "half": "torch.float16", "encoder_A": "EFFICIENT_ATTENTION", "encoder_B": "EFFICIENT_ATTENTION", "head_A": "EFFICIENT_ATTENTION", "nomask": "EFFICIENT_ATTENTION"}

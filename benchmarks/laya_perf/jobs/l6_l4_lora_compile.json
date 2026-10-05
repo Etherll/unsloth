@@ -1,0 +1,422 @@
+[
+ {
+  "name": "l4lc_A_lora0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/l4lc_A_lora0.json"
+  ]
+ },
+ {
+  "name": "l4lc_A_lcomp0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "lora_compile",
+   "--out",
+   "$ROOT/out/l4lc_A_lcomp0.json"
+  ]
+ },
+ {
+  "name": "l4lc_A_lora1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/l4lc_A_lora1.json"
+  ]
+ },
+ {
+  "name": "l4lc_A_lcomp1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "lora_compile",
+   "--out",
+   "$ROOT/out/l4lc_A_lcomp1.json"
+  ]
+ },
+ {
+  "name": "l4lc_A_lora2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/l4lc_A_lora2.json"
+  ]
+ },
+ {
+  "name": "l4lc_A_lcomp2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "lora_compile",
+   "--out",
+   "$ROOT/out/l4lc_A_lcomp2.json"
+  ]
+ },
+ {
+  "name": "l4lc_B_lora0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/l4lc_B_lora0.json"
+  ]
+ },
+ {
+  "name": "l4lc_B_lcomp0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "lora_compile",
+   "--out",
+   "$ROOT/out/l4lc_B_lcomp0.json"
+  ]
+ },
+ {
+  "name": "l4lc_B_lora1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/l4lc_B_lora1.json"
+  ]
+ },
+ {
+  "name": "l4lc_B_lcomp1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "lora_compile",
+   "--out",
+   "$ROOT/out/l4lc_B_lcomp1.json"
+  ]
+ },
+ {
+  "name": "l4lc_B_lora2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/l4lc_B_lora2.json"
+  ]
+ },
+ {
+  "name": "l4lc_B_lcomp2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "lora_compile",
+   "--out",
+   "$ROOT/out/l4lc_B_lcomp2.json"
+  ]
+ },
+ {
+  "name": "l4lcg2_pr_A_3407",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--seed",
+   "3407",
+   "--out",
+   "$ROOT/out/l4lcg2_pr_A_3407.json"
+  ]
+ },
+ {
+  "name": "l4lcg2_lcomp_A_3407",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--seed",
+   "3407",
+   "--opts",
+   "lora_compile",
+   "--out",
+   "$ROOT/out/l4lcg2_lcomp_A_3407.json"
+  ]
+ },
+ {
+  "name": "l4lcg2_pr_A_11",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/base",
+   "--seed",
+   "11",
+   "--out",
+   "$ROOT/out/l4lcg2_pr_A_11.json"
+  ]
+ },
+ {
+  "name": "l4lcg2_lcomp_A_11",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/perf",
+   "--seed",
+   "11",
+   "--opts",
+   "lora_compile",
+   "--out",
+   "$ROOT/out/l4lcg2_lcomp_A_11.json"
+  ]
+ },
+ {
+  "name": "l4lcg2_pr_B_3407",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/base",
+   "--seed",
+   "3407",
+   "--out",
+   "$ROOT/out/l4lcg2_pr_B_3407.json"
+  ]
+ },
+ {
+  "name": "l4lcg2_lcomp_B_3407",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/perf",
+   "--seed",
+   "3407",
+   "--opts",
+   "lora_compile",
+   "--out",
+   "$ROOT/out/l4lcg2_lcomp_B_3407.json"
+  ]
+ },
+ {
+  "name": "l4lcg2_pr_B_11",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/base",
+   "--seed",
+   "11",
+   "--out",
+   "$ROOT/out/l4lcg2_pr_B_11.json"
+  ]
+ },
+ {
+  "name": "l4lcg2_lcomp_B_11",
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/perf",
+   "--seed",
+   "11",
+   "--opts",
+   "lora_compile",
+   "--out",
+   "$ROOT/out/l4lcg2_lcomp_B_11.json"
+  ]
+ }
+]

@@ -1,0 +1,76 @@
+radient_checkpointing.py", line 1277, in unsloth_checkpoint
+    return UnslothCheckpointFunction.apply(function, preserve, *args)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/autograd/function.py", line 596, in apply
+    return super().apply(*args, **kwargs)  # type: ignore[misc]
+           ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/dist-packages/unsloth_zoo/gradient_checkpointing.py", line 1059, in forward
+    outputs = run_function(*args)
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/usr/local/lib/python3.13/dist-packages/transformers/models/modernbert/modeling_modernbert.py", line 334, in forward
+    attn_output, _ = self.attn(
+                     ~~~~~~~~~^
+        self.attn_norm(hidden_states),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        **kwargs,
+        ^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/usr/local/lib/python3.13/dist-packages/transformers/models/modernbert/modeling_modernbert.py", line 295, in forward
+    attn_output, attn_weights = attention_interface(
+                                ~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<8 lines>...
+        **kwargs,
+        ^^^^^^^^^
+    )
+    ^
+  File "/content/repo/benchmarks/laya_perf/scripts/opts.py", line 196, in _packed_attention
+    return xops.memory_efficient_attention(q, k, v, attn_bias = info["xf_bias"], scale = scale), None
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/kaggle/working/lp/xfpkgs/xformers/ops/fmha/__init__.py", line 311, in memory_efficient_attention
+    return _memory_efficient_attention(
+        Inputs(
+    ...<8 lines>...
+        op=op,
+    )
+  File "/kaggle/working/lp/xfpkgs/xformers/ops/fmha/__init__.py", line 472, in _memory_efficient_attention
+    return _memory_efficient_attention_forward(
+        inp, op=op[0] if op is not None else None
+    )
+  File "/kaggle/working/lp/xfpkgs/xformers/ops/fmha/__init__.py", line 491, in _memory_efficient_attention_forward
+    op = _dispatch_fw(inp, False)
+  File "/kaggle/working/lp/xfpkgs/xformers/ops/fmha/dispatch.py", line 142, in _dispatch_fw
+    return _run_priority_list(
+        "memory_efficient_attention_forward",
+        _dispatch_fw_priority_list(inp, needs_gradient),
+        inp,
+    )
+  File "/kaggle/working/lp/xfpkgs/xformers/ops/fmha/dispatch.py", line 83, in _run_priority_list
+    raise NotImplementedError(msg)
+NotImplementedError: No operator found for `memory_efficient_attention_forward` with inputs:
+     query       : shape=(1, 4484, 16, 64) (torch.bfloat16)
+     key         : shape=(1, 4484, 16, 64) (torch.bfloat16)
+     value       : shape=(1, 4484, 16, 64) (torch.bfloat16)
+     attn_bias   : <class 'xformers.ops.fmha.attn_bias.BlockDiagonalMask'>
+     p           : 0.0
+`fa3F@0.0.0` is not supported because:
+    xFormers wasn't build with CUDA support
+    requires device with capability <= (9, 0) but your GPU has capability (12, 0) (too new)
+    operator wasn't built - see `python -m xformers.info` for more info
+`fa2F@2.5.7-pt` is not supported because:
+    xFormers wasn't build with CUDA support
+`cutlassF-pt` is not supported because:
+    xFormers wasn't build with CUDA support
+    requires device with capability <= (9, 0) but your GPU has capability (12, 0) (too new)
