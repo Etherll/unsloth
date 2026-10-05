@@ -807,3 +807,41 @@ def test_encoder_layers_compile_only_for_full_finetuning(checkpoint, tmp_path, m
     ours, _ = decision._encoder_sdpa(module, q, k, v, mask, scaling = 0.5)
     reference, _ = sdpa_attention_forward(module, q, k, v, mask, scaling = 0.5)
     torch.testing.assert_close(ours, reference)
+
+
+def test_static_length_padding_leaves_the_loss_unchanged(checkpoint, tmp_path):
+    model, tokenizer = FastDecisionModel.from_pretrained(
+        str(checkpoint), full_finetuning = True, use_gradient_checkpointing = False
+    )
+    for module in model.modules():
+        if isinstance(module, torch.nn.Dropout):
+            module.p = 0.0
+        if isinstance(module, torch.nn.MultiheadAttention):
+            module.dropout = 0.0
+    items, _ = FastDecisionModel.build_dataset([_row(i) for i in range(4)], tokenizer, model)
+    trainer = DecisionTrainer(
+        model = model, args = _args(tmp_path), train_dataset = items, processing_class = tokenizer
+    )
+    device = next(model.parameters()).device
+    batch = DecisionDataCollator(tokenizer.pad_token_id)(items)
+    assert batch["input_ids"].shape[1] % decision.STATIC_LENGTH_MULTIPLE
+    losses = []
+    for multiple in (0, decision.STATIC_LENGTH_MULTIPLE):
+        model._unsloth_pad_multiple = multiple
+        inputs = {k: v.to(device) for k, v in batch.items()}
+        padded = decision._pad_length(model, dict(inputs))
+        assert padded["input_ids"].shape[1] % (multiple or 1) == 0
+        with torch.no_grad():
+            losses.append(trainer.compute_loss(model, inputs))
+    torch.testing.assert_close(losses[0], losses[1])
+
+
+def test_compiled_layers_run_eagerly_outside_training():
+    calls = []
+    layer = torch.nn.Linear(2, 2)
+    call = decision._training_only(layer, lambda *a, **k: calls.append("compiled") or layer._call_impl(*a, **k))
+    x = torch.randn(1, 2)
+    call(x)
+    layer.eval()
+    call(x)
+    assert calls == ["compiled"]
