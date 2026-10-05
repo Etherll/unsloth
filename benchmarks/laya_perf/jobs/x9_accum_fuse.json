@@ -1,0 +1,310 @@
+[
+ {
+  "name": "g1_perf_full_fp32",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "full",
+   "--precision",
+   "fp32",
+   "--opts",
+   "trainer_compile",
+   "--gc",
+   "true",
+   "--out",
+   "$ROOT/out/g1_perf_full_fp32.json"
+  ]
+ },
+ {
+  "name": "g1_acc_full_fp32",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "full",
+   "--precision",
+   "fp32",
+   "--opts",
+   "trainer_compile,accum_fuse",
+   "--gc",
+   "true",
+   "--out",
+   "$ROOT/out/g1_acc_full_fp32.json"
+  ]
+ },
+ {
+  "name": "g1_perf_full_bf16",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "full",
+   "--precision",
+   "bf16",
+   "--opts",
+   "trainer_compile",
+   "--out",
+   "$ROOT/out/g1_perf_full_bf16.json"
+  ]
+ },
+ {
+  "name": "g1_acc_full_bf16",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "full",
+   "--precision",
+   "bf16",
+   "--opts",
+   "trainer_compile,accum_fuse",
+   "--out",
+   "$ROOT/out/g1_acc_full_bf16.json"
+  ]
+ },
+ {
+  "name": "x9_full_A_perf0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/x9_full_A_perf0.json"
+  ]
+ },
+ {
+  "name": "x9_full_A_acc0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "accum_fuse",
+   "--out",
+   "$ROOT/out/x9_full_A_acc0.json"
+  ]
+ },
+ {
+  "name": "x9_full_A_perf1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/x9_full_A_perf1.json"
+  ]
+ },
+ {
+  "name": "x9_full_A_acc1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "accum_fuse",
+   "--out",
+   "$ROOT/out/x9_full_A_acc1.json"
+  ]
+ },
+ {
+  "name": "x9_full_A_perf2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/x9_full_A_perf2.json"
+  ]
+ },
+ {
+  "name": "x9_full_A_acc2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "accum_fuse",
+   "--out",
+   "$ROOT/out/x9_full_A_acc2.json"
+  ]
+ },
+ {
+  "name": "x9_full_B_perf0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/x9_full_B_perf0.json"
+  ]
+ },
+ {
+  "name": "x9_full_B_acc0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "accum_fuse",
+   "--out",
+   "$ROOT/out/x9_full_B_acc0.json"
+  ]
+ },
+ {
+  "name": "x9_full_B_perf1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/x9_full_B_perf1.json"
+  ]
+ },
+ {
+  "name": "x9_full_B_acc1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "accum_fuse",
+   "--out",
+   "$ROOT/out/x9_full_B_acc1.json"
+  ]
+ },
+ {
+  "name": "x9_full_B_perf2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/x9_full_B_perf2.json"
+  ]
+ },
+ {
+  "name": "x9_full_B_acc2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "accum_fuse",
+   "--out",
+   "$ROOT/out/x9_full_B_acc2.json"
+  ]
+ },
+ {
+  "name": "prof_acc_full_A",
+  "env": {
+   "LP_LAYER_RANGES": "1"
+  },
+  "print_log": 6000,
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY $S/bench.py --mode full --mb 2 --acc 16 --steps 9 --warmup 2 --tree $ROOT/perf --opts accum_fuse --prof $ROOT/out/prof_acc_full_A --out $ROOT/out/prof_acc_full_A.json > /dev/null 2>&1; $PY $S/prof.py $ROOT/out/prof_acc_full_A/trace.json; rm -f $ROOT/out/prof_acc_full_A/trace.json"
+  ]
+ }
+]

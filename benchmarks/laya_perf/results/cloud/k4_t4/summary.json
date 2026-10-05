@@ -1,0 +1,31 @@
+{
+ "tag": "k4_t4",
+ "backend": "kaggle",
+ "gpu": "T4x2",
+ "rc": 0,
+ "status": "PASS",
+ "minutes": 110.4,
+ "summary": "3/3 code cells executed cleanly, 14 training steps logged",
+ "failures": [],
+ "lines": [
+  "LAYA_BENCH 39f06410b1b32d11c3dcd4a76e2cd24b7631c638 Laya decision perf: bench harness, plan, results and handoff (tooling only, do not merge)",
+  "LAYA_TREE base c5cb7cba59f9522d8da2de0522baf77c527f579e Record the vendored laya import in the risky loader baseline",
+  "LAYA_TREE perf 43f60472bdacd6347fc518a10f61d43efd93f09d Test the lean LoRA forward in the GPU's own autocast dtype",
+  "LAYA_TREE cand 43f60472bdacd6347fc518a10f61d43efd93f09d Test the lean LoRA forward in the GPU's own autocast dtype",
+  "LAYA_JOB t4g2_nocomp_full_A_3407 rc=0 257s",
+  "LAYA_JOB t4g2_pr_full_A_11 rc=0 262s",
+  "LAYA_JOB t4g2_final_full_A_11 rc=0 318s",
+  "LAYA_JOB t4g2_nocomp_full_A_11 rc=0 254s",
+  "LAYA_JOB t4g2_pr_full_A_12 rc=0 266s",
+  "LAYA_JOB t4g2_final_full_A_12 rc=0 248s",
+  "LAYA_JOB t4g2_nocomp_full_A_12 rc=0 259s",
+  "LAYA_JOB t4g2_perffe_lora_B_3407 rc=0 386s",
+  "LAYA_JOB t4g2_pr_lora_B_11 rc=0 429s",
+  "LAYA_JOB t4g2_final_lora_B_11 rc=0 394s",
+  "LAYA_JOB t4g2_pr_lora_B_12 rc=0 428s",
+  "LAYA_JOB t4g2_final_lora_B_12 rc=0 396s",
+  "LAYA_JOB t4g2_pr_lora_B_13 rc=0 425s",
+  "LAYA_JOB t4g2_final_lora_B_13 rc=0 391s",
+  "LAYA_DONE {\"jobs\": 14, \"failed\": []}"
+ ]
+}

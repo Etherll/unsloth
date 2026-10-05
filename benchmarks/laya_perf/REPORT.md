@@ -43,7 +43,9 @@ PR recipe's own instability (lr 8e-4, no warmup): it collapses equally often in 
   bf16: |dloss| <= 0.03 against the PR, and grads no further from fp32 than the PR's own bf16 grads. bf16 grad norms
   spike on single batches for every path (PR worst batch 0.17 from fp32, PR+C1 0.69), so the bf16 grad check uses the
   **median** per-batch distance (PR 0.054, current perf 0.057, final 0.025 on B200); worst batch is reported too.
-- **G2** (60 steps, dropout on): max 10-step-window |dloss| <= 0.03, with a PR-vs-PR control every time.
+- **G2** (60 steps, dropout on): max 10-step-window |dloss| <= 0.03, with a PR-vs-PR control every time. Where the
+  control itself fails the gate (identical code and seed: L4 LoRA A, T4 fp16), G2 is read over >= 3 seeds per arm on the
+  seed-averaged loss curves, with the same 0.03 limit (`scripts/g2_seeds.py`).
 - **Long runs**: 200 steps at A (official default), holdout CE / accuracy at 60/120/200, PR-vs-PR control,
   LoRA as mean [range] over >= 3 seeds per arm.
 
@@ -112,6 +114,7 @@ neutral; **RO** report-only (new public arg, overrides a user setting, or new de
 | X4 | D1 + Inductor `cpp_wrapper` | B2 full A screen | static 0.767 -> 0.682 | 13,536 | 6,781 / 7,028 | +12.5% over D1 | fp32 exact on torch 2.13; **crashes on torch 2.11** (`CudaKernelParamCache not populated`, G4 and pytest) | **REPORT-ONLY** (needs a torch-version gate: your decision) |
 | X5 | whole encoder as one compiled graph, torch checkpointing inside (`enc_compile`) | G4 full A | final 0.476 -> 0.404 | 22,864 | 8,080 / 8,246 | +18% over final / **+18% VRAM** (under the 8,604 official peak) | dloss 1.6e-6, dgn 4.8e-5; bf16 dloss 0.010 | **REPORT-ONLY** (replaces Unsloth's offloaded GC: a user setting) |
 | X6 | LoRA compile (D1 static path also for LoRA) | G4 LoRA A / B, 3 pairs each (g4_b8) | 1.025 -> 0.662; 0.607 -> 0.469 | 13,930; 40,057 | 1,905 / 2,032; 2,311 / 2,474 | **+54.6% (49.5..55.0); +29.5% (28.9..31.6)** / -2.4%; -0.6% | dloss 1.6e-6, dgn 7.5e-6; bf16 dloss 0.020; G2 A 0.016, B 0.020 PASS; 200-step 3 seeds: 0/3 collapse | **REPORT-ONLY** (plan: ask before enabling LoRA compile; meets R1) |
+| X6 | LoRA compile, second GPU | L4 LoRA A / B, 3 pairs each (l6_l4lc) | 3.271 -> 2.256; 2.555 -> 2.045 | 4,090; 9,289 | 1,905 / 2,032; 2,311 / 2,416 | **+45.0% (41.7..48.0); +24.9% (24.0..25.5)** / -2.4%; +0.25% | <!--L4LCG2--> | REPORT-ONLY (as above); cold first step 75 s on L4 |
 | X7 | LoRA compile, dynamic shapes | G4 LoRA A / B screen | 1.028 -> 0.766; 0.598 -> 0.482 | 12,051; 39,425 | 1,896 / 2,006; 2,274 / 2,438 | +34%; +24% | n/m | superseded by X6 |
 | X8 | official laya script (fp32, as shipped) | G4 A / B | 0.850 / 1.053 s/step | - | 7,964 / **8,604**; 7,969 / **8,814** | VRAM ceiling for R3 | - | reference |
 
@@ -129,14 +132,16 @@ n/m = not measured (no speed case to promote). C3 variants were never promoted, 
 | W (before D1, compile pre-fix) | full A / B; LoRA A / B | 1.111 / 0.752; 1.675 / 0.919 | 1.048 / 0.655; 1.699 / 0.862 | +5.6% / +14.6%; +7.8% / +5.9% (p25) | -14.0% / -6.6%; +0.3% / -1.3% | PASS (all four) |
 | **L4** | full A | 2.484 | 1.865 | **+33.2%** (32.6..36.0) | 8,128 -> 6,988 (**-14.0%**) | 0.010 (0.006) PASS |
 | L4 | full B | 2.660 | 2.154 | **+23.4%** (23.3..23.6) | 8,128 -> 7,268 (**-10.6%**) | 0.009 (0.013) PASS |
-| L4 | LoRA A | 3.768 | 3.399 | **+11.3%** (4.0..11.9) | 2,082 -> 2,082 (0.0%) | seed 3407: 0.147 (control **0.039**, fails itself); multi-seed below |
+| L4 | LoRA A | 3.768 | 3.399 | **+11.3%** (4.0..11.9) | 2,082 -> 2,082 (0.0%) | 3-seed: **0.019** (0.011) PASS; single seed 3407 0.147 (control 0.039 fails itself) |
 | L4 | LoRA B | 2.870 | 2.603 | **+10.3%** (9.1..10.4) | 2,426 -> 2,410 (-0.7%) | 0.0298 (0.017) PASS, marginal |
-| T4 | see T4 section | | | | | |
+| T4 (fp16) | 4 combos | see Kaggle T4 section | | +23.1% / +27.2% / +9.6% / +10.3% | -14.0% / -10.8% / -0.9% / -0.7% | multi-seed, see T4 section |
 
 G4 G2 holdout: full A dCE 0.002 / dacc 0.008, full B 0.0003 / 0.010, LoRA A 0.005 / 0.003, LoRA B 0.009 / 0.030 (control 0.007 / 0.040).
 L4 G2 holdout: full A 0.007 / 0.005, full B 0.009 / 0.015, LoRA B 0.003 / 0.040 (control 0.001 / 0.003). L4 at A is still host-bound
 (GPU busy 26% in the PR, 27% in the final, on a 2.2 GHz Xeon), and the gain is smaller than on G4 (+33% vs +55%); the VRAM saving is identical.
-<!--L4G2-->
+L4 LoRA A, seeds 11-13 (l5_g2s): PR-vs-PR per-seed windows 0.015 / 0.040 / 0.039 (identical code), PR-vs-final 0.008 / 0.056 / 0.072;
+seed-averaged **control 0.011, final 0.019, PASS**. Holdout PR 0.997 [0.988..1.009] / 0.650 [0.615..0.675], PR repeat 0.995 / 0.627,
+final 1.004 [0.984..1.035] / 0.617 [0.555..0.647]. No collapse (loss 40-60 <= 1.05, grad norm >= 0.6).
 
 ## Compile cost and break-even (G4)
 
@@ -205,6 +210,9 @@ LoRA B PR 0.884 / 0.805, perf 0.886 / 0.775; full B PR 0.880 / 0.803.
 | G4, seeds 11-34 | 2 / 24 | 3 / 24 |
 | G4, seeds 3408-3409 | 1 / 2 (3408) | 0 / 2 |
 | B200 long runs, seeds 3407-3409 | 0 / 3 | 2 / 3 |
+| G4 200-step, seeds 3407-3409 (g4_b8, against LoRA compile) | 1 / 3 (3408) | LoRA compile 0 / 3 |
+| L4 60-step G2 runs at A (l4_final, l5, l6), seeds 3407, 11-13 | 0 / 10 | 0 / 4 final, 0 / 2 LoRA compile |
+| **L4 at B (mb8 x acc8)**, seeds 11, 3407 (l6) | **1 / 2 (seed 11: loss 40-60 1.216, grad norm 0.21)** | LoRA compile 0 / 2 |
 | **10-step LR warmup**, seeds 3408, 3409, 11, 18 (incl. the collapsed ones) | **0 / 4** | **0 / 4** |
 
 Ablation on the collapsing seeds (G4): removing C1, fused AdamW or the lean LoRA forward from perf, or adding C1 / fused
@@ -227,7 +235,48 @@ which seeds fall off it. No perf change is responsible, so nothing is reverted; 
 | ca7303431 | Compile the decision encoder layers for static shapes (D1) |
 | 43f60472b | Test the lean LoRA forward in the GPU's own autocast dtype (T4 fix) |
 
-<!--T4-->
+## Kaggle T4 (fp16)
+
+Tesla T4 (sm_75, 15 GB, one of the two used), 4 vCPU, torch 2.11.0+cu128, cuDNN 9.19. The T4 has no native bf16, so Unsloth's
+`is_bfloat16_supported()` picks fp16 with a GradScaler, as Studio does (torch's own check reports emulated bf16; k1 trained in
+that by mistake and is discarded). Every T4 run below logged `half=fp16`. SDPA picks mem-eff for every call (probe). The full
+model fits (8.1 GB reserved at most).
+
+pytest on the perf tip, Kaggle T4 (k2b): `33 passed in 28.28s`.
+
+| Combo | PR s/step | final s/step | Speed (3 pairs, k2b) | Reserved VRAM | tok/s final |
+|---|---|---|---|---|---|
+| full A | 3.419 | 2.779 | **+23.1%** (20.8..23.4) | 8,128 -> 6,988 (**-14.0%**) | 3,320 |
+| full B | 5.225 | 4.107 | **+27.2%** (27.2..27.5) | 8,128 -> 7,248 (**-10.8%**) | 4,570 |
+| LoRA A | 3.642 | 3.323 | **+9.6%** (8.2..9.9) | 2,080 -> 2,062 (-0.9%) | 2,777 |
+| LoRA B | 5.594 | 5.070 | **+10.3%** (10.1..10.6) | 2,426 -> 2,408 (-0.7%) | 3,703 |
+
+A second VM (k3) gave the same direction: full A 3.561 -> 3.051, full B 5.593 -> 4.616, LoRA A 3.731 -> 3.394, LoRA B 5.696 -> 5.279 s/step.
+
+Profile, full A (3 steps, k2b): PR GPU busy 54.6%, kernel sum 2,801 ms/step (elementwise 1,488, GEMM 838, attention 229,
+optimizer 176); final 53.2%, 2,221 ms/step (elementwise 919, GEMM 877, attention 249, optimizer 87). The T4 is GPU-bound
+already at A, so the gain comes from fewer elementwise kernels (compile fusion) and the fused optimizer, not from launch cost.
+
+**G2 in fp16.** Single-seed G2 cannot separate the arms on the T4: two runs of the identical PR code and seed differ by
+0.035 (full A) and 0.062 (LoRA B) in k3, above the 0.03 gate. fp16 adds a second effect: the GradScaler starts at 2^16 and
+skips the first step whose gradients overflow. In k2b and k3 the PR overflows at step 0 and the compiled final at step 1, so
+each arm drops one different batch and the curves split from step 1 (full A 0.045, full B 0.044-0.045 against the PR).
+
+Multi-seed G2 on the T4 (k2b, k3, k4; `scripts/g2_seeds.py`, seed-averaged 10-step windows, gate 0.03):
+
+| Combo | Runs per arm | Per-run window PR vs final | Seed-averaged window | Holdout CE PR / final | Holdout acc PR / final |
+|---|---|---|---|---|---|
+| full A | 4 (seeds 11, 12, 3407 x 2 VMs) | 0.037 / 0.025 / 0.045 / 0.036 | **0.018 PASS** | 1.001 [0.989..1.012] / 1.004 [0.985..1.028] | 0.651 [0.625..0.670] / 0.634 [0.608..0.655] |
+| LoRA B | 5 (seeds 11-13, 3407 x 2 VMs) | 0.038 / 0.073 / 0.014 / 0.109 / 0.055 | **0.011 PASS** | 0.990 [0.963..1.021] / 0.990 [0.971..1.052] | 0.664 [0.608..0.715] / 0.662 [0.593..0.698] |
+<!--T4G2ROWS-->
+
+Noise floor (same code, same seed 3407, two Kaggle VMs): PR full A 0.024, final full A 0.044, PR LoRA B 0.055, final LoRA B 0.112.
+**Why the compiled build skips a different first step:** with compile off (`UNSLOTH_COMPILE_DISABLE=1`), the perf build overflows
+at step 0 exactly like the PR (k4, seed 3407); compiled, it does not. The likely mechanism (not isolated further) is that Inductor computes fused fp16 elementwise
+chains in fp32 and rounds once at the store, so fewer intermediates overflow. After step 0 the scaler's skips land at scattered steps in every arm (PR 26 / 53 / 58, no-compile
+33 / 37, final 19), so this is ordinary fp16 loss-scaling, not a defect. No run collapsed (loss 40-60 <= 1.05).
+
+
 
 ## Cloud runs
 
@@ -250,6 +299,10 @@ All Linux GPU work after the move ran on Colab or Kaggle; every Colab VM was rel
 | k2b_t4 | Kaggle T4x2 | pytest, PR vs final 4 combos x 3 pairs (fp16), G2, SDPA probe, profiles (40 jobs) | COMPLETE (33 passed; G2 fails in fp16, see T4 section) |
 | g4_b8 | Colab G4 | LoRA compile: 3+3 pairs A/B, G2, 200-step 3+3 seeds (22 jobs) | PASS |
 | l4_final | Colab L4 (2 VMs: first lost its kernel after 11 s, retried) | pytest, PR vs final 4 combos x 3 pairs, G2, SDPA probe, profiles (42 jobs) | PASS (33 passed; LoRA A G2 control fails, see l5) |
+| l5_g2s | Colab L4 (2 VMs: first lost its connection, retried) | LoRA A G2 seeds 11-13 x {PR, PR repeat, final} (9 jobs) | PASS (seed-averaged 0.019, control 0.011) |
+| k3_t4 | Kaggle T4x2 | G2 PR / PR repeat / final x 4 combos (fp16), SDPA probe, profiles (15 jobs) | COMPLETE (showed the fp16 noise floor above the gate) |
+| k4_t4 | Kaggle T4x2 | fp16 G2 seeds 11-13, compile-off arm, perf with foreach AdamW (14 jobs) | PASS (seed-averaged full A 0.018, LoRA B 0.011) |
+| l6_l4lc | Colab L4 | LoRA compile 3+3 pairs A/B, G2 seeds 3407 / 11 (20 jobs) | timing PASS (+45.0% / +24.9%); G2 A 0.030 PASS, B 0.092 (PR seed 11 collapsed) -> more seeds in l7 |
 <!--CLOUDROWS-->
 
 ### Discarded measurements
@@ -267,8 +320,9 @@ All Linux GPU work after the move ran on Colab or Kaggle; every Colab VM was rel
 
 1. **Compile threshold** (you removed it): break-even of the static compile vs eager is ~4,900 decisions (A) / ~22,000 (B)
    cold and ~1,400 / ~6,500 with a warm cache (G4). Keep always-compile, or bring back a threshold?
-2. **LoRA compile** (X6): +54.6% at A, +29.5% at B over the final LoRA path (3 pairs each, G4), VRAM -2.4% / -0.6%, fp32 G1
-   exact, G2 PASS at A (0.016) and B (0.020), 200-step runs 0.915 / 0.748 over 3 seeds with no collapse; first step +30 s cold.
+2. **LoRA compile** (X6): +54.6% at A, +29.5% at B over the final LoRA path (3 pairs each, G4); +45.0% / +24.9% on L4.
+   VRAM -2.4% / -0.6% (G4), -2.4% / +0.25% (L4); fp32 G1 exact, G2 PASS at A (0.016) and B (0.020) on G4, 200-step runs
+   0.915 / 0.748 over 3 seeds with no collapse; first step +30 s cold on G4, +75 s on L4. <!--T4LC-->
    Meets R1 on every check. Enable it? (Not committed: the plan says ask first.)
 3. **cpp_wrapper on top of D1** (X4): +12.5% more at A on torch 2.13 (B200), crashes on torch 2.11. Gate on torch >= 2.13, or leave off?
 4. **Whole-encoder compiled graph with in-graph checkpointing** (X5): +18% over the final at A, +18% VRAM (8,246 MiB, under the

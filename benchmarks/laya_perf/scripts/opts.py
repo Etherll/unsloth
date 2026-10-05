@@ -662,3 +662,84 @@ def peft_forward(model, D, args):
 PRE["allow_cudnn"] = allow_cudnn
 PRE["foreach_adam"] = foreach_adam
 POST["peft_forward"] = peft_forward
+
+
+# X9: fused weight-gradient accumulation (Megatron's gradient_accumulation_fusion, stock torch only). Each trainable Linear
+# weight keeps a persistent fp32 buffer as its .grad; the backward adds dy^T x into it with one GEMM (fp16/bf16 inputs,
+# fp32 output, beta=1) instead of GEMM -> half dW -> cast to fp32 -> AccumulateGrad add. Same VRAM (.grad exists anyway),
+# no new argument. Opaque custom op so the compiled layers call it in place on the buffer.
+_ACCUM = {}
+
+
+def _accum_ops():
+    if _ACCUM:
+        return _ACCUM["op"]
+
+    @torch.library.custom_op("laya_bench::wgrad_accum_", mutates_args = ("main_grad",))
+    def wgrad_accum_(main_grad: torch.Tensor, dy: torch.Tensor, x: torch.Tensor) -> None:
+        dy2, x2 = dy.reshape(-1, dy.shape[-1]), x.reshape(-1, x.shape[-1])
+        if dy2.dtype == main_grad.dtype or not dy2.is_cuda:
+            main_grad.addmm_(dy2.t().to(main_grad.dtype), x2.to(main_grad.dtype))
+        else:
+            torch.addmm(main_grad, dy2.t(), x2, out_dtype = main_grad.dtype, out = main_grad)
+
+    class AccumLinear(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, x, weight, bias, main_grad):
+            dtype = torch.get_autocast_dtype(x.device.type) if torch.is_autocast_enabled(x.device.type) else x.dtype
+            xh, wh = x.to(dtype), weight.to(dtype)
+            ctx.x_dtype, ctx.has_bias = x.dtype, bias is not None
+            ctx.save_for_backward(xh, wh, main_grad)
+            with torch.autocast(x.device.type, enabled = False):
+                return torch.nn.functional.linear(xh, wh, None if bias is None else bias.to(dtype))
+
+        @staticmethod
+        def backward(ctx, dy):
+            xh, wh, main_grad = ctx.saved_tensors
+            dy = dy.to(wh.dtype)
+            wgrad_accum_(main_grad, dy, xh)
+            db = dy.reshape(-1, dy.shape[-1]).sum(0, dtype = torch.float32) if ctx.has_bias else None
+            return (dy @ wh).to(ctx.x_dtype), None, db, None
+
+    _ACCUM["op"] = AccumLinear
+    return AccumLinear
+
+
+def _accum_forward(self, x):
+    return _ACCUM["op"].apply(x, self.weight, self.bias, self.weight._laya_main_grad)
+
+
+def _attach_main_grads(model):
+    for p in model._laya_accum_params:
+        if p.grad is None:
+            p._laya_main_grad.zero_()
+            p.grad = p._laya_main_grad
+
+
+def accum_fuse_model(model, D, args):
+    import types
+    _accum_ops()
+    params = []
+    for module in model.modules():
+        if type(module) is torch.nn.Linear and module.weight.requires_grad:
+            module.weight._laya_main_grad = torch.zeros_like(module.weight, dtype = torch.float32)
+            module.forward = types.MethodType(_accum_forward, module)
+            params.append(module.weight)
+    model._laya_accum_params = params
+    print("accum_fuse linears", len(params), "params", sum(p.numel() for p in params))
+    return model
+
+
+def accum_fuse(D, args):
+    compute_loss = D.DecisionTrainer.compute_loss
+
+    def patched(self, model, *a, **k):
+        if getattr(model, "_laya_accum_params", None):
+            _attach_main_grads(model)
+        return compute_loss(self, model, *a, **k)
+
+    D.DecisionTrainer.compute_loss = patched
+
+
+PRE["accum_fuse"] = accum_fuse
+POST["accum_fuse"] = accum_fuse_model

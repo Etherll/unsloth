@@ -1,0 +1,26 @@
+{
+ "tag": "l5_g2s",
+ "backend": "colab",
+ "gpu": "L4",
+ "rc": 0,
+ "status": "PASS",
+ "minutes": 40.2,
+ "summary": "3/3 code cells executed cleanly, 9 training steps logged",
+ "failures": [],
+ "lines": [
+  "LAYA_BENCH 39f06410b1b32d11c3dcd4a76e2cd24b7631c638 Laya decision perf: bench harness, plan, results and handoff (tooling only, do not merge)",
+  "LAYA_TREE base c5cb7cba59f9522d8da2de0522baf77c527f579e Record the vendored laya import in the risky loader baseline",
+  "LAYA_TREE perf 43f60472bdacd6347fc518a10f61d43efd93f09d Test the lean LoRA forward in the GPU's own autocast dtype",
+  "LAYA_TREE cand 43f60472bdacd6347fc518a10f61d43efd93f09d Test the lean LoRA forward in the GPU's own autocast dtype",
+  "LAYA_JOB g2s_pr_lora_A_11 rc=0 259s",
+  "LAYA_JOB g2s_pr2_lora_A_11 rc=0 264s",
+  "LAYA_JOB g2s_final_lora_A_11 rc=0 237s",
+  "LAYA_JOB g2s_pr_lora_A_12 rc=0 255s",
+  "LAYA_JOB g2s_pr2_lora_A_12 rc=0 257s",
+  "LAYA_JOB g2s_final_lora_A_12 rc=0 236s",
+  "LAYA_JOB g2s_pr_lora_A_13 rc=0 257s",
+  "LAYA_JOB g2s_pr2_lora_A_13 rc=0 256s",
+  "LAYA_JOB g2s_final_lora_A_13 rc=0 236s",
+  "LAYA_DONE {\"jobs\": 9, \"failed\": []}"
+ ]
+}
