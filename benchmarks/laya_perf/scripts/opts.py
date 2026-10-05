@@ -675,13 +675,21 @@ def _accum_ops():
     if _ACCUM:
         return _ACCUM["op"]
 
-    @torch.library.custom_op("laya_bench::wgrad_accum_", mutates_args = ("main_grad",))
-    def wgrad_accum_(main_grad: torch.Tensor, dy: torch.Tensor, x: torch.Tensor) -> None:
+    # A raw Library op: torch.library.custom_op costs ~25 us of Python per call, this ~6 us (CPU-measured).
+    lib = torch.library.Library("laya_bench", "DEF")
+    lib.define("wgrad_accum_(Tensor(a!) main_grad, Tensor dy, Tensor x) -> ()")
+
+    def impl(main_grad, dy, x):
         dy2, x2 = dy.reshape(-1, dy.shape[-1]), x.reshape(-1, x.shape[-1])
         if dy2.dtype == main_grad.dtype or not dy2.is_cuda:
             main_grad.addmm_(dy2.t().to(main_grad.dtype), x2.to(main_grad.dtype))
         else:
             torch.addmm(main_grad, dy2.t(), x2, out_dtype = main_grad.dtype, out = main_grad)
+
+    lib.impl("wgrad_accum_", impl, "CompositeExplicitAutograd")
+    torch.library.register_fake("laya_bench::wgrad_accum_", lambda main_grad, dy, x: None, lib = lib)
+    _ACCUM["lib"] = lib
+    wgrad_accum_ = torch.ops.laya_bench.wgrad_accum_.default
 
     class AccumLinear(torch.autograd.Function):
         @staticmethod

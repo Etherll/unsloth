@@ -1,0 +1,264 @@
+[
+ {
+  "name": "x9b_full_A_perf0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/x9b_full_A_perf0.json"
+  ]
+ },
+ {
+  "name": "x9b_full_A_acc0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "accum_fuse",
+   "--out",
+   "$ROOT/out/x9b_full_A_acc0.json"
+  ]
+ },
+ {
+  "name": "x9b_full_A_perf1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/x9b_full_A_perf1.json"
+  ]
+ },
+ {
+  "name": "x9b_full_A_acc1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "accum_fuse",
+   "--out",
+   "$ROOT/out/x9b_full_A_acc1.json"
+  ]
+ },
+ {
+  "name": "x9b_full_A_perf2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/x9b_full_A_perf2.json"
+  ]
+ },
+ {
+  "name": "x9b_full_A_acc2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "accum_fuse",
+   "--out",
+   "$ROOT/out/x9b_full_A_acc2.json"
+  ]
+ },
+ {
+  "name": "x9b_full_B_perf0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/x9b_full_B_perf0.json"
+  ]
+ },
+ {
+  "name": "x9b_full_B_acc0",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "accum_fuse",
+   "--out",
+   "$ROOT/out/x9b_full_B_acc0.json"
+  ]
+ },
+ {
+  "name": "x9b_full_B_perf1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/x9b_full_B_perf1.json"
+  ]
+ },
+ {
+  "name": "x9b_full_B_acc1",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "accum_fuse",
+   "--out",
+   "$ROOT/out/x9b_full_B_acc1.json"
+  ]
+ },
+ {
+  "name": "x9b_full_B_perf2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--out",
+   "$ROOT/out/x9b_full_B_perf2.json"
+  ]
+ },
+ {
+  "name": "x9b_full_B_acc2",
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/perf",
+   "--opts",
+   "accum_fuse",
+   "--out",
+   "$ROOT/out/x9b_full_B_acc2.json"
+  ]
+ },
+ {
+  "name": "g1b_acc_full_fp32",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "full",
+   "--precision",
+   "fp32",
+   "--opts",
+   "trainer_compile,accum_fuse",
+   "--gc",
+   "true",
+   "--out",
+   "$ROOT/out/g1b_acc_full_fp32.json"
+  ]
+ },
+ {
+  "name": "g1b_acc_full_bf16",
+  "cmd": [
+   "$S/parity.py",
+   "--tree",
+   "$ROOT/perf",
+   "--mode",
+   "full",
+   "--precision",
+   "bf16",
+   "--opts",
+   "trainer_compile,accum_fuse",
+   "--out",
+   "$ROOT/out/g1b_acc_full_bf16.json"
+  ]
+ }
+]

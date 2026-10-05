@@ -134,7 +134,7 @@ n/m = not measured (no speed case to promote). C3 variants were never promoted, 
 | L4 | full B | 2.660 | 2.154 | **+23.4%** (23.3..23.6) | 8,128 -> 7,268 (**-10.6%**) | 0.009 (0.013) PASS |
 | L4 | LoRA A | 3.768 | 3.399 | **+11.3%** (4.0..11.9) | 2,082 -> 2,082 (0.0%) | 3-seed: **0.019** (0.011) PASS; single seed 3407 0.147 (control 0.039 fails itself) |
 | L4 | LoRA B | 2.870 | 2.603 | **+10.3%** (9.1..10.4) | 2,426 -> 2,410 (-0.7%) | 0.0298 (0.017) PASS, marginal |
-| T4 (fp16) | 4 combos | see Kaggle T4 section | | +23.1% / +27.2% / +9.6% / +10.3% | -14.0% / -10.8% / -0.9% / -0.7% | multi-seed, see T4 section |
+| T4 (fp16) | full A / full B / LoRA A / LoRA B | see Kaggle T4 section | | +23.1% / +27.2% / +9.6% / +10.3% | -14.0% / -10.8% / -0.9% / -0.7% | multi-seed 0.018 / 0.020 / 0.016 / 0.011, all PASS |
 
 G4 G2 holdout: full A dCE 0.002 / dacc 0.008, full B 0.0003 / 0.010, LoRA A 0.005 / 0.003, LoRA B 0.009 / 0.030 (control 0.007 / 0.040).
 L4 G2 holdout: full A 0.007 / 0.005, full B 0.009 / 0.015, LoRA B 0.003 / 0.040 (control 0.001 / 0.003). L4 at A is still host-bound
@@ -268,7 +268,8 @@ Multi-seed G2 on the T4 (k2b, k3, k4; `scripts/g2_seeds.py`, seed-averaged 10-st
 |---|---|---|---|---|---|
 | full A | 4 (seeds 11, 12, 3407 x 2 VMs) | 0.037 / 0.025 / 0.045 / 0.036 | **0.018 PASS** | 1.001 [0.989..1.012] / 1.004 [0.985..1.028] | 0.651 [0.625..0.670] / 0.634 [0.608..0.655] |
 | LoRA B | 5 (seeds 11-13, 3407 x 2 VMs) | 0.038 / 0.073 / 0.014 / 0.109 / 0.055 | **0.011 PASS** | 0.990 [0.963..1.021] / 0.990 [0.971..1.052] | 0.664 [0.608..0.715] / 0.662 [0.593..0.698] |
-<!--T4G2ROWS-->
+| full B | 4 (seeds 11, 12, 3407 x 2 VMs) | 0.010 / 0.007 / 0.045 / 0.044 | **0.020 PASS** | 0.991 [0.974..1.017] / 0.994 [0.975..1.018] | 0.655 [0.627..0.672] / 0.656 [0.640..0.682] |
+| LoRA A | 4 (seeds 11, 12, 3407 x 2 VMs) | 0.013 / 0.046 / 0.017 / 0.049 | **0.016 PASS** | 0.995 [0.992..1.000] / 0.995 [0.987..1.015] | 0.634 [0.615..0.660] / 0.637 [0.613..0.650] |
 
 Noise floor (same code, same seed 3407, two Kaggle VMs): PR full A 0.024, final full A 0.044, PR LoRA B 0.055, final LoRA B 0.112.
 **Why the compiled build skips a different first step:** with compile off (`UNSLOTH_COMPILE_DISABLE=1`), the perf build overflows
@@ -303,6 +304,7 @@ All Linux GPU work after the move ran on Colab or Kaggle; every Colab VM was rel
 | k3_t4 | Kaggle T4x2 | G2 PR / PR repeat / final x 4 combos (fp16), SDPA probe, profiles (15 jobs) | COMPLETE (showed the fp16 noise floor above the gate) |
 | k4_t4 | Kaggle T4x2 | fp16 G2 seeds 11-13, compile-off arm, perf with foreach AdamW (14 jobs) | PASS (seed-averaged full A 0.018, LoRA B 0.011) |
 | l6_l4lc | Colab L4 | LoRA compile 3+3 pairs A/B, G2 seeds 3407 / 11 (20 jobs) | timing PASS (+45.0% / +24.9%); G2 A 0.030 PASS, B 0.092 (PR seed 11 collapsed) -> more seeds in l7 |
+| k6_t4 | Kaggle T4x2 | fp16 G2 seeds 11-12 for full B and LoRA A (8 jobs) | PASS (seed-averaged 0.020 / 0.016) |
 <!--CLOUDROWS-->
 
 ### Discarded measurements
@@ -341,6 +343,10 @@ All Linux GPU work after the move ran on Colab or Kaggle; every Colab VM was rel
 ## Studio-pass open items
 
 - C10 GC choice (`unsloth` offload vs `True`; GC off only fits under the ceiling for small micro-batches).
+- Micro-batch default: at mb2 every kernel is tiny and the CPU sets the pace (GPU busy 19-27% on G4 / L4 / B200). On G4 full FT,
+  mb8 x acc8 takes 64 samples in 0.421 s against 32 in 0.476 s at mb2 x acc16 (about 2.3x the throughput at a larger effective
+  batch); picking the largest micro-batch that fits (and lowering accumulation to keep the effective batch) is the biggest
+  remaining lever and needs no code.
 - `adamw_8bit` as an option for large full fine-tunes.
 - LoRA recipe: lr 8e-4 with no warmup collapses ~12% of seeds at mb2 x acc16; add a short warmup.
 - Compile threshold and LoRA compile (decisions 1-2).
