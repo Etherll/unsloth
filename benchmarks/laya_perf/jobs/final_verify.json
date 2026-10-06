@@ -1,0 +1,38 @@
+[
+ {
+  "name": "bnb",
+  "print_log": 1000,
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY -m pip install -q bitsandbytes && $PY -c 'import bitsandbytes as b; print(\"LAYA_BNB\", b.__version__)'"
+  ]
+ },
+ {
+  "name": "trees",
+  "print_log": 3000,
+  "cmd": [
+   "bash",
+   "-c",
+   "R=$(cd $S/../../.. && pwd); cd $R && git fetch -q origin laya-decision-best laya-decision-perf-rebased && for t in 't_pr 84db80f0a' 't_dh 12fcce54c' 't_ours origin/laya-decision-perf-rebased' 't_best1 e7f0d9055' 't_final origin/laya-decision-best'; do set -- $t; [ -d $ROOT/$1 ] || git worktree add -q --detach $ROOT/$1 $2; echo \"LAYA_TREE $1 $(git -C $ROOT/$1 log -1 --format='%h %s')\"; done"
+  ]
+ },
+ {
+  "name": "final_pytest_t_final",
+  "print_log": 12000,
+  "cmd": [
+   "bash",
+   "-c",
+   "cd $ROOT/t_final && git log -1 --format='LAYA_HEAD %h %s' && $PY -m pytest tests/test_decision_model.py -q -rfEs --tb=short -p no:cacheprovider 2>&1 | grep -vE 'Warning|warnings.warn|it/s\\]' | tail -40"
+  ]
+ },
+ {
+  "name": "final_pytest_t_pr",
+  "print_log": 12000,
+  "cmd": [
+   "bash",
+   "-c",
+   "cd $ROOT/t_pr && git log -1 --format='LAYA_HEAD %h %s' && $PY -m pytest tests/test_decision_model.py -q -rfEs --tb=short -p no:cacheprovider 2>&1 | grep -vE 'Warning|warnings.warn|it/s\\]' | tail -40"
+  ]
+ }
+]
