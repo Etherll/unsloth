@@ -1,0 +1,764 @@
+[
+ {
+  "name": "bnb",
+  "print_log": 1000,
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY -m pip install -q bitsandbytes && $PY -c 'import bitsandbytes as b; print(\"LAYA_BNB\", b.__version__)'"
+  ]
+ },
+ {
+  "name": "trees",
+  "print_log": 3000,
+  "cmd": [
+   "bash",
+   "-c",
+   "R=$(cd $S/../../.. && pwd); cd $R && git fetch -q origin laya-decision-best laya-decision-perf-rebased && for t in 't_pr 84db80f0a' 't_dh 12fcce54c' 't_ours origin/laya-decision-perf-rebased' 't_best1 e7f0d9055' 't_best2 origin/laya-decision-best'; do set -- $t; [ -d $ROOT/$1 ] || git worktree add -q --detach $ROOT/$1 $2; echo \"LAYA_TREE $1 $(git -C $ROOT/$1 log -1 --format='%h %s')\"; done"
+  ]
+ },
+ {
+  "name": "v2g2_pr_full_A_3407",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "3407",
+   "--out",
+   "$ROOT/out/v2g2_pr_full_A_3407.json"
+  ]
+ },
+ {
+  "name": "v2g2_best2_full_A_3407",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_best2",
+   "--seed",
+   "3407",
+   "--out",
+   "$ROOT/out/v2g2_best2_full_A_3407.json"
+  ]
+ },
+ {
+  "name": "v2g2_pr2_full_A_3407",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "3407",
+   "--out",
+   "$ROOT/out/v2g2_pr2_full_A_3407.json"
+  ]
+ },
+ {
+  "name": "v2g2_pr_full_A_11",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "11",
+   "--out",
+   "$ROOT/out/v2g2_pr_full_A_11.json"
+  ]
+ },
+ {
+  "name": "v2g2_best2_full_A_11",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_best2",
+   "--seed",
+   "11",
+   "--out",
+   "$ROOT/out/v2g2_best2_full_A_11.json"
+  ]
+ },
+ {
+  "name": "v2g2_pr2_full_A_11",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "11",
+   "--out",
+   "$ROOT/out/v2g2_pr2_full_A_11.json"
+  ]
+ },
+ {
+  "name": "v2g2_pr_full_A_12",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "12",
+   "--out",
+   "$ROOT/out/v2g2_pr_full_A_12.json"
+  ]
+ },
+ {
+  "name": "v2g2_best2_full_A_12",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_best2",
+   "--seed",
+   "12",
+   "--out",
+   "$ROOT/out/v2g2_best2_full_A_12.json"
+  ]
+ },
+ {
+  "name": "v2g2_pr2_full_A_12",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "12",
+   "--out",
+   "$ROOT/out/v2g2_pr2_full_A_12.json"
+  ]
+ },
+ {
+  "name": "v2g2_pr_full_B_3407",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "3407",
+   "--out",
+   "$ROOT/out/v2g2_pr_full_B_3407.json"
+  ]
+ },
+ {
+  "name": "v2g2_best2_full_B_3407",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/t_best2",
+   "--seed",
+   "3407",
+   "--out",
+   "$ROOT/out/v2g2_best2_full_B_3407.json"
+  ]
+ },
+ {
+  "name": "v2g2_pr_full_B_11",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "11",
+   "--out",
+   "$ROOT/out/v2g2_pr_full_B_11.json"
+  ]
+ },
+ {
+  "name": "v2g2_best2_full_B_11",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/t_best2",
+   "--seed",
+   "11",
+   "--out",
+   "$ROOT/out/v2g2_best2_full_B_11.json"
+  ]
+ },
+ {
+  "name": "v2g2_pr_full_B_12",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "12",
+   "--out",
+   "$ROOT/out/v2g2_pr_full_B_12.json"
+  ]
+ },
+ {
+  "name": "v2g2_best2_full_B_12",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/t_best2",
+   "--seed",
+   "12",
+   "--out",
+   "$ROOT/out/v2g2_best2_full_B_12.json"
+  ]
+ },
+ {
+  "name": "v2g2_pr_lora_A_3407",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "3407",
+   "--out",
+   "$ROOT/out/v2g2_pr_lora_A_3407.json"
+  ]
+ },
+ {
+  "name": "v2g2_best2_lora_A_3407",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_best2",
+   "--seed",
+   "3407",
+   "--out",
+   "$ROOT/out/v2g2_best2_lora_A_3407.json"
+  ]
+ },
+ {
+  "name": "v2g2_pr2_lora_A_3407",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "3407",
+   "--out",
+   "$ROOT/out/v2g2_pr2_lora_A_3407.json"
+  ]
+ },
+ {
+  "name": "v2g2_pr_lora_A_11",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "11",
+   "--out",
+   "$ROOT/out/v2g2_pr_lora_A_11.json"
+  ]
+ },
+ {
+  "name": "v2g2_best2_lora_A_11",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_best2",
+   "--seed",
+   "11",
+   "--out",
+   "$ROOT/out/v2g2_best2_lora_A_11.json"
+  ]
+ },
+ {
+  "name": "v2g2_pr2_lora_A_11",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "11",
+   "--out",
+   "$ROOT/out/v2g2_pr2_lora_A_11.json"
+  ]
+ },
+ {
+  "name": "v2g2_pr_lora_A_12",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "12",
+   "--out",
+   "$ROOT/out/v2g2_pr_lora_A_12.json"
+  ]
+ },
+ {
+  "name": "v2g2_best2_lora_A_12",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_best2",
+   "--seed",
+   "12",
+   "--out",
+   "$ROOT/out/v2g2_best2_lora_A_12.json"
+  ]
+ },
+ {
+  "name": "v2g2_pr2_lora_A_12",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "12",
+   "--out",
+   "$ROOT/out/v2g2_pr2_lora_A_12.json"
+  ]
+ },
+ {
+  "name": "v2g2_pr_lora_B_3407",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "3407",
+   "--out",
+   "$ROOT/out/v2g2_pr_lora_B_3407.json"
+  ]
+ },
+ {
+  "name": "v2g2_best2_lora_B_3407",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/t_best2",
+   "--seed",
+   "3407",
+   "--out",
+   "$ROOT/out/v2g2_best2_lora_B_3407.json"
+  ]
+ },
+ {
+  "name": "v2g2_pr_lora_B_11",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "11",
+   "--out",
+   "$ROOT/out/v2g2_pr_lora_B_11.json"
+  ]
+ },
+ {
+  "name": "v2g2_best2_lora_B_11",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/t_best2",
+   "--seed",
+   "11",
+   "--out",
+   "$ROOT/out/v2g2_best2_lora_B_11.json"
+  ]
+ },
+ {
+  "name": "v2g2_pr_lora_B_12",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "12",
+   "--out",
+   "$ROOT/out/v2g2_pr_lora_B_12.json"
+  ]
+ },
+ {
+  "name": "v2g2_best2_lora_B_12",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--tree",
+   "$ROOT/t_best2",
+   "--seed",
+   "12",
+   "--out",
+   "$ROOT/out/v2g2_best2_lora_B_12.json"
+  ]
+ }
+]

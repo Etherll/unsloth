@@ -1,0 +1,884 @@
+[
+ {
+  "name": "bnb",
+  "print_log": 1000,
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY -m pip install -q bitsandbytes && $PY -c 'import bitsandbytes as b; print(\"LAYA_BNB\", b.__version__)'"
+  ]
+ },
+ {
+  "name": "trees",
+  "print_log": 3000,
+  "cmd": [
+   "bash",
+   "-c",
+   "R=$(cd $S/../../.. && pwd); cd $R && git fetch -q origin laya-decision-best laya-decision-perf-rebased && for t in 't_pr 84db80f0a' 't_dh 12fcce54c' 't_ours origin/laya-decision-perf-rebased' 't_best1 e7f0d9055' 't_best2 origin/laya-decision-best'; do set -- $t; [ -d $ROOT/$1 ] || git worktree add -q --detach $ROOT/$1 $2; echo \"LAYA_TREE $1 $(git -C $ROOT/$1 log -1 --format='%h %s')\"; done"
+  ]
+ },
+ {
+  "name": "v2_full_A_pr_0",
+  "env": {
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_pr"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_pr",
+   "--out",
+   "$ROOT/out/v2_full_A_pr_0.json"
+  ]
+ },
+ {
+  "name": "v2_full_A_dh_0",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_dh"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_dh",
+   "--out",
+   "$ROOT/out/v2_full_A_dh_0.json"
+  ]
+ },
+ {
+  "name": "v2_full_A_ours_0",
+  "env": {
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_ours"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_ours",
+   "--out",
+   "$ROOT/out/v2_full_A_ours_0.json"
+  ]
+ },
+ {
+  "name": "v2_full_A_best1_0",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_best1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_best1",
+   "--out",
+   "$ROOT/out/v2_full_A_best1_0.json"
+  ]
+ },
+ {
+  "name": "v2_full_A_best2_0",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_best2"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_best2",
+   "--out",
+   "$ROOT/out/v2_full_A_best2_0.json"
+  ]
+ },
+ {
+  "name": "v2_full_A_pr_1",
+  "env": {
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_pr"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_pr",
+   "--out",
+   "$ROOT/out/v2_full_A_pr_1.json"
+  ]
+ },
+ {
+  "name": "v2_full_A_dh_1",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_dh"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_dh",
+   "--out",
+   "$ROOT/out/v2_full_A_dh_1.json"
+  ]
+ },
+ {
+  "name": "v2_full_A_ours_1",
+  "env": {
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_ours"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_ours",
+   "--out",
+   "$ROOT/out/v2_full_A_ours_1.json"
+  ]
+ },
+ {
+  "name": "v2_full_A_best1_1",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_best1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_best1",
+   "--out",
+   "$ROOT/out/v2_full_A_best1_1.json"
+  ]
+ },
+ {
+  "name": "v2_full_A_best2_1",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_best2"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_best2",
+   "--out",
+   "$ROOT/out/v2_full_A_best2_1.json"
+  ]
+ },
+ {
+  "name": "v2_full_B_pr_0",
+  "env": {
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_pr"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_pr",
+   "--out",
+   "$ROOT/out/v2_full_B_pr_0.json"
+  ]
+ },
+ {
+  "name": "v2_full_B_dh_0",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_dh"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_dh",
+   "--out",
+   "$ROOT/out/v2_full_B_dh_0.json"
+  ]
+ },
+ {
+  "name": "v2_full_B_ours_0",
+  "env": {
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_ours"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_ours",
+   "--out",
+   "$ROOT/out/v2_full_B_ours_0.json"
+  ]
+ },
+ {
+  "name": "v2_full_B_best1_0",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_best1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_best1",
+   "--out",
+   "$ROOT/out/v2_full_B_best1_0.json"
+  ]
+ },
+ {
+  "name": "v2_full_B_best2_0",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_best2"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_best2",
+   "--out",
+   "$ROOT/out/v2_full_B_best2_0.json"
+  ]
+ },
+ {
+  "name": "v2_full_B_pr_1",
+  "env": {
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_pr"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_pr",
+   "--out",
+   "$ROOT/out/v2_full_B_pr_1.json"
+  ]
+ },
+ {
+  "name": "v2_full_B_dh_1",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_dh"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_dh",
+   "--out",
+   "$ROOT/out/v2_full_B_dh_1.json"
+  ]
+ },
+ {
+  "name": "v2_full_B_ours_1",
+  "env": {
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_ours"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_ours",
+   "--out",
+   "$ROOT/out/v2_full_B_ours_1.json"
+  ]
+ },
+ {
+  "name": "v2_full_B_best1_1",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_best1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_best1",
+   "--out",
+   "$ROOT/out/v2_full_B_best1_1.json"
+  ]
+ },
+ {
+  "name": "v2_full_B_best2_1",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_best2"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "full",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_best2",
+   "--out",
+   "$ROOT/out/v2_full_B_best2_1.json"
+  ]
+ },
+ {
+  "name": "v2_lora_A_pr_0",
+  "env": {
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_pr"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_pr",
+   "--out",
+   "$ROOT/out/v2_lora_A_pr_0.json"
+  ]
+ },
+ {
+  "name": "v2_lora_A_dh_0",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_dh"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_dh",
+   "--out",
+   "$ROOT/out/v2_lora_A_dh_0.json"
+  ]
+ },
+ {
+  "name": "v2_lora_A_ours_0",
+  "env": {
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_ours"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_ours",
+   "--out",
+   "$ROOT/out/v2_lora_A_ours_0.json"
+  ]
+ },
+ {
+  "name": "v2_lora_A_best1_0",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_best1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_best1",
+   "--out",
+   "$ROOT/out/v2_lora_A_best1_0.json"
+  ]
+ },
+ {
+  "name": "v2_lora_A_best2_0",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_best2"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_best2",
+   "--out",
+   "$ROOT/out/v2_lora_A_best2_0.json"
+  ]
+ },
+ {
+  "name": "v2_lora_A_pr_1",
+  "env": {
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_pr"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_pr",
+   "--out",
+   "$ROOT/out/v2_lora_A_pr_1.json"
+  ]
+ },
+ {
+  "name": "v2_lora_A_dh_1",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_dh"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_dh",
+   "--out",
+   "$ROOT/out/v2_lora_A_dh_1.json"
+  ]
+ },
+ {
+  "name": "v2_lora_A_ours_1",
+  "env": {
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_ours"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_ours",
+   "--out",
+   "$ROOT/out/v2_lora_A_ours_1.json"
+  ]
+ },
+ {
+  "name": "v2_lora_A_best1_1",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_best1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_best1",
+   "--out",
+   "$ROOT/out/v2_lora_A_best1_1.json"
+  ]
+ },
+ {
+  "name": "v2_lora_A_best2_1",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_best2"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_best2",
+   "--out",
+   "$ROOT/out/v2_lora_A_best2_1.json"
+  ]
+ },
+ {
+  "name": "v2_lora_B_pr_0",
+  "env": {
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_pr"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_pr",
+   "--out",
+   "$ROOT/out/v2_lora_B_pr_0.json"
+  ]
+ },
+ {
+  "name": "v2_lora_B_dh_0",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_dh"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_dh",
+   "--out",
+   "$ROOT/out/v2_lora_B_dh_0.json"
+  ]
+ },
+ {
+  "name": "v2_lora_B_ours_0",
+  "env": {
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_ours"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_ours",
+   "--out",
+   "$ROOT/out/v2_lora_B_ours_0.json"
+  ]
+ },
+ {
+  "name": "v2_lora_B_best1_0",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_best1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_best1",
+   "--out",
+   "$ROOT/out/v2_lora_B_best1_0.json"
+  ]
+ },
+ {
+  "name": "v2_lora_B_best2_0",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_best2"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_best2",
+   "--out",
+   "$ROOT/out/v2_lora_B_best2_0.json"
+  ]
+ },
+ {
+  "name": "v2_lora_B_pr_1",
+  "env": {
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_pr"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_pr",
+   "--out",
+   "$ROOT/out/v2_lora_B_pr_1.json"
+  ]
+ },
+ {
+  "name": "v2_lora_B_dh_1",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_dh"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_dh",
+   "--out",
+   "$ROOT/out/v2_lora_B_dh_1.json"
+  ]
+ },
+ {
+  "name": "v2_lora_B_ours_1",
+  "env": {
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_ours"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_ours",
+   "--out",
+   "$ROOT/out/v2_lora_B_ours_1.json"
+  ]
+ },
+ {
+  "name": "v2_lora_B_best1_1",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_best1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_best1",
+   "--out",
+   "$ROOT/out/v2_lora_B_best1_1.json"
+  ]
+ },
+ {
+  "name": "v2_lora_B_best2_1",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1",
+   "TORCHINDUCTOR_CACHE_DIR": "$ROOT/ic_best2"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--mode",
+   "lora",
+   "--mb",
+   "8",
+   "--acc",
+   "8",
+   "--steps",
+   "24",
+   "--tree",
+   "$ROOT/t_best2",
+   "--out",
+   "$ROOT/out/v2_lora_B_best2_1.json"
+  ]
+ }
+]
