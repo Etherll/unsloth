@@ -1,0 +1,4 @@
+=========================== short test summary info ============================
+FAILED tests/test_decision_model.py::test_long_runs_compile_the_encoder_layers_and_leave_them_eager
+FAILED tests/test_decision_model.py::test_a_failing_compile_trains_eagerly - ...
+2 failed, 49 passed in 377.65s (0:06:17)

@@ -1,0 +1,25 @@
+{
+ "tag": "k6_t4",
+ "backend": "kaggle",
+ "gpu": "T4x2",
+ "rc": 0,
+ "status": "PASS",
+ "minutes": 77.3,
+ "summary": "3/3 code cells executed cleanly, 8 training steps logged",
+ "failures": [],
+ "lines": [
+  "LAYA_BENCH b85faaad111648db8e17123562f3cc33f7227868 Laya decision perf: Colab L4 / Kaggle T4 / G4 LoRA-compile results, report and findings board",
+  "LAYA_TREE base c5cb7cba59f9522d8da2de0522baf77c527f579e Record the vendored laya import in the risky loader baseline",
+  "LAYA_TREE perf 43f60472bdacd6347fc518a10f61d43efd93f09d Test the lean LoRA forward in the GPU's own autocast dtype",
+  "LAYA_TREE cand 43f60472bdacd6347fc518a10f61d43efd93f09d Test the lean LoRA forward in the GPU's own autocast dtype",
+  "LAYA_JOB t4g2_pr_full_B_11 rc=0 401s",
+  "LAYA_JOB t4g2_final_full_B_11 rc=0 429s",
+  "LAYA_JOB t4g2_pr_full_B_12 rc=0 414s",
+  "LAYA_JOB t4g2_final_full_B_12 rc=0 359s",
+  "LAYA_JOB t4g2_pr_lora_A_11 rc=0 276s",
+  "LAYA_JOB t4g2_final_lora_A_11 rc=0 256s",
+  "LAYA_JOB t4g2_pr_lora_A_12 rc=0 287s",
+  "LAYA_JOB t4g2_final_lora_A_12 rc=0 266s",
+  "LAYA_DONE {\"jobs\": 8, \"failed\": []}"
+ ]
+}

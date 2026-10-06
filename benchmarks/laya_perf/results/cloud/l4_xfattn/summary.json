@@ -1,0 +1,23 @@
+{
+ "tag": "l4_xfattn",
+ "backend": "colab",
+ "gpu": "L4",
+ "rc": 0,
+ "status": "PASS",
+ "minutes": 6.7,
+ "summary": "3/3 code cells executed cleanly",
+ "failures": [],
+ "lines": [
+  "LAYA_BENCH 860c93bfb03b6a1dc70c180cd5e1520f8173244c Laya bench: global-layer attention microbench for xFormers vs torch varlen on torch 2.10",
+  "LAYA_TREE base c5cb7cba59f9522d8da2de0522baf77c527f579e Record the vendored laya import in the risky loader baseline",
+  "LAYA_TREE perf 43f60472bdacd6347fc518a10f61d43efd93f09d Test the lean LoRA forward in the GPU's own autocast dtype",
+  "LAYA_TREE cand 43f60472bdacd6347fc518a10f61d43efd93f09d Test the lean LoRA forward in the GPU's own autocast dtype",
+  "LAYA_JOB stack_torch210 rc=0 161s",
+  "LAYA_JOB make_long rc=0 7s",
+  "LAYA_JOB attn_long_mb2 rc=0 13s",
+  "LAYA_JOB attn_long_mb8 rc=0 22s",
+  "LAYA_JOB attn_short_mb2 rc=0 8s",
+  "LAYA_JOB attn_short_mb8 rc=0 8s",
+  "LAYA_DONE {\"jobs\": 6, \"failed\": []}"
+ ]
+}

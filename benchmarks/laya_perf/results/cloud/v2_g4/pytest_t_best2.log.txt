@@ -1,0 +1,162 @@
+{'loss': '0.7193', 'grad_norm': '0.297', 'learning_rate': '0.003', 'epoch': '2.167'}
+{'loss': '0.6853', 'grad_norm': '0.3333', 'learning_rate': '0.002833', 'epoch': '2.333'}
+{'loss': '0.696', 'grad_norm': '0.3543', 'learning_rate': '0.002667', 'epoch': '2.5'}
+{'loss': '0.6681', 'grad_norm': '0.4619', 'learning_rate': '0.0025', 'epoch': '2.667'}
+{'loss': '0.6678', 'grad_norm': '0.6077', 'learning_rate': '0.002333', 'epoch': '2.833'}
+{'loss': '0.5755', 'grad_norm': '0.9392', 'learning_rate': '0.002167', 'epoch': '3'}
+{'loss': '0.5106', 'grad_norm': '2.038', 'learning_rate': '0.002', 'epoch': '3.167'}
+{'loss': '0.4116', 'grad_norm': '3.262', 'learning_rate': '0.001833', 'epoch': '3.333'}
+{'loss': '0.3875', 'grad_norm': '6.1', 'learning_rate': '0.001667', 'epoch': '3.5'}
+{'loss': '0.345', 'grad_norm': '3.865', 'learning_rate': '0.0015', 'epoch': '3.667'}
+{'loss': '0.2723', 'grad_norm': '1.58', 'learning_rate': '0.001333', 'epoch': '3.833'}
+{'loss': '0.2228', 'grad_norm': '1.531', 'learning_rate': '0.001167', 'epoch': '4'}
+{'loss': '0.1626', 'grad_norm': '3.611', 'learning_rate': '0.001', 'epoch': '4.167'}
+{'loss': '0.1624', 'grad_norm': '3.889', 'learning_rate': '0.0008333', 'epoch': '4.333'}
+{'loss': '0.08728', 'grad_norm': '2.847', 'learning_rate': '0.0006667', 'epoch': '4.5'}
+{'loss': '0.05972', 'grad_norm': '1.643', 'learning_rate': '0.0005', 'epoch': '4.667'}
+{'loss': '0.05763', 'grad_norm': '5.605', 'learning_rate': '0.0003333', 'epoch': '4.833'}
+{'loss': '0.03374', 'grad_norm': '1.771', 'learning_rate': '0.0001667', 'epoch': '5'}
+{'train_runtime': '79.25', 'train_samples_per_second': '3.028', 'train_steps_per_second': '0.379', 'train_loss': '0.5394', 'epoch': '5'}
+Detected local model directory: /kaggle/working/lp/tmp/pytest-of-root/pytest-0/test_clef_loads_scores_like_cl0/clef
+Found HuggingFace hub cache directory: /root/.cache/huggingface/hub
+Copied joint_head.safetensors from local model directory
+Copied model.safetensors from local model directory
+Unsloth: Merge process complete. Saved to `/kaggle/working/lp/tmp/pytest-of-root/pytest-0/test_clef_loads_scores_like_cl0/out/.unsloth-save-53z96a20`
+==((====))==  Unsloth 2026.9.14: Fast Qwen3_5 patching. Transformers: 5.5.0.
+   \\   /|    NVIDIA RTX PRO 6000 Blackwell Server Edition. Num GPUs = 1. Max memory: 94.971 GB. Platform: Linux.
+O^O/ \_/ \    Torch: 2.11.0+cu130. CUDA: 12.0. CUDA Toolkit: 13.0. Triton: 3.6.0
+\        /    Bfloat16 = TRUE. FA [Xformers = None. FA2 = False]
+ "-____-"     Free license: http://github.com/unslothai/unsloth
+Unsloth: Fast downloading is enabled - ignore downloading bars which are red colored!
+Unsloth: QLoRA and full finetuning all not selected. Switching to 16bit LoRA.
+----------------------------- Captured stderr call -----------------------------
+
+Loading weights:   0%|          | 0/60 [00:00<?, ?it/s]
+Loading weights: 100%|██████████| 60/60 [00:00<00:00, 11800.54it/s]
+
+Loading weights:   0%|          | 0/60 [00:00<?, ?it/s]
+Loading weights: 100%|██████████| 60/60 [00:00<00:00, 12010.03it/s]
+==((====))==  Unsloth - 2x faster free finetuning | Num GPUs used = 1
+   \\   /|    Num examples = 48 | Num Epochs = 5 | Total steps = 30
+O^O/ \_/ \    Batch size per device = 8 | Gradient accumulation steps = 1
+\        /    Data Parallel GPUs = 1 | Total batch size (8 x 1 x 1) = 8
+ "-____-"     Trainable parameters = 317,892 of 4,961,428 (6.41% trained)
+
+  0%|          | 0/30 [00:00<?, ?it/s]
+  3%|▎         | 1/30 [01:18<38:02, 78.71s/it]
+                                              
+
+  3%|▎         | 1/30 [01:18<38:02, 78.71s/it]
+                                              
+
+  7%|▋         | 2/30 [01:18<36:43, 78.71s/it]
+                                              
+
+ 10%|█         | 3/30 [01:18<35:25, 78.71s/it]
+                                              
+
+ 13%|█▎        | 4/30 [01:18<34:06, 78.71s/it]
+                                              
+
+ 17%|█▋        | 5/30 [01:18<32:47, 78.71s/it]
+                                              
+
+ 20%|██        | 6/30 [01:18<31:29, 78.71s/it]
+ 23%|██▎       | 7/30 [01:18<03:09,  8.24s/it]
+                                              
+
+ 23%|██▎       | 7/30 [01:18<03:09,  8.24s/it]
+                                              
+
+ 27%|██▋       | 8/30 [01:18<03:01,  8.24s/it]
+                                              
+
+ 30%|███       | 9/30 [01:18<02:53,  8.24s/it]
+                                              
+
+ 33%|███▎      | 10/30 [01:18<02:44,  8.24s/it]
+                                               
+
+ 37%|███▋      | 11/30 [01:18<02:36,  8.24s/it]
+                                               
+
+ 40%|████      | 12/30 [01:18<02:28,  8.24s/it]
+ 43%|████▎     | 13/30 [01:18<01:01,  3.63s/it]
+                                               
+
+ 43%|████▎     | 13/30 [01:18<01:01,  3.63s/it]
+                                               
+
+ 47%|████▋     | 14/30 [01:18<00:58,  3.63s/it]
+                                               
+
+ 50%|█████     | 15/30 [01:18<00:54,  3.63s/it]
+                                               
+
+ 53%|█████▎    | 16/30 [01:18<00:50,  3.63s/it]
+                                               
+
+ 57%|█████▋    | 17/30 [01:19<00:47,  3.63s/it]
+                                               
+
+ 60%|██████    | 18/30 [01:19<00:43,  3.63s/it]
+ 63%|██████▎   | 19/30 [01:19<00:22,  2.02s/it]
+                                               
+
+ 63%|██████▎   | 19/30 [01:19<00:22,  2.02s/it]
+                                               
+
+ 67%|██████▋   | 20/30 [01:19<00:20,  2.02s/it]
+                                               
+
+ 70%|███████   | 21/30 [01:19<00:18,  2.02s/it]
+                                               
+
+ 73%|███████▎  | 22/30 [01:19<00:16,  2.02s/it]
+                                               
+
+ 77%|███████▋  | 23/30 [01:19<00:14,  2.02s/it]
+                                               
+
+ 80%|████████  | 24/30 [01:19<00:12,  2.02s/it]
+ 83%|████████▎ | 25/30 [01:19<00:06,  1.24s/it]
+                                               
+
+ 83%|████████▎ | 25/30 [01:19<00:06,  1.24s/it]
+                                               
+
+ 87%|████████▋ | 26/30 [01:19<00:04,  1.24s/it]
+                                               
+
+ 90%|█████████ | 27/30 [01:19<00:03,  1.24s/it]
+                                               
+
+ 93%|█████████▎| 28/30 [01:19<00:02,  1.24s/it]
+                                               
+
+ 97%|█████████▋| 29/30 [01:19<00:01,  1.24s/it]
+                                               
+
+100%|██████████| 30/30 [01:19<00:00,  1.24s/it]
+                                               
+
+100%|██████████| 30/30 [01:19<00:00,  1.24s/it]
+100%|██████████| 30/30 [01:19<00:00,  2.64s/it]
+Unsloth: Restored added_tokens_decoder metadata in /kaggle/working/lp/tmp/pytest-of-root/pytest-0/test_clef_loads_scores_like_cl0/out/.unsloth-save-53z96a20/tokenizer_config.json.
+
+Unsloth: Preparing safetensor model files:   0%|          | 0/2 [00:00<?, ?it/s]
+Unsloth: Preparing safetensor model files: 100%|██████████| 2/2 [00:00<00:00, 844.01it/s]
+
+Unsloth: Merging weights into 16bit:   0%|          | 0/2 [00:00<?, ?it/s]
+Unsloth: Merging weights into 16bit: 100%|██████████| 2/2 [00:00<00:00, 47.50it/s]
+
+Loading weights:   0%|          | 0/60 [00:00<?, ?it/s]
+Loading weights: 100%|██████████| 60/60 [00:00<00:00, 12163.28it/s]
+
+Loading weights:   0%|          | 0/60 [00:00<?, ?it/s]
+Loading weights: 100%|██████████| 60/60 [00:00<00:00, 11323.21it/s]
+=========================== short test summary info ============================
+FAILED tests/test_decision_model.py::test_long_runs_compile_the_encoder_layers_and_leave_them_eager
+FAILED tests/test_decision_model.py::test_a_failing_compile_trains_eagerly - ...
+FAILED tests/test_decision_model.py::test_clef_loads_scores_like_cloudflares_model_and_trains
+3 failed, 48 passed in 393.32s (0:06:33)

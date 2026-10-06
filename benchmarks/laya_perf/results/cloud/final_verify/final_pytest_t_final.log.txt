@@ -1,0 +1,3 @@
+LAYA_HEAD b407a5f82 Compile short Laya runs with static 64-token buckets, long ones with dynamic shapes
+...................................................                      [100%]
+51 passed in 394.88s (0:06:34)

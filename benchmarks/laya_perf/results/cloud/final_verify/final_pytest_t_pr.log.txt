@@ -1,0 +1,3 @@
+LAYA_HEAD 84db80f0a Review the vendored Clef config read and skip the Clef head compile test on CPU
+......................................                                   [100%]
+38 passed in 266.90s (0:04:26)

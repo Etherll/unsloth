@@ -1,0 +1,23 @@
+{
+ "tag": "h2h_pytest",
+ "backend": "colab",
+ "gpu": "L4",
+ "rc": 0,
+ "status": "PASS",
+ "minutes": 11.4,
+ "summary": "3/3 code cells executed cleanly",
+ "failures": [],
+ "lines": [
+  "LAYA_BENCH 7682fcb0b58ed9288aa37d1d9a5232f0167634ad Laya bench: pytest triage across #12585, #12778 and the merged branch",
+  "LAYA_TREE base c5cb7cba59f9522d8da2de0522baf77c527f579e Record the vendored laya import in the risky loader baseline",
+  "LAYA_TREE perf 43f60472bdacd6347fc518a10f61d43efd93f09d Test the lean LoRA forward in the GPU's own autocast dtype",
+  "LAYA_TREE cand 43f60472bdacd6347fc518a10f61d43efd93f09d Test the lean LoRA forward in the GPU's own autocast dtype",
+  "LAYA_JOB trees rc=0 10s",
+  "LAYA_JOB pytest_t_pr rc=0 173s",
+  "LAYA_JOB pytest_t_dh rc=0 157s",
+  "LAYA_JOB pytest_t_best rc=0 168s",
+  "LAYA_JOB pytest_best_lean_alone rc=0 24s",
+  "LAYA_JOB env_versions rc=0 1s",
+  "LAYA_DONE {\"jobs\": 6, \"failed\": []}"
+ ]
+}

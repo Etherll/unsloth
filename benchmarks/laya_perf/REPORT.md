@@ -291,15 +291,39 @@ torch's built-in `varlen_attn` (window support needs torch >= 2.11, sm80+).
 
 | | final | final, dynamic | padding-free, dynamic | vs final |
 |---|---|---|---|---|
-| L4 long A, p25 (rep 1, warm) | 8.802 s, wall 333 s (cold 686 s) | 8.546 s | **5.804 s**, wall 182 s (cold 204 s) | **+52%** |
-| L4 short A, p25 | **1.804 s** (wall 114 s) | | 1.969 s (wall 67 s) | **-8.4%** |
+| L4 long A (mb2, ~3k tokens/micro-batch) | 8.802 s, wall 333 s (cold 686 s) | 8.522 s | **5.791 s**, wall 182 s | **+52.0%**, VRAM -0.7% |
+| L4 long B (mb8, ~12k tokens) | 16.476 s, wall 531 s | 16.933 s | **11.495 s**, wall 336 s | **+43.3%**, VRAM -3.1% |
+| L4 short A (mb2, ~600 tokens) | **1.804 s** | | 1.956 s | **-7.8%** |
+| L4 short B (mb8, ~2.4k tokens) | 2.156 s | | **2.017 s** | **+6.9%** |
 | G4 long A, G2 runs (3 seeds) | 1.51-1.56 s | | **1.05-1.11 s** | **+43%** |
 
 Long-data G2 (G4, 60 steps, seeds 3407 / 11 / 12, seed-averaged windows): final vs final control 0.0105, **padding-free
 (dynamic) 0.0125 PASS** (holdout CE 1.003 [0.991..1.027] vs 1.009 [0.995..1.032], dCE 0.006), padding-free eager 0.0146
 PASS. The G1 gradient-distance gap does not show in training. Short-data G1 (L4): dloss 0.012 vs perf 0.025, grad
-distance 0.035 vs 0.031. On short inputs padded SDPA is faster (microbench), so the path must switch on by length, the way
-the SentenceTransformer path gates on `_MIN_AUTO_TOKENS`.
+distance 0.035 vs 0.031. It loses only on small micro-batches (about 600 tokens), where padded SDPA is faster (microbench); from about 2k tokens per
+micro-batch it wins, so the path would switch on by tokens per micro-batch, the way the SentenceTransformer path gates on
+`_MIN_AUTO_TOKENS` (8,192 padded slots).
+
+## Head-to-head with #12778 and PR #12824
+
+Daniel's #12778 (dynamic-shape layer compile for Laya, LoRA included, 4,000-forward threshold, warm-up with eager fallback)
+overlapped our C4 / D1. The merged branch `laya-decision-best` (b407a5f82) = #12778 + C1 (forward and backward), C8, X1 (now
+deferring to Unsloth's compiled LoRA forward when a FastModel load already rewrote PEFT), compile-safe plain SDPA, and static
+64-token buckets when the longest decision is <= 1,024 tokens (dynamic otherwise). Fused AdamW dropped (Studio default
+recommendation instead). Opened as https://github.com/unslothai/unsloth/pull/12824.
+
+| s/step, p25 | G4 #12585 | G4 #12778 | **G4 final** | L4 #12585 | L4 #12778 | **L4 final** |
+|---|---|---|---|---|---|---|
+| full A | 0.714 | 0.543 | **0.492** (1.10x vs #12778) | 2.533 | 2.065 | **1.917** (1.08x) |
+| full B | 0.527 | 0.440 | **0.426** (1.03x) | 2.541 | 2.255 | **2.206** (1.02x) |
+| LoRA A | 1.082 | 0.742 | **0.626** (1.19x) | 3.770 | 2.693 | **2.329** (1.16x) |
+| LoRA B | 0.634 | 0.477 | **0.437** (1.09x) | 2.772 | 2.124 | **1.983** (1.07x) |
+
+GPU pytest 51/51 (G4, bitsandbytes installed; #12585 38/38 on the same VM). 16-seed studies at A (G4): full fine-tune G2 0.0061
+(CE 1.006 vs 1.002, no collapse either arm); LoRA 0 collapses / 0 weak vs 1 + 2 for #12585 and #12778, CE 1.007 vs 1.030 / 1.037.
+3-seed L4 G2 exceeds 0.03 for full A / LoRA A / LoRA B from seed-level noise (#12585's own seed 12 diverged at LoRA A; the final
+trains lower at LoRA B), so the 16-seed studies are the comparison of record. Runs: h2h_g4, h2h_l4, h2h_g2, h2h_pytest,
+v2_g4, v2_l4, v2_g2, clef_triage, final_verify, cr1, cr2, fs1, fs2 (all released; `colab sessions` empty).
 
 ## Kaggle T4 (fp16)
 
@@ -381,6 +405,7 @@ All Linux GPU work after the move ran on Colab or Kaggle; every Colab VM was rel
 | l4_xf210 | Colab L4, torch 2.10 | padding-free via Unsloth's xFormers dispatcher | STOPPED: torch 2.10 varlen has no window; replaced by the kernel microbench |
 | l4_xfattn | Colab L4, torch 2.10 + xFormers 0.0.35 (2 VMs: first lost its connection) | global-layer kernel microbench (6 jobs) | COMPLETE: xFormers = PyTorch's FA2 kernel, no gain |
 | g4_lg2 | Colab G4 | long-data G2: final, final control, padding-free dynamic / eager, 3 seeds (13 jobs) | PASS (0.0125 / 0.0146 vs control 0.0105) |
+| l4_unpad | Colab L4 (moved from G4) | padding-free (transformers reuse) smoke, G1 short + long, final / dynamic / padding-free on long and short data at A and B (28 jobs) | COMPLETE: long +52% / +43%, short -7.8% / +6.9% |
 <!--CLOUDROWS-->
 
 ### Discarded measurements
@@ -424,7 +449,7 @@ All Linux GPU work after the move ran on Colab or Kaggle; every Colab VM was rel
     data (G4); dynamic shapes give the same step time with one compile. Options: dynamic above a length (e.g. when the
     longest training item exceeds 1,024 tokens), or always dynamic (gives up D1's +11% on short data).
 11. **Padding-free encoder for long inputs** (new): +61% (A, compiled) / +25% (B, eager) on long data, neutral-to-negative
-    on short data (-8.4% at 307-token median); torch >= 2.11 and sm80+ only (not T4). Long-data G2 PASS (0.0125, 3 seeds). Needs a
+    on small short-data micro-batches (L4: -7.8% at mb2, +6.9% at mb8; long data +52% / +43%); torch >= 2.11 and sm80+ only (not T4). Long-data G2 PASS (0.0125, 3 seeds). Needs a
     length gate; built as a bench option on transformers' padding-free machinery + torch varlen, not committed. <!--UNPADDEC-->
 
 ## Studio-pass open items

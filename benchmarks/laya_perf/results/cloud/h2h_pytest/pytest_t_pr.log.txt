@@ -1,0 +1,144 @@
+unsloth/models/mistral_format.py:696: in _wrapper
+unsloth/models/fp8_to_nf4.py:106: in _wrapper
+unsloth/models/loader.py:2634: in from_pretrained
+/usr/local/lib/python3.13/dist-packages/unsloth_zoo/temporary_patches/moe_grouped_modulelist.py:390: in wrapper
+unsloth/models/loader_utils.py:3663: in _wrapper
+unsloth/models/vision.py:3739: in from_pretrained
+/usr/local/lib/python3.13/dist-packages/unsloth_zoo/patching_utils.py:529: in patch_model_and_tokenizer
+E   ImportError: Unsloth: Please install bitsandbytes via `pip install bitsandbytes`
+---------------------------- Captured stderr setup -----------------------------
+
+Loading weights:   0%|          | 0/60 [00:00<?, ?it/s]
+Loading weights: 100%|██████████| 60/60 [00:00<00:00, 6357.41it/s]
+
+Writing model shards:   0%|          | 0/1 [00:00<?, ?it/s]
+Writing model shards: 100%|██████████| 1/1 [00:00<00:00, 129.18it/s]
+----------------------------- Captured stdout call -----------------------------
+Unsloth: Could not patch bitsandbytes for torch.compile - No module named 'bitsandbytes'
+==((====))==  Unsloth 2026.9.14: Fast Qwen3_5 patching. Transformers: 5.5.0.
+O^O/ \_/ \    Torch: 2.11.0+cu130. CUDA: 8.9. CUDA Toolkit: 13.0. Triton: 3.6.0
+\        /    Bfloat16 = TRUE. FA [Xformers = None. FA2 = False]
+ "-____-"     Free license: http://github.com/unslothai/unsloth
+Unsloth: Fast downloading is enabled - ignore downloading bars which are red colored!
+Unsloth: QLoRA and full finetuning all not selected. Switching to 16bit LoRA.
+----------------------------- Captured stderr call -----------------------------
+
+Loading weights:   0%|          | 0/60 [00:00<?, ?it/s]
+Loading weights: 100%|██████████| 60/60 [00:00<00:00, 4922.51it/s]
+_______________ test_clef_trains_in_float16_and_bfloat16[dtype0] _______________
+/usr/local/lib/python3.13/dist-packages/unsloth_zoo/patching_utils.py:527: in patch_model_and_tokenizer
+E   ModuleNotFoundError: No module named 'bitsandbytes'
+
+During handling of the above exception, another exception occurred:
+tests/test_decision_model.py:1084: in test_clef_trains_in_float16_and_bfloat16
+unsloth/models/decision.py:1311: in from_pretrained
+unsloth/models/decision.py:654: in _load_clef
+unsloth/models/loader_utils.py:3663: in _wrapper
+unsloth/models/mistral_format.py:696: in _wrapper
+unsloth/models/fp8_to_nf4.py:106: in _wrapper
+unsloth/models/loader.py:2634: in from_pretrained
+/usr/local/lib/python3.13/dist-packages/unsloth_zoo/temporary_patches/moe_grouped_modulelist.py:390: in wrapper
+unsloth/models/loader_utils.py:3663: in _wrapper
+unsloth/models/vision.py:3739: in from_pretrained
+/usr/local/lib/python3.13/dist-packages/unsloth_zoo/patching_utils.py:529: in patch_model_and_tokenizer
+E   ImportError: Unsloth: Please install bitsandbytes via `pip install bitsandbytes`
+---------------------------- Captured stderr setup -----------------------------
+
+Loading weights:   0%|          | 0/60 [00:00<?, ?it/s]
+Loading weights: 100%|██████████| 60/60 [00:00<00:00, 6574.49it/s]
+
+Writing model shards:   0%|          | 0/1 [00:00<?, ?it/s]
+Writing model shards: 100%|██████████| 1/1 [00:00<00:00, 131.43it/s]
+----------------------------- Captured stdout call -----------------------------
+Unsloth: Could not patch bitsandbytes for torch.compile - No module named 'bitsandbytes'
+==((====))==  Unsloth 2026.9.14: Fast Qwen3_5 patching. Transformers: 5.5.0.
+O^O/ \_/ \    Torch: 2.11.0+cu130. CUDA: 8.9. CUDA Toolkit: 13.0. Triton: 3.6.0
+\        /    Bfloat16 = TRUE. FA [Xformers = None. FA2 = False]
+ "-____-"     Free license: http://github.com/unslothai/unsloth
+Unsloth: Fast downloading is enabled - ignore downloading bars which are red colored!
+Unsloth: Using float16 precision for qwen3_5 won't work! Using float32.
+Unsloth: QLoRA and full finetuning all not selected. Switching to 16bit LoRA.
+----------------------------- Captured stderr call -----------------------------
+
+Loading weights:   0%|          | 0/60 [00:00<?, ?it/s]
+Loading weights: 100%|██████████| 60/60 [00:00<00:00, 5303.76it/s]
+_______________ test_clef_trains_in_float16_and_bfloat16[dtype1] _______________
+/usr/local/lib/python3.13/dist-packages/unsloth_zoo/patching_utils.py:527: in patch_model_and_tokenizer
+E   ModuleNotFoundError: No module named 'bitsandbytes'
+
+During handling of the above exception, another exception occurred:
+tests/test_decision_model.py:1084: in test_clef_trains_in_float16_and_bfloat16
+unsloth/models/decision.py:1311: in from_pretrained
+unsloth/models/decision.py:654: in _load_clef
+unsloth/models/loader_utils.py:3663: in _wrapper
+unsloth/models/mistral_format.py:696: in _wrapper
+unsloth/models/fp8_to_nf4.py:106: in _wrapper
+unsloth/models/loader.py:2634: in from_pretrained
+/usr/local/lib/python3.13/dist-packages/unsloth_zoo/temporary_patches/moe_grouped_modulelist.py:390: in wrapper
+unsloth/models/loader_utils.py:3663: in _wrapper
+unsloth/models/vision.py:3739: in from_pretrained
+/usr/local/lib/python3.13/dist-packages/unsloth_zoo/patching_utils.py:529: in patch_model_and_tokenizer
+E   ImportError: Unsloth: Please install bitsandbytes via `pip install bitsandbytes`
+---------------------------- Captured stderr setup -----------------------------
+
+Loading weights:   0%|          | 0/60 [00:00<?, ?it/s]
+Loading weights: 100%|██████████| 60/60 [00:00<00:00, 4833.54it/s]
+
+Writing model shards:   0%|          | 0/1 [00:00<?, ?it/s]
+Writing model shards: 100%|██████████| 1/1 [00:00<00:00, 132.49it/s]
+----------------------------- Captured stdout call -----------------------------
+Unsloth: Could not patch bitsandbytes for torch.compile - No module named 'bitsandbytes'
+==((====))==  Unsloth 2026.9.14: Fast Qwen3_5 patching. Transformers: 5.5.0.
+O^O/ \_/ \    Torch: 2.11.0+cu130. CUDA: 8.9. CUDA Toolkit: 13.0. Triton: 3.6.0
+\        /    Bfloat16 = TRUE. FA [Xformers = None. FA2 = False]
+ "-____-"     Free license: http://github.com/unslothai/unsloth
+Unsloth: Fast downloading is enabled - ignore downloading bars which are red colored!
+Unsloth: QLoRA and full finetuning all not selected. Switching to 16bit LoRA.
+----------------------------- Captured stderr call -----------------------------
+
+Loading weights:   0%|          | 0/60 [00:00<?, ?it/s]
+Loading weights: 100%|██████████| 60/60 [00:00<00:00, 4015.87it/s]
+________ test_clef_save_keeps_the_source_tokenizer_files_byte_identical ________
+/usr/local/lib/python3.13/dist-packages/unsloth_zoo/patching_utils.py:527: in patch_model_and_tokenizer
+E   ModuleNotFoundError: No module named 'bitsandbytes'
+
+During handling of the above exception, another exception occurred:
+tests/test_decision_model.py:1151: in test_clef_save_keeps_the_source_tokenizer_files_byte_identical
+unsloth/models/decision.py:1311: in from_pretrained
+unsloth/models/decision.py:654: in _load_clef
+unsloth/models/loader_utils.py:3663: in _wrapper
+unsloth/models/mistral_format.py:696: in _wrapper
+unsloth/models/fp8_to_nf4.py:106: in _wrapper
+unsloth/models/loader.py:2634: in from_pretrained
+/usr/local/lib/python3.13/dist-packages/unsloth_zoo/temporary_patches/moe_grouped_modulelist.py:390: in wrapper
+unsloth/models/loader_utils.py:3663: in _wrapper
+unsloth/models/vision.py:3739: in from_pretrained
+/usr/local/lib/python3.13/dist-packages/unsloth_zoo/patching_utils.py:529: in patch_model_and_tokenizer
+E   ImportError: Unsloth: Please install bitsandbytes via `pip install bitsandbytes`
+---------------------------- Captured stderr setup -----------------------------
+
+Loading weights:   0%|          | 0/60 [00:00<?, ?it/s]
+Loading weights: 100%|██████████| 60/60 [00:00<00:00, 6404.17it/s]
+
+Writing model shards:   0%|          | 0/1 [00:00<?, ?it/s]
+Writing model shards: 100%|██████████| 1/1 [00:00<00:00, 132.15it/s]
+----------------------------- Captured stdout call -----------------------------
+Unsloth: Could not patch bitsandbytes for torch.compile - No module named 'bitsandbytes'
+==((====))==  Unsloth 2026.9.14: Fast Qwen3_5 patching. Transformers: 5.5.0.
+O^O/ \_/ \    Torch: 2.11.0+cu130. CUDA: 8.9. CUDA Toolkit: 13.0. Triton: 3.6.0
+\        /    Bfloat16 = TRUE. FA [Xformers = None. FA2 = False]
+ "-____-"     Free license: http://github.com/unslothai/unsloth
+Unsloth: Fast downloading is enabled - ignore downloading bars which are red colored!
+Unsloth: QLoRA and full finetuning all not selected. Switching to 16bit LoRA.
+----------------------------- Captured stderr call -----------------------------
+
+Loading weights:   0%|          | 0/60 [00:00<?, ?it/s]
+Loading weights: 100%|██████████| 60/60 [00:00<00:00, 3551.38it/s]
+=========================== short test summary info ============================
+FAILED tests/test_decision_model.py::test_clef_loads_scores_like_cloudflares_model_and_trains
+FAILED tests/test_decision_model.py::test_clef_backbone_runs_the_compiled_gated_delta_and_conv_kernels
+FAILED tests/test_decision_model.py::test_a_failed_save_leaves_the_previous_clef_checkpoint_loadable
+FAILED tests/test_decision_model.py::test_clef_trains_in_float16_and_bfloat16[dtype0]
+FAILED tests/test_decision_model.py::test_clef_trains_in_float16_and_bfloat16[dtype1]
+FAILED tests/test_decision_model.py::test_clef_save_keeps_the_source_tokenizer_files_byte_identical
+6 failed, 32 passed in 149.72s (0:02:29)

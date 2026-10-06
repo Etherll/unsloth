@@ -1,0 +1,27 @@
+{
+ "tag": "k8_t4xf",
+ "backend": "kaggle",
+ "gpu": "T4x2",
+ "rc": 0,
+ "status": "PASS",
+ "minutes": 49.9,
+ "summary": "3/3 code cells executed cleanly",
+ "failures": [],
+ "lines": [
+  "LAYA_BENCH 0c50a81356e736ca59a7f42e20425a14dca0011b Laya bench: T4 attention microbench (xFormers / flex / SDPA, grouped vs random batches)",
+  "LAYA_TREE base c5cb7cba59f9522d8da2de0522baf77c527f579e Record the vendored laya import in the risky loader baseline",
+  "LAYA_TREE perf 43f60472bdacd6347fc518a10f61d43efd93f09d Test the lean LoRA forward in the GPU's own autocast dtype",
+  "LAYA_TREE cand 43f60472bdacd6347fc518a10f61d43efd93f09d Test the lean LoRA forward in the GPU's own autocast dtype",
+  "LAYA_JOB stack_torch210 rc=0 182s",
+  "LAYA_JOB make_long rc=0 8s",
+  "LAYA_JOB t4attn_long_mb2 rc=0 103s",
+  "LAYA_JOB t4attn_long_mb2_random rc=0 94s",
+  "LAYA_JOB t4attn_long_mb8 rc=0 60s",
+  "LAYA_JOB t4attn_long_mb8_random rc=0 149s",
+  "LAYA_JOB t4attn_short_mb2 rc=0 86s",
+  "LAYA_JOB t4attn_short_mb2_random rc=0 83s",
+  "LAYA_JOB t4attn_short_mb8 rc=0 85s",
+  "LAYA_JOB t4attn_short_mb8_random rc=0 85s",
+  "LAYA_DONE {\"jobs\": 10, \"failed\": []}"
+ ]
+}

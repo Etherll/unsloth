@@ -1,0 +1,5 @@
+LAYA_TREE t_pr 84db80f0a Review the vendored Clef config read and skip the Clef head compile test on CPU
+LAYA_TREE t_dh 12fcce54c Merge commit '84db80f0a' into laya-compile
+LAYA_TREE t_ours d43e46de4 Test the lean LoRA forward in the GPU's own autocast dtype
+LAYA_TREE t_best1 e7f0d9055 Give the compiled Laya encoder layers transformers' plain SDPA attention
+LAYA_TREE t_final b407a5f82 Compile short Laya runs with static 64-token buckets, long ones with dynamic shapes

@@ -1,0 +1,15 @@
+E                +  and   torch.bfloat16 = tensor([[[ 6.0000e+00, -1.0693e-01,  1.0500e+01,  ..., -5.7500e+00,\n          -1.9766e+00,  1.7422e+00],\n         [-5....3750e+00,\n          -9.7046e-03, -9.4141e-01]]], device='cuda:0', dtype=torch.bfloat16,\n       grad_fn=<ViewBackward0>).dtype
+E                +  and   False = <built-in method equal of type object at 0x7b44087f1000>(tensor([[[ 6.0000e+00, -1.0693e-01,  1.0500e+01,  ..., -5.7500e+00,\n          -1.9766e+00,  1.7500e+00],\n         [-5.....3750e+00,\n          -9.7656e-03, -9.4141e-01]]], device='cuda:0', dtype=torch.bfloat16,\n       grad_fn=<AddBackward0>), tensor([[[ 6.0000e+00, -1.0693e-01,  1.0500e+01,  ..., -5.7500e+00,\n          -1.9766e+00,  1.7422e+00],\n         [-5....3750e+00,\n          -9.7046e-03, -9.4141e-01]]], device='cuda:0', dtype=torch.bfloat16,\n       grad_fn=<ViewBackward0>))
+E                +    where <built-in method equal of type object at 0x7b44087f1000> = torch.equal
+
+tests/test_decision_model.py:1313: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_decision_model.py::test_clef_loads_scores_like_cloudflares_model_and_trains
+FAILED tests/test_decision_model.py::test_clef_backbone_runs_the_compiled_gated_delta_and_conv_kernels
+FAILED tests/test_decision_model.py::test_a_failed_save_leaves_the_previous_clef_checkpoint_loadable
+FAILED tests/test_decision_model.py::test_clef_trains_in_float16_and_bfloat16[dtype0]
+FAILED tests/test_decision_model.py::test_clef_trains_in_float16_and_bfloat16[dtype1]
+FAILED tests/test_decision_model.py::test_clef_save_keeps_the_source_tokenizer_files_byte_identical
+FAILED tests/test_decision_model.py::test_lean_lora_forward_matches_peft[1]
+FAILED tests/test_decision_model.py::test_lean_lora_forward_matches_peft[2]
+8 failed, 38 passed in 66.06s (0:01:06)

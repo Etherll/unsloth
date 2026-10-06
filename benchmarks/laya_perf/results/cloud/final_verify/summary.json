@@ -1,0 +1,21 @@
+{
+ "tag": "final_verify",
+ "backend": "colab",
+ "gpu": "G4",
+ "rc": 0,
+ "status": "PASS",
+ "minutes": 13.2,
+ "summary": "3/3 code cells executed cleanly",
+ "failures": [],
+ "lines": [
+  "LAYA_BENCH 63066d61cfcfff7ad858a5eb7aa026586c775c63 Laya bench: final GPU pytest of the merged branch",
+  "LAYA_TREE base c5cb7cba59f9522d8da2de0522baf77c527f579e Record the vendored laya import in the risky loader baseline",
+  "LAYA_TREE perf 43f60472bdacd6347fc518a10f61d43efd93f09d Test the lean LoRA forward in the GPU's own autocast dtype",
+  "LAYA_TREE cand 43f60472bdacd6347fc518a10f61d43efd93f09d Test the lean LoRA forward in the GPU's own autocast dtype",
+  "LAYA_JOB bnb rc=0 4s",
+  "LAYA_JOB trees rc=0 5s",
+  "LAYA_JOB final_pytest_t_final rc=0 416s",
+  "LAYA_JOB final_pytest_t_pr rc=0 285s",
+  "LAYA_DONE {\"jobs\": 4, \"failed\": []}"
+ ]
+}

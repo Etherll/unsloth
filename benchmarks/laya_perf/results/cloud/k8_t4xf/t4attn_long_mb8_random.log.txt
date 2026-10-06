@@ -1,0 +1,10 @@
+sdpa_eff_global {'ms': 2698.368408203125, 'ms_per_mb': 168.6480255126953}
+xf_bd {'unavailable': "NotImplementedError: No operator found for `memory_efficient_attention_backward` with inputs:\n     query       : shape=(1, 14367, 16, 64) (torch.float16)\n     key         : shape=(1, 14367, 16, 64) (torch.float16)\n     value       : shape=(1, 14367, 16, 64) (torch.float16)\n     attn_bias   : <class 'xformers.ops.fmha.at"}
+W1005 21:33:06.829000 558 torch/_dynamo/convert_frame.py:1676] [0/8] torch._dynamo hit config.recompile_limit (8)
+W1005 21:33:06.829000 558 torch/_dynamo/convert_frame.py:1676] [0/8]    function: 'flex_attention' (/usr/local/lib/python3.13/dist-packages/torch/nn/attention/flex_attention.py:1396)
+W1005 21:33:06.829000 558 torch/_dynamo/convert_frame.py:1676] [0/8]    last reason: 0/7: tensor 'key' size mismatch at index 2. expected 10795, actual 12146
+W1005 21:33:06.829000 558 torch/_dynamo/convert_frame.py:1676] [0/8] To log all recompilation reasons, use TORCH_LOGS="recompiles".
+W1005 21:33:06.829000 558 torch/_dynamo/convert_frame.py:1676] [0/8] To diagnose recompilation issues, see https://pytorch.org/docs/main/compile/programming_model.recompilation.html
+flex_global {'unavailable': 'OutOfMemoryError: CUDA out of memory. Tried to allocate 8.79 GiB. GPU 0 has a total capacity of 14.56 GiB of which 2.76 GiB is free. Process 44 has 104.00 MiB memory in use. Including non-PyTorch memory, this process has 11.70 GiB memory in use. Of the allocated memory 10.88 GiB is allocated by PyTorch, and 564.20 Mi'}
+sdpa_eff_local {'ms': 2621.466552734375, 'ms_per_mb': 163.84165954589844}
+flex_local {'unavailable': 'OutOfMemoryError: CUDA out of memory. Tried to allocate 2.52 GiB. GPU 0 has a total capacity of 14.56 GiB of which 630.81 MiB is free. Process 44 has 104.00 MiB memory in use. Including non-PyTorch memory, this process has 13.84 GiB memory in use. Of the allocated memory 10.77 GiB is allocated by PyTorch, and 2.81 Gi'}
