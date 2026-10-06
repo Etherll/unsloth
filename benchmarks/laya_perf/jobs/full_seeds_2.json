@@ -1,0 +1,612 @@
+[
+ {
+  "name": "bnb",
+  "print_log": 1000,
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY -m pip install -q bitsandbytes && $PY -c 'import bitsandbytes as b; print(\"LAYA_BNB\", b.__version__)'"
+  ]
+ },
+ {
+  "name": "trees",
+  "print_log": 3000,
+  "cmd": [
+   "bash",
+   "-c",
+   "R=$(cd $S/../../.. && pwd); cd $R && git fetch -q origin laya-decision-best laya-decision-perf-rebased && for t in 't_pr 84db80f0a' 't_dh 12fcce54c' 't_ours origin/laya-decision-perf-rebased' 't_best1 e7f0d9055' 't_final origin/laya-decision-best'; do set -- $t; [ -d $ROOT/$1 ] || git worktree add -q --detach $ROOT/$1 $2; echo \"LAYA_TREE $1 $(git -C $ROOT/$1 log -1 --format='%h %s')\"; done"
+  ]
+ },
+ {
+  "name": "fs_pr_full_A_19",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "19",
+   "--out",
+   "$ROOT/out/fs_pr_full_A_19.json"
+  ]
+ },
+ {
+  "name": "fs_final_full_A_19",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_final",
+   "--seed",
+   "19",
+   "--out",
+   "$ROOT/out/fs_final_full_A_19.json"
+  ]
+ },
+ {
+  "name": "fs_ours_full_A_19",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_ours",
+   "--seed",
+   "19",
+   "--out",
+   "$ROOT/out/fs_ours_full_A_19.json"
+  ]
+ },
+ {
+  "name": "fs_pr_full_A_20",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "20",
+   "--out",
+   "$ROOT/out/fs_pr_full_A_20.json"
+  ]
+ },
+ {
+  "name": "fs_final_full_A_20",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_final",
+   "--seed",
+   "20",
+   "--out",
+   "$ROOT/out/fs_final_full_A_20.json"
+  ]
+ },
+ {
+  "name": "fs_ours_full_A_20",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_ours",
+   "--seed",
+   "20",
+   "--out",
+   "$ROOT/out/fs_ours_full_A_20.json"
+  ]
+ },
+ {
+  "name": "fs_pr_full_A_21",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "21",
+   "--out",
+   "$ROOT/out/fs_pr_full_A_21.json"
+  ]
+ },
+ {
+  "name": "fs_final_full_A_21",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_final",
+   "--seed",
+   "21",
+   "--out",
+   "$ROOT/out/fs_final_full_A_21.json"
+  ]
+ },
+ {
+  "name": "fs_ours_full_A_21",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_ours",
+   "--seed",
+   "21",
+   "--out",
+   "$ROOT/out/fs_ours_full_A_21.json"
+  ]
+ },
+ {
+  "name": "fs_pr_full_A_22",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "22",
+   "--out",
+   "$ROOT/out/fs_pr_full_A_22.json"
+  ]
+ },
+ {
+  "name": "fs_final_full_A_22",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_final",
+   "--seed",
+   "22",
+   "--out",
+   "$ROOT/out/fs_final_full_A_22.json"
+  ]
+ },
+ {
+  "name": "fs_ours_full_A_22",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_ours",
+   "--seed",
+   "22",
+   "--out",
+   "$ROOT/out/fs_ours_full_A_22.json"
+  ]
+ },
+ {
+  "name": "fs_pr_full_A_23",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "23",
+   "--out",
+   "$ROOT/out/fs_pr_full_A_23.json"
+  ]
+ },
+ {
+  "name": "fs_final_full_A_23",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_final",
+   "--seed",
+   "23",
+   "--out",
+   "$ROOT/out/fs_final_full_A_23.json"
+  ]
+ },
+ {
+  "name": "fs_ours_full_A_23",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_ours",
+   "--seed",
+   "23",
+   "--out",
+   "$ROOT/out/fs_ours_full_A_23.json"
+  ]
+ },
+ {
+  "name": "fs_pr_full_A_24",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "24",
+   "--out",
+   "$ROOT/out/fs_pr_full_A_24.json"
+  ]
+ },
+ {
+  "name": "fs_final_full_A_24",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_final",
+   "--seed",
+   "24",
+   "--out",
+   "$ROOT/out/fs_final_full_A_24.json"
+  ]
+ },
+ {
+  "name": "fs_ours_full_A_24",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_ours",
+   "--seed",
+   "24",
+   "--out",
+   "$ROOT/out/fs_ours_full_A_24.json"
+  ]
+ },
+ {
+  "name": "fs_pr_full_A_25",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "25",
+   "--out",
+   "$ROOT/out/fs_pr_full_A_25.json"
+  ]
+ },
+ {
+  "name": "fs_final_full_A_25",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_final",
+   "--seed",
+   "25",
+   "--out",
+   "$ROOT/out/fs_final_full_A_25.json"
+  ]
+ },
+ {
+  "name": "fs_ours_full_A_25",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_ours",
+   "--seed",
+   "25",
+   "--out",
+   "$ROOT/out/fs_ours_full_A_25.json"
+  ]
+ },
+ {
+  "name": "fs_pr_full_A_26",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_pr",
+   "--seed",
+   "26",
+   "--out",
+   "$ROOT/out/fs_pr_full_A_26.json"
+  ]
+ },
+ {
+  "name": "fs_final_full_A_26",
+  "env": {
+   "UNSLOTH_DECISION_COMPILE": "1"
+  },
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_final",
+   "--seed",
+   "26",
+   "--out",
+   "$ROOT/out/fs_final_full_A_26.json"
+  ]
+ },
+ {
+  "name": "fs_ours_full_A_26",
+  "env": {},
+  "cmd": [
+   "$S/bench.py",
+   "--items",
+   "train",
+   "--steps",
+   "60",
+   "--eval",
+   "--mode",
+   "full",
+   "--mb",
+   "2",
+   "--acc",
+   "16",
+   "--tree",
+   "$ROOT/t_ours",
+   "--seed",
+   "26",
+   "--out",
+   "$ROOT/out/fs_ours_full_A_26.json"
+  ]
+ }
+]
