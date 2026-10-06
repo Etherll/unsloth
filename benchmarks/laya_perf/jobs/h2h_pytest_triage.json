@@ -1,0 +1,56 @@
+[
+ {
+  "name": "trees",
+  "print_log": 3000,
+  "cmd": [
+   "bash",
+   "-c",
+   "R=$(cd $S/../../.. && pwd); cd $R && git fetch -q origin laya-decision-best laya-decision-perf-rebased && for t in 't_pr 84db80f0a' 't_dh 12fcce54c' 't_ours origin/laya-decision-perf-rebased' 't_best origin/laya-decision-best' 't_bestns origin/laya-decision-best~1'; do set -- $t; [ -d $ROOT/$1 ] || git worktree add -q --detach $ROOT/$1 $2; echo \"LAYA_TREE $1 $(git -C $ROOT/$1 log -1 --format='%h %s')\"; done"
+  ]
+ },
+ {
+  "name": "pytest_t_pr",
+  "print_log": 30000,
+  "cmd": [
+   "bash",
+   "-c",
+   "cd $ROOT/t_pr && $PY -m pytest tests/test_decision_model.py -q -rfE --tb=short -p no:cacheprovider 2>&1 | grep -vE 'Warning|warnings.warn|^  ' | tail -120"
+  ]
+ },
+ {
+  "name": "pytest_t_dh",
+  "print_log": 30000,
+  "cmd": [
+   "bash",
+   "-c",
+   "cd $ROOT/t_dh && $PY -m pytest tests/test_decision_model.py -q -rfE --tb=short -p no:cacheprovider 2>&1 | grep -vE 'Warning|warnings.warn|^  ' | tail -120"
+  ]
+ },
+ {
+  "name": "pytest_t_best",
+  "print_log": 30000,
+  "cmd": [
+   "bash",
+   "-c",
+   "cd $ROOT/t_best && $PY -m pytest tests/test_decision_model.py -q -rfE --tb=short -p no:cacheprovider 2>&1 | grep -vE 'Warning|warnings.warn|^  ' | tail -120"
+  ]
+ },
+ {
+  "name": "pytest_best_lean_alone",
+  "print_log": 8000,
+  "cmd": [
+   "bash",
+   "-c",
+   "cd $ROOT/t_best && $PY -m pytest tests/test_decision_model.py -q -k 'lean_lora or cudnn or compiled_layers_use_plain' --tb=short -p no:cacheprovider 2>&1 | tail -30"
+  ]
+ },
+ {
+  "name": "env_versions",
+  "print_log": 3000,
+  "cmd": [
+   "bash",
+   "-c",
+   "$PY -m pip list 2>/dev/null | grep -iE '^(torch|transformers|peft|unsloth.zoo|causal.conv1d|flash.linear|fla|bitsandbytes|triton|accelerate) '"
+  ]
+ }
+]
