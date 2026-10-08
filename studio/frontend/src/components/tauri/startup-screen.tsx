@@ -21,6 +21,7 @@ interface StartupScreenProps {
   status: BackendStatus;
   logs: string[];
   error: string | null;
+  diskFull: boolean;
   currentStepIndex: number;
   progressDetail: string | null;
   startupMessage: StartupMessage;
@@ -188,13 +189,25 @@ function ClosingContent() {
 
 function InstallErrorContent({
   error,
+  diskFull,
   onRetryInstall,
   onCopyDiagnostics,
 }: {
   error: string | null;
+  diskFull: boolean;
   onRetryInstall: () => void;
   onCopyDiagnostics: () => Promise<CopySupportDiagnosticsResult>;
 }) {
+  if (diskFull && error) {
+    return (
+      <DiskFullInstallDialog
+        error={error}
+        onRetryInstall={onRetryInstall}
+        onCopyDiagnostics={onCopyDiagnostics}
+      />
+    );
+  }
+
   return (
     <>
       <Logo />
@@ -207,6 +220,39 @@ function InstallErrorContent({
           <Button size="hero" onClick={onRetryInstall}>Try Again</Button>
         </DiagnosticsCopyActions>
       </div>
+    </>
+  );
+}
+
+function DiskFullInstallDialog({
+  error,
+  onRetryInstall,
+  onCopyDiagnostics,
+}: {
+  error: string;
+  onRetryInstall: () => void;
+  onCopyDiagnostics: () => Promise<CopySupportDiagnosticsResult>;
+}) {
+  return (
+    <>
+      <Logo />
+      <div
+        role="dialog"
+        aria-labelledby="disk-full-title"
+        aria-describedby="disk-full-body"
+        className="mt-8 w-full max-w-md rounded-xl border border-border/60 bg-muted/20 p-5 text-left"
+      >
+        <p id="disk-full-title" className="text-sm font-medium text-destructive">
+          Not enough disk space
+        </p>
+        <p className="mt-2 break-words text-xs text-muted-foreground">{error}</p>
+        <p id="disk-full-body" className="mt-3 text-xs text-muted-foreground">
+          Free some space, then try the install again.
+        </p>
+      </div>
+      <DiagnosticsCopyActions onCopyDiagnostics={onCopyDiagnostics}>
+        <Button size="hero" onClick={onRetryInstall}>Try Again</Button>
+      </DiagnosticsCopyActions>
     </>
   );
 }
@@ -331,6 +377,7 @@ export function StartupScreen({
   status,
   logs,
   error,
+  diskFull,
   currentStepIndex,
   progressDetail,
   startupMessage,
@@ -360,6 +407,7 @@ export function StartupScreen({
         return (
           <InstallErrorContent
             error={error}
+            diskFull={diskFull}
             onRetryInstall={onRetryInstall}
             onCopyDiagnostics={onCopyDiagnostics}
           />
