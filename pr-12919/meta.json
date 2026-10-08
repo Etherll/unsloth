@@ -1,0 +1,33 @@
+{
+  "before": {
+    "sha": "0587140f",
+    "message_shown": "Installation failed: install unsloth failed (exit code 1): `sounddevice`",
+    "headings": [
+      "Setup ran into a problem"
+    ],
+    "buttons": [
+      "Copy Diagnostics",
+      "Try Again"
+    ],
+    "dialog_present": false,
+    "console_errors": [],
+    "font_family": "\"Inter Variable\", ui-sans-serif, sans-serif, system-ui"
+  },
+  "after": {
+    "sha": "533dbb87",
+    "message_shown": "Installation failed: install unsloth failed (exit code 1): No space left on device (os error 28)",
+    "headings": [
+      "Not enough disk space"
+    ],
+    "buttons": [
+      "Copy cleanup prompt",
+      "Copy Diagnostics",
+      "Try Again"
+    ],
+    "dialog_present": true,
+    "console_errors": [],
+    "font_family": "\"Inter Variable\", ui-sans-serif, sans-serif, system-ui",
+    "clipboard_prompt_first_line": "The Unsloth installer failed because the disk is full. This was the error:",
+    "clipboard_has_error": true
+  }
+}
