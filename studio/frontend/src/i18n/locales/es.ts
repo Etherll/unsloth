@@ -4066,6 +4066,8 @@ export const es = {
     selection: {
       startChat: "Iniciar chat",
       move: "Mover",
+      selectAll: "Seleccionar todo",
+      countOfTotal: "{count} de {total} seleccionados",
       clear: "Borrar selección",
     },
     menu: {

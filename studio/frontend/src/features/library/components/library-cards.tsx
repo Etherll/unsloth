@@ -147,7 +147,9 @@ function CardFrame({
         type="button"
         aria-label={label}
         aria-pressed={select && selecting ? selected : undefined}
-        onClick={select && selecting ? () => select.toggle(selectKey) : onOpen}
+        onClick={
+          select && selecting ? (event) => select.toggle(selectKey, event.shiftKey) : onOpen
+        }
         className={cn(
           "block w-full overflow-hidden rounded-xl text-left outline-none transition focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           selected && "ring-2 ring-foreground",
@@ -159,7 +161,11 @@ function CardFrame({
       {select && (
         <Checkbox
           checked={selected}
-          onCheckedChange={() => select.toggle(selectKey)}
+          // onClick to read shift.
+          onClick={(event) => {
+            event.preventDefault();
+            select.toggle(selectKey, event.shiftKey);
+          }}
           aria-label={t("library.selectItem", { name: label })}
           className={cn(
             OVERLAY_CONTROL,
