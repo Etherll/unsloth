@@ -3380,6 +3380,14 @@ class FastLlamaModel:
                         fast_inference,
                     )
 
+                from .loader_utils import refuse_fast_inference_load_in_8bit
+
+                refuse_fast_inference_load_in_8bit(
+                    load_in_8bit,
+                    model_config,
+                    kwargs.get("quantization_config", None),
+                )
+
                 allowed_args = inspect.getfullargspec(load_vllm).args
                 load_vllm_kwargs = dict(
                     model_name = model_name,
