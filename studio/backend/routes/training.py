@@ -472,6 +472,25 @@ def _has_adapter_metadata(path: Path) -> bool:
     return path.is_dir() and (path / "adapter_config.json").is_file()
 
 
+def _continue_from_adapter_allowed(request: TrainingStartRequest) -> bool:
+    """LoRA / CPT can load a saved adapter as the starting point; full finetune cannot (#13140).
+
+    Only the CUDA trainer keeps an adapter it loaded; the embedding and Apple Silicon (MLX)
+    runners always build a fresh one on top, so those still need a base model."""
+    if request.training_type not in ("LoRA/QLoRA", "Continued Pretraining"):
+        return False
+    if getattr(request, "is_embedding", False):
+        return False
+    from core.training.training import should_use_mlx_training_backend
+
+    return not should_use_mlx_training_backend()
+
+
+def _has_local_adapter_weights(path: Path) -> bool:
+    from utils.transformers_version import _has_adapter_weights
+    return path.is_dir() and _has_adapter_weights(path)
+
+
 _HF_MODEL_ACCESS_DENIED = (
     "Hugging Face denied access to this model. Add a valid Hugging Face "
     "token with repository access and accept any required access terms, "
@@ -644,7 +663,10 @@ def _remote_untrainable_model_format(
             if normalized.startswith(root) and "/" not in normalized[len(root) :]:
                 root_files.add(normalized[len(root) :])
     if "adapter_config.json" in root_files:
-        return "adapter"
+        # Same weight files the local check accepts; config-only repos fail later in the loader.
+        if any(re.fullmatch(r"adapter_model.*\.(?:safetensors|bin)", name) for name in root_files):
+            return "adapter"
+        return "adapter_without_weights"
     has_trainable_weights = any(name in root_files for name, _ in _MODEL_WEIGHT_CANDIDATES)
     if has_gguf and not has_trainable_weights:
         return "gguf"
@@ -936,7 +958,7 @@ def _reject_untrainable_model_request(
             "training_model_gguf_not_trainable",
             "GGUF models are inference-only and cannot be trained.",
         )
-    if model_format == "adapter":
+    if model_format == "adapter" and not _continue_from_adapter_allowed(request):
         raise _training_start_error(
             400,
             "training_model_adapter_not_trainable",
@@ -1135,11 +1157,19 @@ def _reject_untrainable_model_request(
                     "training_remote_model_gguf_only",
                     "GGUF-only remote models are inference-only and cannot be trained.",
                 )
-            raise _training_start_error(
-                400,
-                "training_remote_model_adapter_only",
-                "Adapter models are inference-only and cannot be trained as base models.",
-            )
+            if not _continue_from_adapter_allowed(request):
+                raise _training_start_error(
+                    400,
+                    "training_remote_model_adapter_only",
+                    "Adapter models are inference-only and cannot be trained as base models.",
+                )
+            if remote_format == "adapter_without_weights":
+                raise _training_start_error(
+                    400,
+                    "training_remote_model_adapter_weights_missing",
+                    "Adapter repository is missing adapter_model weights.",
+                )
+            return _ModelPreflightResult(model_name, model_local_path, cached_model_pin)
     if _is_decision_checkpoint(request):
         folder = path / request.model_subfolder if request.model_subfolder else path
         if not is_decision_model(str(folder)):
@@ -1155,12 +1185,29 @@ def _reject_untrainable_model_request(
     has_trainable_weights = _has_trainable_local_weights(path, request.model_name)
     if has_trainable_weights:
         return _ModelPreflightResult(model_name, model_local_path, cached_model_pin)
-    if _has_adapter_metadata(path):
-        raise _training_start_error(
-            400,
-            "training_local_model_adapter_only",
-            "Adapter-only local models are inference-only and cannot be trained as base models.",
-        )
+    if _has_adapter_metadata(path) or (
+        model_format == "adapter" and _has_local_adapter_weights(path)
+    ):
+        if not _continue_from_adapter_allowed(request):
+            raise _training_start_error(
+                400,
+                "training_local_model_adapter_only",
+                "Adapter-only local models are inference-only and cannot be trained as base models.",
+            )
+        if not _has_local_adapter_weights(path):
+            raise _training_start_error(
+                400,
+                "training_local_model_adapter_weights_missing",
+                "Adapter directory is missing adapter_model weights.",
+            )
+        # The loader needs adapter_config.json to find the base model.
+        if not _has_adapter_metadata(path):
+            raise _training_start_error(
+                400,
+                "training_local_model_adapter_config_missing",
+                "Adapter directory is missing adapter_config.json.",
+            )
+        return _ModelPreflightResult(model_name, model_local_path, cached_model_pin)
     try:
         has_gguf = _detect_local_gguf(path) is not None
     except _LocalModelProbeIncomplete:

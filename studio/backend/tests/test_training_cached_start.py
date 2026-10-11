@@ -438,34 +438,90 @@ def test_hf_dataset_preflight_rejects_before_backend_start():
 
 
 @pytest.mark.parametrize(
-    ("model_format", "code", "expected"),
+    ("model_format", "training_type", "code", "expected"),
     [
-        ("gguf", "training_model_gguf_not_trainable", "GGUF models are inference-only"),
+        (
+            "gguf",
+            "LoRA/QLoRA",
+            "training_model_gguf_not_trainable",
+            "GGUF models are inference-only",
+        ),
         (
             "adapter",
+            "Full Finetuning",
             "training_model_adapter_not_trainable",
             "Adapter models are inference-only",
         ),
     ],
 )
-def test_start_rejects_untrainable_model_formats(model_format, code, expected):
+def test_start_rejects_untrainable_model_formats(model_format, training_type, code, expected):
     route = _load_route_module(f"training_route_reject_{model_format}")
-    request = _request(model_format = model_format)
+    request = _request(model_format = model_format, training_type = training_type)
 
     exc_info = _shared_setup_5(request, route)
     assert exc_info.value.detail["code"] == code
     assert expected in exc_info.value.detail["message"]
 
 
-def test_start_rejects_adapter_only_local_dir(tmp_path):
-    route = _load_route_module("training_route_reject_adapter_dir")
+def test_start_rejects_adapter_only_local_dir_for_full_finetuning(tmp_path):
+    route = _load_route_module("training_route_reject_adapter_dir_full")
     (tmp_path / "adapter_config.json").write_text("{}")
     (tmp_path / "adapter_model.safetensors").write_bytes(b"x")
-    request = _request(model_name = str(tmp_path))
+    request = _request(model_name = str(tmp_path), training_type = "Full Finetuning")
 
     exc_info = _shared_setup_5(request, route)
     assert exc_info.value.detail["code"] == "training_local_model_adapter_only"
     assert "Adapter-only local models" in exc_info.value.detail["message"]
+
+
+def test_start_allows_adapter_only_local_dir_for_lora(tmp_path):
+    route = _load_route_module("training_route_allow_adapter_dir_lora")
+    (tmp_path / "adapter_config.json").write_text("{}")
+    (tmp_path / "adapter_model.safetensors").write_bytes(b"x")
+    request = _request(model_name = str(tmp_path), model_format = "adapter")
+
+    result = route._reject_untrainable_model_request(request)
+    assert result.model_name == str(tmp_path.resolve())
+
+
+def test_start_rejects_adapter_weights_without_adapter_config_for_lora(tmp_path):
+    route = _load_route_module("training_route_reject_adapter_without_config")
+    (tmp_path / "adapter_model.safetensors").write_bytes(b"x")
+    request = _request(model_name = str(tmp_path), model_format = "adapter")
+
+    exc_info = _shared_setup_2(request, route)
+    assert exc_info.value.detail["code"] == "training_local_model_adapter_config_missing"
+    assert "adapter_config.json" in exc_info.value.detail["message"]
+
+
+def test_untrainable_gate_allows_cached_adapter_snapshot_for_lora(tmp_path):
+    route = _load_route_module("training_route_snapshot_adapter_lora")
+    snapshot = tmp_path / "models--unsloth--test" / "snapshots" / "rev"
+    snapshot.mkdir(parents = True)
+    (snapshot / "adapter_config.json").write_text("{}")
+    (snapshot / "adapter_model.safetensors").write_bytes(b"x")
+    request = _request(
+        model_format = "safetensors",
+        model_snapshot_path = str(snapshot),
+        resume_from_checkpoint = "/outputs/run",
+    )
+
+    route._reject_untrainable_model_request(request)
+
+
+@pytest.mark.parametrize("runner", ["embedding", "mlx"])
+def test_start_refuses_adapter_dir_where_runner_builds_a_fresh_adapter(tmp_path, runner):
+    route = _load_route_module(f"training_route_adapter_dir_{runner}")
+    (tmp_path / "adapter_config.json").write_text("{}")
+    (tmp_path / "adapter_model.safetensors").write_bytes(b"x")
+    request = _request(model_name = str(tmp_path), is_embedding = runner == "embedding")
+
+    with patch(
+        "core.training.training.should_use_mlx_training_backend",
+        return_value = runner == "mlx",
+    ):
+        exc_info = _shared_setup_2(request, route)
+    assert exc_info.value.detail["code"] == "training_local_model_adapter_only"
 
 
 def test_start_rejects_missing_local_model(tmp_path):
@@ -522,8 +578,8 @@ def test_start_rejects_partial_adapter_local_dir(tmp_path):
     request = _request(model_name = str(tmp_path), model_format = "safetensors")
 
     exc_info = _shared_setup_2(request, route)
-    assert exc_info.value.detail["code"] == "training_local_model_adapter_only"
-    assert "Adapter-only local models" in exc_info.value.detail["message"]
+    assert exc_info.value.detail["code"] == "training_local_model_adapter_weights_missing"
+    assert "missing adapter_model weights" in exc_info.value.detail["message"]
 
 
 def test_start_rejects_gguf_only_local_dir(tmp_path):
@@ -660,6 +716,7 @@ def test_untrainable_gate_inspects_verified_snapshot_path(tmp_path):
         model_format = "safetensors",
         model_snapshot_path = str(snapshot),
         resume_from_checkpoint = "/outputs/run",
+        training_type = "Full Finetuning",
     )
 
     exc_info = _shared_setup_2(request, route)
@@ -675,6 +732,7 @@ def test_untrainable_gate_inspects_selected_cache(tmp_path):
     request = _request(
         model_known_cached = True,
         model_format = "safetensors",
+        training_type = "Full Finetuning",
     )
 
     exc_info = _shared_setup_2(request, route)
@@ -704,7 +762,7 @@ def test_unavailable_probe_inspects_unadvertised_cache(tmp_path):
         side_effect = HTTPException(status_code = 503, detail = "unavailable"),
     ):
         with pytest.raises(HTTPException) as exc_info:
-            route._reject_untrainable_model_request(_request())
+            route._reject_untrainable_model_request(_request(training_type = "Full Finetuning"))
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail["code"] == "training_local_model_adapter_only"
@@ -1085,9 +1143,9 @@ def test_mlx_pinned_fallback_rejects_cross_repository_bnb_remap():
     )
 
 
-def test_untrainable_gate_rejects_remote_adapter():
-    route = _load_route_module("training_route_remote_adapter")
-    request = _request()
+def test_untrainable_gate_rejects_remote_adapter_for_full_finetuning():
+    route = _load_route_module("training_route_remote_adapter_full")
+    request = _request(training_type = "Full Finetuning")
 
     with patch.object(route, "_remote_untrainable_model_format", return_value = "adapter"):
         with pytest.raises(HTTPException) as exc_info:
@@ -1096,6 +1154,40 @@ def test_untrainable_gate_rejects_remote_adapter():
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail["code"] == "training_remote_model_adapter_only"
     assert "Adapter models are inference-only" in exc_info.value.detail["message"]
+
+
+def test_untrainable_gate_allows_remote_adapter_for_lora():
+    route = _load_route_module("training_route_remote_adapter_lora")
+    request = _request(model_format = "adapter")
+
+    with patch.object(route, "_remote_untrainable_model_format", return_value = "adapter"):
+        result = route._reject_untrainable_model_request(request)
+
+    assert result.model_name == "unsloth/test"
+
+
+def test_remote_format_probe_flags_adapter_repo_without_weights():
+    route = _load_route_module("training_route_remote_adapter_no_weights")
+    info = SimpleNamespace(siblings = [SimpleNamespace(rfilename = "adapter_config.json")])
+
+    with _patch_model_info(return_value = info):
+        assert (
+            route._remote_untrainable_model_format("org/adapter", None) == "adapter_without_weights"
+        )
+
+
+def test_untrainable_gate_rejects_remote_adapter_without_weights_for_lora():
+    route = _load_route_module("training_route_remote_adapter_no_weights_lora")
+    request = _request(model_format = "adapter")
+
+    with patch.object(
+        route, "_remote_untrainable_model_format", return_value = "adapter_without_weights"
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            route._reject_untrainable_model_request(request)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail["code"] == "training_remote_model_adapter_weights_missing"
 
 
 def test_untrainable_gate_rejects_remote_gguf_only_repository():
@@ -1113,7 +1205,12 @@ def test_untrainable_gate_rejects_remote_gguf_only_repository():
 
 def test_remote_format_probe_preserves_root_level_repo_id():
     route = _load_route_module("training_route_remote_adapter_metadata")
-    info = SimpleNamespace(siblings = [SimpleNamespace(rfilename = "adapter_config.json")])
+    info = SimpleNamespace(
+        siblings = [
+            SimpleNamespace(rfilename = "adapter_config.json"),
+            SimpleNamespace(rfilename = "adapter_model.safetensors"),
+        ]
+    )
 
     with _patch_model_info(return_value = info) as model_info:
         assert route._remote_untrainable_model_format("bert-base-uncased", "hf-token") == "adapter"
@@ -1144,7 +1241,12 @@ def test_remote_format_probe_resolves_the_bicodec_alias():
 
 def test_remote_format_probe_retries_transient_failure():
     route = _load_route_module("training_route_remote_adapter_metadata_retry")
-    info = SimpleNamespace(siblings = [SimpleNamespace(rfilename = "adapter_config.json")])
+    info = SimpleNamespace(
+        siblings = [
+            SimpleNamespace(rfilename = "adapter_config.json"),
+            SimpleNamespace(rfilename = "adapter_model.safetensors"),
+        ]
+    )
 
     with _patch_model_info(
         side_effect = [OSError("timed out"), info],
@@ -1170,7 +1272,12 @@ def test_remote_format_probe_retries_transient_hub_status(status_code):
     route = _load_route_module(f"training_route_remote_status_retry_{status_code}")
     transient_error = RuntimeError("transient Hub failure")
     transient_error.response = SimpleNamespace(status_code = status_code)
-    info = SimpleNamespace(siblings = [SimpleNamespace(rfilename = "adapter_config.json")])
+    info = SimpleNamespace(
+        siblings = [
+            SimpleNamespace(rfilename = "adapter_config.json"),
+            SimpleNamespace(rfilename = "adapter_model.safetensors"),
+        ]
+    )
 
     with _patch_model_info(
         side_effect = [transient_error, info],
@@ -1292,7 +1399,11 @@ def test_optimizer_checkpoint_does_not_make_adapter_trainable(tmp_path):
     (tmp_path / "config.json").write_text("{}")
     (tmp_path / "adapter_config.json").write_text("{}")
     (tmp_path / "optimizer.pt").write_bytes(b"x")
-    request = _request(model_name = str(tmp_path), model_format = "safetensors")
+    request = _request(
+        model_name = str(tmp_path),
+        model_format = "safetensors",
+        training_type = "Full Finetuning",
+    )
 
     exc_info = _shared_setup_2(request, route)
     assert exc_info.value.detail["code"] == "training_local_model_adapter_only"
@@ -2387,6 +2498,24 @@ def test_worker_rejects_inference_only_model_formats():
 
     assert "GGUF" in worker._untrainable_model_format_error({"model_format": "gguf"})
     assert "Adapter" in worker._untrainable_model_format_error({"model_format": "adapter"})
+    assert (
+        worker._untrainable_model_format_error(
+            {"model_format": "adapter", "training_type": "Full Finetuning"}
+        )
+        is not None
+    )
+    assert (
+        worker._untrainable_model_format_error(
+            {"model_format": "adapter", "training_type": "LoRA/QLoRA"}
+        )
+        is None
+    )
+    lora_adapter = {"model_format": "adapter", "training_type": "LoRA/QLoRA"}
+    assert (
+        worker._untrainable_model_format_error({**lora_adapter, "is_embedding": True}) is not None
+    )
+    with patch.object(worker, "_uses_mlx_training_backend", return_value = True):
+        assert worker._untrainable_model_format_error(lora_adapter) is not None
     assert worker._untrainable_model_format_error({"model_format": "safetensors"}) is None
     assert worker._untrainable_model_format_error({}) is None
 

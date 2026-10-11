@@ -3,6 +3,7 @@
 
 import { validateHubResourceId } from "@/components/resource-picker/hub-resource-id";
 import type { TranslationKey } from "@/i18n";
+import { isAdapterMethod } from "@/types/training";
 import type { TrainingConfigState } from "../types/config";
 import { requiresExplicitCachedDatasetSplit } from "./dataset-split-policy";
 import {
@@ -179,13 +180,19 @@ export function validateTrainingConfig(
     };
   }
   if (isUntrainableModelFormat(config.modelFormat)) {
-    return {
-      ok: false,
-      errorKey:
-        config.modelFormat === "gguf"
-          ? "studio.modelPicker.reasonGguf"
-          : "studio.modelPicker.reasonAdapter",
-    };
+    if (config.modelFormat === "gguf") {
+      return { ok: false, errorKey: "studio.modelPicker.reasonGguf" };
+    }
+    // Adapter format is valid when continuing LoRA / CPT from a saved adapter (#13140).
+    // Decision, embedding and Apple Silicon runs build a fresh adapter, so they need a base.
+    if (
+      !isAdapterMethod(config.trainingMethod) ||
+      config.modelType === "decision" ||
+      config.isEmbeddingModel ||
+      deviceType === "mac"
+    ) {
+      return { ok: false, errorKey: "studio.modelPicker.reasonAdapter" };
+    }
   }
 
   if (!isTrainingConfigSupportedOnDevice(config, deviceType)) {
