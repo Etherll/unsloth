@@ -85,6 +85,8 @@ setup_fail() {
     case "${UNSLOTH_TAURI_MODE:-0}" in 1|true) tauri_marker=1 ;; esac
     case "${UNSLOTH_TAURI_UPDATE:-0}" in 1|true) tauri_marker=1 ;; esac
     if [ "$tauri_marker" -eq 1 ]; then printf '[TAURI:ERROR] %s\n' "$message"; fi
+    # A rerun right after this must not find the old build still writing (#8818).
+    [ -z "${_FRONTEND_BG_PID:-}" ] || _frontend_bg_cancel
     exit "$exit_code"
 }
 
@@ -131,6 +133,119 @@ _remove_agent_instruction_files() {
         find "$_root" \( -type f -o -type l \) \( -name 'AGENTS.md' -o -name 'CLAUDE.md' \) \
             -exec rm -f {} + 2>/dev/null || true
     done
+}
+
+# ── Frontend build overlapped with the Python, sidecar and llama.cpp steps (#8818) ──
+# A source install spends about as long in `npm ci && npm run build` (CPU) as in the
+# dependency and prebuilt downloads that follow it, and the two share no files.
+_FRONTEND_BG_PID=""
+_FRONTEND_BG_WATCH=""
+_FRONTEND_BG_LOG=""
+
+# Serial unless the box can take both at once: Desktop, staged updates and verbose
+# runs keep their live, ordered output. `tsc -b && vite build` alone peaks near 7 GB
+# RSS where Node's heap is unbounded, so ask for 4 CPUs and 12 GiB usable (cgroup
+# limits included). An unreadable probe keeps the serial path.
+_frontend_can_build_in_background() {
+    case "${UNSLOTH_STUDIO_SERIAL_SETUP:-0}" in 1|true) return 1 ;; esac
+    _is_verbose && return 1
+    [ -z "${STAGE_ROOT:-}" ] || return 1
+    case "${UNSLOTH_TAURI_MODE:-0}" in 1|true) return 1 ;; esac
+    case "${UNSLOTH_TAURI_UPDATE:-0}" in 1|true) return 1 ;; esac
+    local _cpus _mb
+    _cpus=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null) || return 1
+    [ "$_cpus" -ge 4 ] 2>/dev/null || return 1
+    _mb=$(_usable_ram_mb)
+    [ "${_mb:-0}" -ge 12288 ] 2>/dev/null
+}
+
+# What a build stopped part way leaves behind: an ancestor .gitignore it hid, and a dist
+# newer than its sources, which the next run would call up to date (an epoch mtime makes
+# it rebuild). Idempotent, and safe to run from the build's EXIT trap and from outside.
+_frontend_build_cleanup() {
+    local _dir="$SCRIPT_DIR/frontend"
+    while [ "$_dir" != "/" ]; do
+        _dir="$(dirname "$_dir")"
+        if [ -f "$_dir/.gitignore._twbuild" ] && [ ! -e "$_dir/.gitignore" ]; then
+            mv "$_dir/.gitignore._twbuild" "$_dir/.gitignore" 2>/dev/null || :
+        fi
+    done
+    if [ -d "$SCRIPT_DIR/frontend/dist" ]; then
+        touch -t 197001010000 "$SCRIPT_DIR/frontend/dist" 2>/dev/null || :
+    fi
+}
+
+# Stop the build's process group: TERM, up to 5 s, then KILL (npm does not always exit on
+# TERM, and KILL skips the build's EXIT trap, hence the cleanup here). No group of that id
+# exists once the build has exited, or when monitor mode could not make one: a no-op.
+_frontend_bg_stop() {
+    local _n=0
+    kill -TERM -- "-$1" 2>/dev/null || return 0
+    while [ "$_n" -lt 5 ] && kill -0 -- "-$1" 2>/dev/null; do
+        sleep 1
+        _n=$((_n + 1))
+    done
+    kill -KILL -- "-$1" 2>/dev/null || :
+    _frontend_build_cleanup
+}
+
+# Run _build_frontend in its own process group with its output in a file. setup_fail
+# stops it synchronously; for every other way setup can die (errexit, Ctrl-C, a signal)
+# a watcher that ignores HUP/INT/TERM stops it, so a failed run never leaves a build
+# writing into the next run's tree.
+_frontend_bg_start() {
+    local _monitor=off
+    case "$-" in *m*) _monitor=on ;; esac
+    _FRONTEND_BG_LOG=$(mktemp)
+    [ "$_monitor" = on ] || set -m
+    (
+        set +m
+        trap 'exit 143' TERM
+        _build_frontend
+        _remove_agent_instruction_files "$SCRIPT_DIR/frontend/node_modules"
+    ) </dev/null >"$_FRONTEND_BG_LOG" 2>&1 &
+    _FRONTEND_BG_PID=$!
+    [ "$_monitor" = on ] || set +m
+    (
+        trap '' HUP INT TERM
+        while kill -0 "$$" 2>/dev/null; do sleep 1; done
+        _frontend_bg_stop "$_FRONTEND_BG_PID"
+        rm -f "$_FRONTEND_BG_LOG"
+    ) </dev/null >/dev/null 2>&1 &
+    _FRONTEND_BG_WATCH=$!
+}
+
+_frontend_bg_cancel() {
+    [ -n "${_FRONTEND_BG_PID:-}" ] || return 0
+    local _pid=$_FRONTEND_BG_PID
+    _FRONTEND_BG_PID=""
+    kill -KILL "$_FRONTEND_BG_WATCH" 2>/dev/null || :
+    _frontend_bg_stop "$_pid"
+    wait "$_pid" 2>/dev/null || :
+    rm -f "$_FRONTEND_BG_LOG"
+}
+
+_frontend_bg_join() {
+    [ -n "$_FRONTEND_BG_PID" ] || return 0
+    local _pid=$_FRONTEND_BG_PID _rc=0
+    _FRONTEND_BG_PID=""
+    if kill -0 "$_pid" 2>/dev/null; then
+        substep "waiting for the frontend build..."
+    fi
+    wait "$_pid" || _rc=$?
+    kill -KILL "$_FRONTEND_BG_WATCH" 2>/dev/null || :
+    wait "$_FRONTEND_BG_WATCH" 2>/dev/null || :
+    _FRONTEND_BG_WATCH=""
+    cat "$_FRONTEND_BG_LOG" 2>/dev/null || :
+    rm -f "$_FRONTEND_BG_LOG"
+    [ "$_rc" -eq 0 ] || setup_fail "$_rc" "Frontend build failed (exit code $_rc)"
+}
+
+# Surface a finished build (above all a failed one) at a step boundary, not at the end.
+_frontend_bg_reap() {
+    [ -n "$_FRONTEND_BG_PID" ] || return 0
+    kill -0 "$_FRONTEND_BG_PID" 2>/dev/null && return 0
+    _frontend_bg_join
 }
 
 # ── Bounded `--version` probe for binaries setup does not own (uv candidates, the system Node) ──
@@ -2361,6 +2476,7 @@ fi
 
 # ── Build frontend ──
 substep "building frontend..."
+_build_frontend() {
 cd "$SCRIPT_DIR/frontend"
 _HIDDEN_GITIGNORES=()
 _dir="$(pwd)"
@@ -2377,7 +2493,7 @@ _restore_gitignores() {
         mv "${_gi}._twbuild" "$_gi" 2>/dev/null || true
     done
 }
-trap _restore_gitignores EXIT
+trap _frontend_build_cleanup EXIT
 
 # package-lock.json always wins (`npm ci`); bun only without one, since bun.lock is gitignored.
 # Build always uses npm (Node runtime -- avoids bun runtime issues on some platforms).
@@ -2468,6 +2584,13 @@ else
 fi
 
 cd "$SCRIPT_DIR"
+}
+
+if _frontend_can_build_in_background; then
+    _frontend_bg_start
+else
+    _build_frontend
+fi
 
 fi  # end _FRONTEND_SKIP guard (Node available: system or isolated)
 
@@ -2503,9 +2626,11 @@ elif [ -d "$_OXC_DIR" ] && [ "${NODE_SOURCE:-}" != skip ]; then
     substep "OXC validator runtime skipped (no npm found); code validation degrades until Node is available" "$C_WARN"
 fi
 
-_remove_agent_instruction_files \
-    "$SCRIPT_DIR/frontend/node_modules" \
-    "$_OXC_DIR/node_modules"
+# A background build still owns frontend/node_modules (npm ci recreates it) and cleans it itself.
+if [ -z "$_FRONTEND_BG_PID" ]; then
+    _remove_agent_instruction_files "$SCRIPT_DIR/frontend/node_modules"
+fi
+_remove_agent_instruction_files "$_OXC_DIR/node_modules"
 
 # ── Python venv + deps ──
 
@@ -2571,6 +2696,8 @@ _setup_rerun_if_replaced() {
     if [ -z "$_now" ] || [ "$_now" = "$_SETUP_SELF_SUM" ]; then
         return 0
     fi
+    # exec keeps this PID, so the watcher would not stop a build the new script then repeats.
+    _frontend_bg_join
     step "setup" "the update replaced this setup script; finishing with the new version"
     export UNSLOTH_SETUP_RERUN=1
     unset UNSLOTH_STUDIO_FULL_DEPS
@@ -3635,6 +3762,7 @@ else
     step "python" "dependencies up to date"
     verbose_substep "python deps check: installed=$_PKG_NAME@${INSTALLED_VER:-unknown} latest=${LATEST_VER:-unknown}"
 fi
+_frontend_bg_reap
 
 # ── 6b. Pre-install transformers 5.x into .venv_t5_530/, .venv_t5_550/, and .venv_t5_510/ ──
 # Models like GLM-4.7-Flash, Qwen3 MoE need transformers>=5.3.0.
@@ -4409,6 +4537,8 @@ else
     step "gpu" "none (chat-only / GGUF)" "$C_WARN"
     substep "Training and GPU inference require an NVIDIA or AMD ROCm GPU."
 fi
+
+_frontend_bg_reap
 
 # ── 7. Prefer prebuilt llama.cpp bundles before any source build path ──
 # Nest llama.cpp under $STUDIO_HOME only for real env-overrides; legacy
@@ -5902,6 +6032,8 @@ _print_llama_gpu_notes() {
         printf "  ${C_WARN}%-15s%s${C_RST}\n" "" "fix the cause named above, then re-run this installer to restore the GPU"
     fi
 }
+
+_frontend_bg_join
 
 # ── Footer ──
 if [ "$_LLAMA_ONLY" = "1" ]; then
