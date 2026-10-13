@@ -38323,10 +38323,15 @@ class LlamaCppBackend:
 
         # Gate telling a genuine NAME[ARGS] rehearsal from inactive-name prose; built from the
         # ORIGINAL tools list so a spent one-shot still reads as a tool name. None = no gate.
-        _enabled_names_gate = set(_gguf_active_tool_names(tools)) if tools else None
+        from core.inference.tools import mcp_loadable_specs
+
+        # Plus the MCP tools a search can load mid-turn (#10997).
+        _loadable_mcp = mcp_loadable_specs(tools)
+        _loadable_mcp_names = set(_gguf_active_tool_names(_loadable_mcp))
+        _detect_tools = list(tools or []) + _loadable_mcp
+        _enabled_names_gate = set(_gguf_active_tool_names(_detect_tools)) if tools else None
         # Detection must see the same names as the strip gate (ORIGINAL list, incl. a spent
         # one-shot), else its repeat is stripped but never drained and the turn ends blank.
-        _detect_tools = list(tools or [])
 
         def _reasoning_summary_event(started_at: float) -> dict:
             return {
@@ -38762,7 +38767,7 @@ class LlamaCppBackend:
                 (tool.get("function") or {}).get("name")
                 for tool in safe_tools
                 if (tool.get("function") or {}).get("name")
-            }
+            } | (set() if forced_name else _loadable_mcp_names)
             # Shared signal tuple so GGUF BUFFERING wakes on every format the parser knows (like safetensors).
             _tool_xml_signals = _SHARED_TOOL_XML_SIGNALS
 
