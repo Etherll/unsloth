@@ -15866,6 +15866,15 @@ def _wait_for_native_audio_gpu_free_gb(
         time.sleep(min(interval, remaining))
 
 
+def _spark_topology() -> Optional[str]:
+    """The two-Spark serving topology for the status poll; None off a paired Spark."""
+    try:
+        from core.inference.spark_serving import current_topology
+        return current_topology()
+    except Exception:
+        return None
+
+
 async def _unload_llama_before_standard_load(llama_backend) -> None:
     """Tear down llama-server and wait for asynchronous driver VRAM reclaim."""
     if not llama_backend.is_loaded:
@@ -16406,6 +16415,8 @@ def _resolve_gguf_load_intent(
     if config.gguf_hf_repo:
         source = GgufLoadIntent(
             model_identifier = public_model_identifier,
+            requested_identifier = request.model_path,
+            requested_variant = request.gguf_variant,
             hf_repo = config.gguf_hf_repo,
             hf_variant = config.gguf_variant,
             hf_token = request.hf_token,
@@ -16437,6 +16448,8 @@ def _resolve_gguf_load_intent(
                 )
         source = GgufLoadIntent(
             model_identifier = public_model_identifier,
+            requested_identifier = request.model_path,
+            requested_variant = request.gguf_variant,
             gguf_path = config.gguf_file,
             mmproj_path = config.gguf_mmproj_file,
             mtp_draft_path = config.gguf_mtp_file,
@@ -17709,6 +17722,40 @@ def _cancel_scoped_load_attempt(
         return attempt, is_running
 
 
+def _spark_inherited_extra_args(request: LoadRequest) -> Optional[list[str]]:
+    """The previous same-model load's pass-through extras, which ``_resolve_inherited_extra_args``
+    carries into a request that omits the field."""
+    if getattr(request, "llama_extra_args", None) is not None:
+        return None
+    try:
+        llama_backend = get_llama_cpp_backend()
+        stored = getattr(llama_backend, "extra_args", None)
+        source = getattr(llama_backend, "extra_args_requested_source", None)
+    except Exception:
+        return None
+    if not stored:
+        return None
+    if not source or not source[0]:
+        # Extras recorded before this identity was tracked, or by a path that does not set it.
+        return None
+    requested = str(getattr(request, "model_path", "") or "").strip().lower()
+    stored_id = str(source[0] or "").strip().lower()
+    if not requested or requested != stored_id:
+        return None
+    # The variant is part of the identity, not a detail: two quants of one repo are different files
+    # with different sidecars.
+    if (
+        str(getattr(request, "gguf_variant", "") or "").strip().lower()
+        != str(source[1] or "").strip().lower()
+    ):
+        return None
+    from core.inference.spark_serving import strip_layer_split_extra_args
+
+    # The split block is ours, appended by before_load; inheriting it would read our own --rpc as
+    # a caller override and skip rebuilding the split.
+    return strip_layer_split_extra_args(stored)
+
+
 def _hub_access_warnings(token_rejections) -> list[str]:
     """What this request's Hub reads tell the user: a refused token, a refused repo's copy."""
     warnings = [HUB_TOKEN_REJECTED_WARNING] if token_rejections.recovered else []
@@ -17777,6 +17824,29 @@ async def _run_tracked_load_model_impl(
     try:
         if attempt.cancel_event.is_set():
             raise HTTPException(status_code = 409, detail = "Model load cancelled")
+        # Paired DGX Spark only.
+        from core.inference import spark_serving
+
+        _spark_slots = _resolve_parallel_slots(request, fastapi_request)
+        if (
+            spark_serving.enabled()
+            and request.engine == "auto"
+            and account_access.managed_account()
+            and not _defers_access_to_native_grant(request)
+        ):
+            # before_load can tear down the split the current model is served through, so a
+            # load this account may not make has to be refused first, not after.
+            await asyncio.to_thread(account_access.require_model_access, request.model_path)
+        try:
+            request = await spark_serving.before_load(
+                request,
+                _spark_slots,
+                inherited_extra_args = _spark_inherited_extra_args(request),
+                cancel_event = attempt.cancel_event,
+            )
+        except spark_serving.SparkLoadDoesNotFit as exc:
+            logger.warning("inference.spark_load_does_not_fit: %s", exc)
+            raise HTTPException(status_code = 400, detail = redact_native_paths(str(exc)))
         warnings_token = _load_warnings_reach_user.set(True)
         try:
             with collecting_hub_token_rejections() as token_rejections:
@@ -17787,9 +17857,16 @@ async def _run_tracked_load_model_impl(
                     current_request_counted = current_request_counted,
                     on_reload_confirmed = on_reload_confirmed,
                     load_cancel_event = attempt.cancel_event,
+                    spark_planned = True,
                 )
+        except BaseException:
+            await spark_serving.load_failed()
+            raise
         finally:
             _load_warnings_reach_user.reset(warnings_token)
+        await spark_serving.after_load(
+            get_llama_cpp_backend(), _spark_slots, cancel_event = attempt.cancel_event
+        )
         response = _with_token_rejected_warning(response, token_rejections)
         _remember_hub_access_warning(response, token_rejections)
         return response
@@ -18427,6 +18504,7 @@ async def _load_model_impl(
     on_reload_confirmed = None,
     allow_gpu_owner_eviction: bool = True,
     load_cancel_event: Optional[threading.Event] = None,
+    spark_planned: bool = False,
     cache_environment: Optional[dict[str, str]] = None,
     anonymous_hf_access: bool = False,
     speech_codec_path: Optional[str] = None,
@@ -18999,6 +19077,12 @@ async def _load_model_impl(
         cancel_pending = (
             serving and on_reload_confirmed is not None and bool(request.force_cancel_active)
         )
+        if not spark_planned:
+            # Paired DGX Spark only, and a no-op with nothing attached. After resolution, dedupe and
+            # the active-generation gate: tearing a split down first left a refused load's resident
+            # model loaded without its remote layers.
+            from core.inference import spark_serving
+            await spark_serving.reconcile_internal_load()
 
         if not config.is_gguf and _mlx_distributed_launch_detected():
             raise HTTPException(
@@ -22436,6 +22520,7 @@ async def _slot_status(current_subject: str):
                 llama_cpp_prebuilt_stale = _stale,
                 llama_cpp_installed_tag = _installed_tag,
                 llama_cpp_latest_tag = _latest_tag,
+                spark_topology = _spark_topology(),
             )
 
         # Otherwise report Unsloth backend status. Peek rather than build: no singleton means
