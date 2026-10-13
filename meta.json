@@ -1,0 +1,33 @@
+{
+ "base": "4e8888c4655079041b234c924d8fa847e0d34202",
+ "head": "5615bb8d0a46da73053be96eda0b026663aa5e53",
+ "viewport": "1440x960",
+ "runtime": "CPU-only Unsloth Studio, fresh homes; /api/inference/status mocked to Qwen3-TTS-12Hz-0.6B-Base Q8_0 (audio_workflows=[clone]) for scenes 1 and 6",
+ "facts": {
+  "trigger_text": {
+   "base": "Qwen3-TTS-12Hz-0.6B-Base-GGUFVoice cloning - GGUF",
+   "head": "Qwen3-TTS-12Hz-0.6B-Base-GGUFVoice cloning"
+  },
+  "search_hub_preview": {
+   "base": "unsloth/embeddinggemma-2-GGUF",
+   "head": "unsloth/orpheus-3b-0.1-ft-GGUF"
+  }
+ },
+ "images": {
+  "base/1-clone-loaded": "caa40402ae1803c9400bfa374166451c1ac641e2758796401ced86e4d2becea2",
+  "head/1-clone-loaded": "8678455b573896befbde25f1875609253e50298eb648bb985d8c64544315a85b",
+  "base/2-transcribe-recommended": "088ab4012db92c62bf59d6aef908b4def9e8885ed5c5a36d5da2fd7c044f7af9",
+  "head/2-transcribe-recommended": "a53c3f4d0dfdf14cdc7d7c016f4dccd22eff91c118e6601c71cfe6b0d2b97188",
+  "base/3-edit-recommended": "9f91bfbc1b09d3521a8259d81c9e0c4eeeec7b6831d4a297035999ef3f8e6a87",
+  "head/3-edit-recommended": "cc618ef23270c11f44eb6083c00aea155b72b1c72c2899c02cfb05ea01930267",
+  "base/4-clone-search-audio": "90ad69359cbecd6b2d7e936e59a90df5db0e560b0e05a6f169a7020e5574e20e",
+  "head/4-clone-search-audio": "8dc7d7c58b97275de2fef5d7d72351ab1069b90590dc19d5c1195f2e2f7f5258",
+  "base/5-clone-format-menu": "72df76a8308540a330f25a32a6b47fb1e81b433c5399645663db32e7e79e36c5",
+  "head/5-clone-format-menu": "23fca98e4227e540efaf033a3d9297fbf3739876e26672ef3186e386869f1754",
+  "base/6-music-footer": "d3e6d0e584247592afbd9b690b497cc159ad3bbf8717ce37f96353cfeee2ed91",
+  "head/6-music-footer": "b4a6aa7c286b01663e7757325d9cc8aa630fe81f7dc965b583b72899f3263732",
+  "base/7-search-hub": "a94b66d728399341f724b7e2462b04dbc450e016956397cb181359433c727334",
+  "head/7-search-hub": "a32fdb77da13a2d918f07d4ccab99201f0afe75aae9df4b41764ead6f25f3dc8"
+ },
+ "composite_sha256": "1a82a0cfb6913b6c4c6eea7e525cf16f9c1cf62be77ed716212d8290d07d47df"
+}
