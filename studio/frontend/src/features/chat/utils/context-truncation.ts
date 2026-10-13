@@ -52,6 +52,47 @@ export function shouldShowCompactionNotice(
   );
 }
 
+/** One compaction during a reply: the tool call it followed (null: before the reply began) and that fit's own record. */
+export interface CompactionMarker {
+  afterToolCallId: string | null;
+  truncation: ContextTruncation;
+}
+
+/** The call a fit followed. A fit that recalled has already emitted its `search_conversation` exchange,
+ *  which belongs after the cut, not before it. */
+export function compactionAnchorToolCallId(
+  toolCalls: ReadonlyArray<{ toolCallId?: unknown; toolName?: unknown }>,
+  truncation: ContextTruncation,
+): string | null {
+  let end = toolCalls.length;
+  if (
+    (truncation.recalled_chunks ?? 0) > 0 &&
+    toolCalls[end - 1]?.toolName === "search_conversation"
+  ) {
+    end -= 1;
+  }
+  const id = toolCalls[end - 1]?.toolCallId;
+  return typeof id === "string" ? id : null;
+}
+
+/** Adds a fit that cut something new. A tool loop refits every round and replays the same cut. */
+export function appendCompactionMarker(
+  markers: CompactionMarker[] | undefined,
+  truncation: ContextTruncation,
+  afterToolCallId: string | null,
+): CompactionMarker[] | undefined {
+  if (!promptWasShortened(truncation)) return markers;
+  const last = markers?.[markers.length - 1];
+  if (
+    last &&
+    truncation.checkpoint_started !== true &&
+    compactionBoundary(truncation) <= compactionBoundary(last.truncation)
+  ) {
+    return markers;
+  }
+  return [...(markers ?? []), { afterToolCallId, truncation }];
+}
+
 function nonNegativeInt(value: number | undefined): number {
   // A propagated NaN would print "NaN tokens on its own" at the user.
   return Number.isFinite(value) ? Math.max(0, Math.trunc(value as number)) : 0;

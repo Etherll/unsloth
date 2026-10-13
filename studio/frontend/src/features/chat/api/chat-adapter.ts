@@ -287,6 +287,7 @@ import {
 } from "../presets/preset-policy";
 import { ensureGpuDeviceCache } from "@/hooks/use-gpu-info";
 import { useExternalProvidersStore } from "../stores/external-providers-store";
+import { takeThreadCompactionRequest } from "../stores/compact-request-store";
 import {
   shouldPreserveFullOutput,
   toolOutputKey,
@@ -330,6 +331,9 @@ import {
   getImageInputUnavailableReason,
 } from "../utils/image-input-support";
 import {
+  appendCompactionMarker,
+  type CompactionMarker,
+  compactionAnchorToolCallId,
   historyCannotHelp,
   latestTurnIsTheProblem,
   latestTurnOwnTokens,
@@ -5656,6 +5660,10 @@ export function createOpenAIStreamAdapter(
       // the local model still resident.
       const isMlxForCompaction =
         !isExternalModelId(params.checkpoint) && runtime.loadedIsMlx === true;
+      // Taken once, so a retried request still carries it and the next turn does not.
+      const compactNow =
+        takeThreadCompactionRequest(resolvedThreadId) &&
+        (isGgufForCompaction || isMlxForCompaction);
       const generationUserMessage = [...survivingMessages]
         .reverse()
         .find((message) => message.role === "user");
@@ -5915,6 +5923,7 @@ export function createOpenAIStreamAdapter(
       };
       let codexRoundToolCallIds: string[] = [];
       let contextTruncation: OpenAIChatChunk["context_truncated"];
+      let compactionMarkers: CompactionMarker[] | undefined;
       let providerCompaction: ProviderCompactionContentPart | undefined =
         continuationCompaction ?? undefined;
       let providerCompactionAfterToolCalls: number | undefined =
@@ -5946,6 +5955,7 @@ export function createOpenAIStreamAdapter(
         openaiCodexReasoning: codexReasoningLedger,
         openaiResponsesReasoning: openAIResponsesReasoningLedger,
         contextTruncation,
+        compactionMarkers,
         providerCompaction,
         providerCompactionAfterToolCalls,
         providerCompactionProviderType,
@@ -6992,6 +7002,7 @@ export function createOpenAIStreamAdapter(
               isGguf: isGgufForCompaction,
               isMlx: isMlxForCompaction,
               autoCompactEnabled: runtime.autoCompactEnabled,
+              compactNow,
             }),
             temperature: params.temperature,
             top_p: params.topP,
@@ -7310,6 +7321,14 @@ export function createOpenAIStreamAdapter(
                 contextTruncation = mergeContextTruncation(
                   contextTruncation,
                   chunk.context_truncated,
+                );
+                compactionMarkers = appendCompactionMarker(
+                  compactionMarkers,
+                  chunk.context_truncated,
+                  compactionAnchorToolCallId(
+                    toolCallParts,
+                    chunk.context_truncated,
+                  ),
                 );
                 const activeThreadId = useChatRuntimeStore.getState().activeThreadId;
                 // What must stay silent is a fit that returned the ORIGINAL messages: "older turns were
@@ -8874,6 +8893,7 @@ export function createOpenAIStreamAdapter(
               openaiCodexReasoning: codexReasoningLedger,
               openaiResponsesReasoning: openAIResponsesReasoningLedger,
               contextTruncation,
+              compactionMarkers,
               providerCompaction,
               providerCompactionAfterToolCalls,
               providerCompactionProviderType,
@@ -9053,6 +9073,7 @@ export function createOpenAIStreamAdapter(
               custom: {
                 ...reasoningDurationTracker.metadata(),
                 contextTruncation,
+                compactionMarkers,
                 providerCompaction,
                 providerCompactionAfterToolCalls,
                 providerCompactionProviderType,
