@@ -1363,11 +1363,61 @@ def test_cpu_native_load_skips_gpu_arbiter(client, monkeypatch):
     # A native sd.cpp load on a pure-CPU host never touches the GPU, so the route must NOT evict the resident chat model.
     from core.inference.sd_cpp_engine import ENGINE_SD_CPP
 
+    import core.inference.diffusion_engine_router as router
+
     backend = diffusion_module.get_diffusion_backend()
     acquired = _force_engine(monkeypatch, backend, engine_name = ENGINE_SD_CPP, device = "cpu")
+    monkeypatch.setattr(router, "image_install_accelerator", lambda backend: "auto")
+    import core.inference.sd_cpp_backend as sd_backend
+
+    monkeypatch.setattr(sd_backend, "managed_sd_cpp_accelerator", lambda: None)
     resp = _post_load(client, model_path = "x/z-image", gguf_filename = "q.gguf")
     assert resp.status_code == 200
     assert acquired == []  # no arbiter handoff for a CPU native load
+
+
+def test_cpu_torch_vulkan_native_load_takes_arbiter(client, monkeypatch):
+    # #13666: a CPU torch routed to the Vulkan sd.cpp build renders on the AMD / Arc card.
+    import core.inference.diffusion_engine_router as router
+    from core.inference.sd_cpp_engine import ENGINE_SD_CPP
+
+    backend = diffusion_module.get_diffusion_backend()
+    acquired = _force_engine(monkeypatch, backend, engine_name = ENGINE_SD_CPP, device = "cpu")
+    monkeypatch.setattr(router, "image_install_accelerator", lambda backend: "vulkan")
+    resp = _post_load(client, model_path = "x/z-image", gguf_filename = "q.gguf")
+    assert resp.status_code == 200
+    assert acquired == [gpu_arbiter.DIFFUSION]
+
+
+def test_a_retained_vulkan_build_takes_arbiter_even_when_cpu_is_requested(client, monkeypatch):
+    # A failed or disabled CPU install keeps the managed Vulkan build, which renders on the card.
+    import core.inference.diffusion_engine_router as router
+    import core.inference.sd_cpp_backend as sd_backend
+    from core.inference.sd_cpp_engine import ENGINE_SD_CPP
+
+    backend = diffusion_module.get_diffusion_backend()
+    acquired = _force_engine(monkeypatch, backend, engine_name = ENGINE_SD_CPP, device = "cpu")
+    monkeypatch.setattr(router, "image_install_accelerator", lambda backend: "auto")
+    monkeypatch.setattr(sd_backend, "managed_sd_cpp_accelerator", lambda: "vulkan")
+    resp = _post_load(client, model_path = "x/z-image", gguf_filename = "q.gguf")
+    assert resp.status_code == 200
+    assert acquired == [gpu_arbiter.DIFFUSION]
+
+
+def test_cpu_torch_load_after_a_failed_vulkan_build_skips_arbiter(client, monkeypatch):
+    # The ladder runs the CPU build once Vulkan is recorded unrunnable, so no GPU is taken.
+    import core.inference.diffusion_engine_router as router
+    import core.inference.sd_cpp_backend as sd_backend
+    from core.inference.sd_cpp_engine import ENGINE_SD_CPP
+
+    backend = diffusion_module.get_diffusion_backend()
+    acquired = _force_engine(monkeypatch, backend, engine_name = ENGINE_SD_CPP, device = "cpu")
+    monkeypatch.setattr(router, "image_install_accelerator", lambda backend: "vulkan")
+    monkeypatch.setattr(sd_backend, "preferred_accelerator", lambda accelerator, card = None: "cpu")
+    monkeypatch.setattr(sd_backend, "managed_sd_cpp_accelerator", lambda: "cpu")
+    resp = _post_load(client, model_path = "x/z-image", gguf_filename = "q.gguf")
+    assert resp.status_code == 200
+    assert acquired == []
 
 
 def test_gpu_native_load_takes_arbiter(client, monkeypatch):
