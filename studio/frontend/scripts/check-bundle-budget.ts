@@ -124,17 +124,13 @@ export const BUDGET = {
   // native view, and the off-screen question strings) adds 5,278 B raw / 1,928 B transfer (6,765,003 ->
   // 6,770,281 B raw, 2,033,563 -> 2,035,491 B transfer against a8585676d4, one machine and build, Node 24,
   // chunk count unchanged at 95), raised by that.
-  // Always allow on browser agent prompts (#13777) adds 91 B raw / 42 B transfer to the eager chat chunk
-  // (6,770,922 -> 6,771,013 B raw, 2,035,640 -> 2,035,682 B transfer against cd947468f1, one machine and build,
-  // Node 24, chunk count unchanged at 95), which put main 71 B raw over. Raised by that growth.
-  // Word list numbering through the default style and basedOn (#13755) adds 228 B raw / 39 B transfer to the
-  // eager attachment reader (6,770,962 -> 6,771,190 B raw, 2,035,676 -> 2,035,715 B transfer against 7ae1a5386,
-  // one machine and build, Node 24, chunk count unchanged at 95). Raised by that growth.
-  // The "Only show models that fit" Settings row adds 289 B raw / 77 B transfer (6,771,372 -> 6,771,661 B raw,
-  // 2,035,798 -> 2,035,875 B transfer against 52a3fbefe, 95 chunks, identical under Node 22.22.2 and 24). Main
-  // already measured 111 B raw / 54 B transfer over the previous limits, so they are set to the measured build.
-  transferBytes: 2_035_875,
-  rawBytes: 6_771_661,
+  // Hub Run refusing audio models neither Audio nor chat can run (#13812) adds 82 B transfer and no raw
+  // (2,035,640 -> 2,035,722 B transfer, 6,770,922 -> 6,770,921 B raw against 42735fcf2, one machine and build,
+  // Node 24, chunk count unchanged at 95), which put main 17 B transfer over. Raw has no growth but main had
+  // 0 B spare, and the same tree builds 6,770,921 or 6,770,972 B raw in two checkouts (staging CI read
+  // 6,612.3 KB, at most 6,771,046 B), so raw is raised to cover that spread.
+  transferBytes: 2_035_787,
+  rawBytes: 6_771_046,
 };
 
 // The chunk count is reported but not budgeted. Splitting a page out of the entry raises it while lowering the
