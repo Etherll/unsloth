@@ -147,8 +147,11 @@ export const BUDGET = {
   // transfer (6,773,496 -> 6,774,820 B raw, 2,036,386 -> 2,036,728 B transfer against 59ab069b5, one machine
   // and build, Node 24, chunk count unchanged at 95). Lazy-loading it cost more transfer and a 96th startup
   // chunk (Rollup split react-dom out), so it is imported statically and the budget raised by that growth.
-  transferBytes: 2_036_821,
-  rawBytes: 6_774_897,
+  // The Notebooks page (#6650: its sidebar row, route and English strings; the page itself is lazy) adds
+  // 3,316 B raw / 995 B transfer against 6a08610278 (one machine and build, Node 24, chunk count 95 -> 96: the
+  // shared open-link helper splits into its own eager chunk), raised by that.
+  transferBytes: 2_037_816,
+  rawBytes: 6_778_213,
 };
 
 // The chunk count is reported but not budgeted. Splitting a page out of the entry raises it while lowering the
