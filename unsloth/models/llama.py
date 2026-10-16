@@ -66,6 +66,8 @@ from .loader_utils import (
     _restore_dropped_fp8_scales,
     _prepare_compressed_tensors_model,
     fsdp_will_wrap,
+    fsdp2_keeps_fused_lora,
+    fsdp2_requested,
     planner_class_mismatch_reason,
     planner_model_class,
     planner_config_overrides,
@@ -83,6 +85,7 @@ from .loader_utils import (
     sync_load_when_quantizing,
     warn_if_bitsandbytes_quantized_nothing,
 )
+from .fsdp2_qlora import prepare_fsdp2_qlora, set_fsdp2_quant_storage
 from ..utils.packing import (
     get_packed_info_from_kwargs,
     mask_packed_boundary_labels,
@@ -2653,7 +2656,10 @@ def _fused_lora_skip_reason(
     if float32_base:
         reasons.append("the base weights are float32")
     if fsdp:
-        reasons.append("FSDP shards the weights they read (UNSLOTH_FORCE_FUSED_LORA=1 overrides)")
+        reasons.append(
+            "FSDP1 hands them shard views of the weights they read (UNSLOTH_FORCE_FUSED_LORA=1 "
+            "overrides; FSDP2 with one unit per decoder block keeps them)"
+        )
     if not reasons:
         return ""
     return (
@@ -2806,11 +2812,32 @@ def _has_packed_base(*projs):
 _FUSED_LORA_MLPS = (apply_lora_mlp_swiglu, apply_lora_mlp_geglu_exact, apply_lora_mlp_geglu_approx)
 
 
-def _decline_fused_lora_for_fsdp(model) -> int:
+def _fused_lora_modules(model) -> list:
+    """The modules patch_peft_model gave a fused LoRA kernel (attention for QKV / O, MLPs)."""
+    if model is None:
+        return []
+    fused = []
+    for module in model.modules():
+        if (
+            getattr(module, "apply_qkv", None) is apply_lora_qkv
+            or getattr(module, "apply_o", None) is apply_lora_o
+        ):
+            fused.append(module)
+            continue
+        for name in ("forward", "_unsloth_forward"):
+            func = getattr(module.__dict__.get(name), "__func__", None)
+            if getattr(func, "func", func) in _FUSED_LORA_MLPS:
+                fused.append(module)
+                break
+    return fused
+
+
+def _decline_fused_lora_for_fsdp(model, reason = None) -> int:
     """Put peft's forwards back on layers patch_peft_model gave a fused LoRA kernel.
 
     `TrainingArguments(fsdp=...)` only reaches the Accelerator inside `Trainer.__init__`, after
     patch_peft_model ran with no launcher env to see, so the Trainer calls this once it knows.
+    Under FSDP2 the check after accelerate shards the model calls it too, with its `reason`.
     """
     if model is None or os.environ.get("UNSLOTH_FORCE_FUSED_LORA", "0") == "1":
         return 0
@@ -2832,8 +2859,10 @@ def _decline_fused_lora_for_fsdp(model) -> int:
                 module._unsloth_forward = module.__class__.forward
             n += 1
     if n:
+        if reason is None:
+            reason = "the Trainer enabled FSDP"
         logger.warning_once(
-            f"Unsloth: the Trainer enabled FSDP, so {n} fused LoRA projections were switched back "
+            f"Unsloth: {reason}, so {n} fused LoRA projections were switched back "
             "to peft's forward, which FSDP can unshard. Set UNSLOTH_FORCE_FUSED_LORA=1 to keep them."
         )
     return n
@@ -3414,6 +3443,10 @@ class FastLlamaModel:
                 bnb_4bit_compute_dtype = dtype,
                 llm_int8_skip_modules = llm_int8_skip_modules,
             )
+            if fsdp2_requested():
+                # FSDP2 shards packed 4-bit bytes only in a float storage dtype; the compute dtype makes its
+                # mixed precision cast of them a no-op.
+                set_fsdp2_quant_storage(bnb_config, dtype)
             # Pre-quantized checkpoints use the quantization_config baked into config.json, ignoring our
             # runtime BitsAndBytesConfig, so merge our skip list into it to keep task heads like `score` in
             # compute dtype (#5027).
@@ -3612,6 +3645,8 @@ class FastLlamaModel:
                     dtype = dtype,
                 )
                 _prepare_compressed_tensors_model(model)
+                if fsdp2_requested():
+                    prepare_fsdp2_qlora(model, dtype)
                 model.fast_generate = make_fast_generate_wrapper(model.generate)
                 model.fast_generate_batches = None
             else:
@@ -4686,8 +4721,9 @@ class FastLlamaModel:
         float32_base = (
             _base_weight_dtype(model.model.model.layers[0].self_attn.q_proj) == torch.float32
         )
-        # Fused kernels read `.weight` directly, bypassing FSDP's unshard hook, so under FSDP they see shard views (#409).
-        fused_lora_declined_for_fsdp = fsdp_will_wrap()
+        # Fused kernels read `.weight` directly, bypassing FSDP's unshard hook, so under FSDP1 they see shard
+        # views (#409). FSDP2 unshards each block before its forward; the wrap is re-checked once built.
+        fused_lora_declined_for_fsdp = fsdp_will_wrap() and not fsdp2_keeps_fused_lora()
 
         if (
             lora_dropout == 0
