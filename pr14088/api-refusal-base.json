@@ -1,0 +1,19 @@
+{
+ "side": "base",
+ "load_0.6B": 200,
+ "put": {
+  "enabled": true,
+  "default_enabled": false
+ },
+ "replace_status": 200,
+ "replace_header_x_unsloth_refusal": null,
+ "replace_body": {
+  "status": "loaded",
+  "display_name": "Qwen3-1.7B-GGUF (Q4_K_M)",
+  "evicted": [],
+  "evicted_slots": null
+ },
+ "status_after": {
+  "active_model": "unsloth/Qwen3-1.7B-GGUF"
+ }
+}

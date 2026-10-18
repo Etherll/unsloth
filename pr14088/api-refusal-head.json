@@ -1,0 +1,17 @@
+{
+ "side": "head",
+ "load_0.6B": 200,
+ "put": {
+  "enabled": true,
+  "default_enabled": false,
+  "mode": "always",
+  "default_mode": "off"
+ },
+ "replace_status": 409,
+ "replace_header_x_unsloth_refusal": "multi-model-always",
+ "replace_body": "{\"detail\":\"Loading this model would unload the chat model unsloth/Qwen3-0.6B-GGUF, and Keep multiple models loaded is set to Always. Unload that model first, or choose When they fit.\"}",
+ "status_after": {
+  "active_model": "unsloth/Qwen3-0.6B-GGUF",
+  "multi_model_mode": "always"
+ }
+}
