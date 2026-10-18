@@ -1,0 +1,212 @@
+{
+ "pr_head": {
+  "sha": "0500dbb412f3385570bc610b9c73b39813b5be4b",
+  "branch": "studio-model-memory-modes-kv-swap",
+  "worktree": "/mnt/disks/unslothai/etherl/worktrees/integ-r3"
+ },
+ "base": {
+  "sha": "e795149d9926382207b361f68f4c27e918e5e814",
+  "ref": "upstream main",
+  "worktree": "/mnt/disks/unslothai/etherl/worktrees/integ-r3-base"
+ },
+ "setup": "Each side: npm run build in studio/frontend (dist is gitignored; git status clean on both), CPU-only Unsloth Studio (CUDA_VISIBLE_DEVICES=, UNSLOTH_DISABLE_UPDATE_CHECK=1) with fresh home under /mnt/disks/unslothai/etherl/sandboxes/r3-ui/ev-{base,head}; Chromium (Playwright 1.63) 1280px wide, DPR 2, light, reduced motion, en-US, UTC.",
+ "ports": {
+  "base": 18941,
+  "head": "18942, then 18962. My head Studio on 18942 was shut down by something outside this run partway through, and another session's Studio (integ-m1) then bound 18942. I left it alone and relaunched head on 18962 with the same worktree and sandbox. s6/s7 head shots come from 18962; the rest are from 18942."
+ },
+ "mocked_scenes": {
+  "s1 fit-description (after only)": "GET /api/settings/multi-model mocked to {enabled:true, default_enabled:false, mode:'fit', default_mode:'off'}; the backend in this build returns only {enabled, default_enabled}, so without the mock the Select shows Off.",
+  "s4, s5, s6, s7 (both sides)": "page.route mocks /api/inference/images/download-plan (no files to fetch), /load POST, /load-progress, /status. s4: POST held pending, load-progress phase 'saving_chat_context'. s5: POST answers a real DiffusionStatus body + evicted/evicted_slots, then load-progress 'ready' and a loaded status. s6/s7: POST 409 with X-Unsloth-Refusal: multi-model-always and the detail sentence from the brief. Model chosen by deep link /images?model=unsloth/Z-Image-Turbo-GGUF&quant=z-image-turbo-Q4_K_M.gguf.",
+  "real (not mocked)": "s1 Select/Switch, s1 de/ru at UI size 20, s2, s3, and the managed account in s6. The managed account 'reviewer' was created through POST /api/accounts as the owner, signed in with the setup code, then its password was changed through /api/auth/change-password."
+ },
+ "notes": [
+  "Before (main) Model memory description with the Switch off reads 'Loading a model keeps the others in memory.'; after reads 'Loading a chat, image or video model unloads the other ones.' for Off.",
+  "Managed refusal uses the same owner sentence as the brief. The managed-copy sentence comes from the backend parent, which is not in this build. The frontend matches on the header, so the missing action depends only on the owner check.",
+  "Head became multi-user once the managed account existed, so the head s6-owner and s7 shots ran in login_mode=multi; base stayed single-user.",
+  "s7: after Open settings, the dialog is on the System tab and the Model memory heading sits at y=182 of an 860px viewport. It is in view, though not flush with the top.",
+  "Language and UI size are synced to the server per account. The de/ru variants set them through a real PUT /api/settings/personalization, and they were reset to auto/default afterwards.",
+  "The only console errors are 503 /api/rag/reembed (both sides, unrelated) and the 409 the scenes ask for."
+ ],
+ "not_produced": [
+  "Scene 4 before: main has no saving phase. The before panel shows main's plain 'Starting model... Loading the model.' toast under the same mocks.",
+  "Scene 6 managed before: not captured. The brief asks for after only, and main has no Open settings action for anyone."
+ ],
+ "pngs": [
+  {
+   "path": "composite-s1-de-ui20.png",
+   "sha256": "eb033f6610e7548e6ff4d7cf9c227b33455fc2181b5b7cac6790e4257d975a9e",
+   "mocked": false
+  },
+  {
+   "path": "composite-s1-fit-description.png",
+   "sha256": "5fac86d8ab3c59bcb82f0850b2760405998bb7c58a4f4a9f10903fbfcb4427c5",
+   "mocked": true
+  },
+  {
+   "path": "composite-s1-multi-model-select.png",
+   "sha256": "e08d9744c54350fb70c5b60950b83470ab70211338255050de3928dc965baa79",
+   "mocked": false
+  },
+  {
+   "path": "composite-s1-ru-ui20.png",
+   "sha256": "9985e53a0246b431177c88b5cd08308f13d3535175257249014ff40f6f65b243",
+   "mocked": false
+  },
+  {
+   "path": "composite-s2-media-idle-row-moved.png",
+   "sha256": "8840866df1f2a7591fdee925788127a06815b7b1b8be409fce0eed22715e6bf6",
+   "mocked": false
+  },
+  {
+   "path": "composite-s3-keep-chat-context-row.png",
+   "sha256": "008465eb1f9c0e93f87cdf820460a3dfa5b1490f5cb2e752f3ef9e7c58cbceb5",
+   "mocked": false
+  },
+  {
+   "path": "composite-s4-images-saving-chat-context.png",
+   "sha256": "9a8689cd5d5536ef61d337b0d6ff4c1d0311835ed690bd9ed635ccf038a9cfda",
+   "mocked": true
+  },
+  {
+   "path": "composite-s5-images-model-loaded-evicted.png",
+   "sha256": "bef907d49eb3f6bbf950b88498ed0d59662fef39d445b600f868e177bbc5a406",
+   "mocked": true
+  },
+  {
+   "path": "composite-s6-images-refusal.png",
+   "sha256": "ad8bd11facb26a792dc98f60b0eadbedaa62597de227b36079cb187c61c4ff0d",
+   "mocked": true
+  },
+  {
+   "path": "composite-s7-open-settings.png",
+   "sha256": "71592607ab21fc918d86e11bb9b18c107a0c9aaadd4bfbe7647534eece6b063c",
+   "mocked": true
+  },
+  {
+   "path": "shots/s1-model-memory-closed-base.png",
+   "sha256": "3fade97e7dedeb8d6211ec17556c20b39b9d8e2f04a1495e65d91417734343da",
+   "mocked": false
+  },
+  {
+   "path": "shots/s1-model-memory-closed-head.png",
+   "sha256": "c0c0be4cec38ca0437c1418eb8cabc5eb674fc727f18ea4dcef852de094d7ece",
+   "mocked": false
+  },
+  {
+   "path": "shots/s1-model-memory-closed-mockfit-head.png",
+   "sha256": "715e3b4b230eaffc32b20cb8578245dc1afd54479286284eaf1c6d514d3e2217",
+   "mocked": true
+  },
+  {
+   "path": "shots/s1-model-memory-de20-base.png",
+   "sha256": "33a594405407022d327d86507d8f5b9e00fc9dddba2cd5b402ed54507d8e6b1d",
+   "mocked": false
+  },
+  {
+   "path": "shots/s1-model-memory-ru20-base.png",
+   "sha256": "0b3ec05df29767fe271009f5550f0d42034da6b24fce2e8824541994d0d63e84",
+   "mocked": false
+  },
+  {
+   "path": "shots/s1-model-memory-select-open-de20-head.png",
+   "sha256": "d96db35837ea28e757dcd8ac332606d61c78a651a14837d25bfaecbe3f995c38",
+   "mocked": false
+  },
+  {
+   "path": "shots/s1-model-memory-select-open-head.png",
+   "sha256": "29fe274dc809e9e40adf46214b4c86b0711ab69d381d5b8b5611cbb73593afc0",
+   "mocked": false
+  },
+  {
+   "path": "shots/s1-model-memory-select-open-ru20-head.png",
+   "sha256": "770bbcd2c57c269ea6bfbd9854504c2f2a2ec72b5a8b08258fa1111d67eefece",
+   "mocked": false
+  },
+  {
+   "path": "shots/s2s3-api-auto-switch-base.png",
+   "sha256": "57fcfd721867c944e65563be0ebe6e5258306f3c0d6136ce3f99422b333baf81",
+   "mocked": false
+  },
+  {
+   "path": "shots/s2s3-api-auto-switch-head.png",
+   "sha256": "67c44cc849313bf167c73eb8b98a5c855ace9da7fa2464c4ecdb025deb16c14d",
+   "mocked": false
+  },
+  {
+   "path": "shots/s4-images-saving-base-full.png",
+   "sha256": "a1fe14dc0fa0173ae1d3e030fb67c506d27b84e49d08330ec5c4ce68d4c7ae14",
+   "mocked": true
+  },
+  {
+   "path": "shots/s4-images-saving-base.png",
+   "sha256": "0a288efe43d424428206e8dc310e2c5aa5f4c299ef6406fb6324b8b30b1d2041",
+   "mocked": true
+  },
+  {
+   "path": "shots/s4-images-saving-head-full.png",
+   "sha256": "7502cd9182f6997b9c490194c7aca6019eecdbe371b7970c70dd1f92caf05642",
+   "mocked": true
+  },
+  {
+   "path": "shots/s4-images-saving-head.png",
+   "sha256": "ea4d99c80525d4426d684e0000f6cb7aec71bcd2ac5e8deab8c6b03c1c284de1",
+   "mocked": true
+  },
+  {
+   "path": "shots/s5-images-evicted-base-full.png",
+   "sha256": "26f0002228b5ac004666628ce96dd2a748a689647e2f22bf4475f5c1716adc69",
+   "mocked": true
+  },
+  {
+   "path": "shots/s5-images-evicted-base.png",
+   "sha256": "6cbbc5f11f6a0a38cf4ce3f177a3d3b2ff2566b122428305cd989d58bfd81e53",
+   "mocked": true
+  },
+  {
+   "path": "shots/s5-images-evicted-head-full.png",
+   "sha256": "b2efe8c7409272472264b6528762c34ce1211fe85bcab31172209b1a11f72eb0",
+   "mocked": true
+  },
+  {
+   "path": "shots/s5-images-evicted-head.png",
+   "sha256": "c52bfa5c443445b588eab42e54a38f5ae29609c7d0e7ca4de59313ea6d2db9f7",
+   "mocked": true
+  },
+  {
+   "path": "shots/s6-images-refusal-base-full.png",
+   "sha256": "12174c893133c5061575a8b6a01b1acf904edd14541417c7e4a1105296ef0344",
+   "mocked": true
+  },
+  {
+   "path": "shots/s6-images-refusal-base.png",
+   "sha256": "3d61c1b964ca9dbd372b9c3afba654676b0e318b3080169bacfce226802318cb",
+   "mocked": true
+  },
+  {
+   "path": "shots/s6-images-refusal-head-full.png",
+   "sha256": "e84f135b3a18395188fd032560ff36254c05bf17e2c0a41360380d378e615d9f",
+   "mocked": true
+  },
+  {
+   "path": "shots/s6-images-refusal-head.png",
+   "sha256": "76a2774b1418f25118fb161dcb78c79f08d39ea6382db846084a3e7580a63f31",
+   "mocked": true
+  },
+  {
+   "path": "shots/s6-images-refusal-managed-head-full.png",
+   "sha256": "7350f45adb6b782a5da7474292c0d0d0607d4db879641e0bb1eda28e496f8335",
+   "mocked": true
+  },
+  {
+   "path": "shots/s6-images-refusal-managed-head.png",
+   "sha256": "cd339ba1d25d96a33640142a5f5fb2cdb89f04f29f517e1027c5be7faf50757b",
+   "mocked": true
+  },
+  {
+   "path": "shots/s7-open-settings-lands-on-model-memory-head.png",
+   "sha256": "3b21209a6cffd0246004288b867be67ed555ef9a5179d0e744ee6cbbbddcf4ce",
+   "mocked": true
+  }
+ ],
+ "head_worktree_drift": "Another session moved integ-r3 off 0500dbb4 during this run (WIP commits from 13:22:29, then reset and squash to 2fc1ef238d at 13:33:51 PDT). The frontend dist served in every AFTER shot was built at 13:21:08 from 0500dbb4. Between 0500dbb4 and 2fc1ef23 the only frontend change is tests/load-refusal-header.test.ts, so the UI is 0500dbb4's. The head backend Python came from the moving worktree at launch, which included small gpu_arbiter.py and chat_swap_kv.py changes. No scene depends on them: the multi-model, personalization and auto-switch settings GETs are unchanged, and the Images endpoints are mocked."
+}
