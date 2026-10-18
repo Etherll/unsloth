@@ -1989,6 +1989,15 @@ class _InferenceRuntimeFields(BaseModel):
     )
 
 
+class EvictedSlot(BaseModel):
+    """A model a load unloaded to make room."""
+
+    kind: Literal["chat", "audio", "image", "video"] = Field(
+        ..., description = "chat, audio (a native or audio.cpp audio model), image or video"
+    )
+    model: str = Field(..., description = "Public model id, as /api/inference/status prints it")
+
+
 class LoadResponse(_InferenceRuntimeFields):
     """Response after loading a model"""
 
@@ -2021,7 +2030,12 @@ class LoadResponse(_InferenceRuntimeFields):
     )
     evicted: list[str] = Field(
         default_factory = list,
-        description = "Models loaded alongside that were unloaded to make room for this one.",
+        description = "Models unloaded to make room for this one: chat models loaded alongside, "
+        "the replaced chat model, and any image or video model this load freed.",
+    )
+    evicted_slots: list[EvictedSlot] = Field(
+        default_factory = list,
+        description = "The same models as evicted, each with its kind and public model id.",
     )
 
 
@@ -2147,6 +2161,10 @@ class InferenceStatusResponse(_InferenceRuntimeFields):
     )
     loading: List[str] = Field(default_factory = list, description = "Models currently being loaded")
     loaded: List[str] = Field(default_factory = list, description = "Models currently loaded")
+    multi_model_mode: Optional[Literal["off", "fit", "always"]] = Field(
+        None,
+        description = "Keep multiple models loaded: off, fit (When they fit) or always.",
+    )
     serving: List[str] = Field(
         default_factory = list,
         description = "Models answering requests: the active one and each kept alongside. "
@@ -5289,9 +5307,9 @@ class DiffusionGenerateProgressResponse(BaseModel):
 class DiffusionLoadProgressResponse(BaseModel):
     """Download/finalize progress for an in-flight diffusion load."""
 
-    phase: Optional[Literal["downloading", "finalizing", "ready", "error"]] = Field(
-        None, description = "Load phase; null when idle"
-    )
+    phase: Optional[
+        Literal["downloading", "finalizing", "saving_chat_context", "ready", "error"]
+    ] = Field(None, description = "Load phase; null when idle")
     bytes_downloaded: int = Field(0, description = "Bytes present in the HF cache so far")
     bytes_total: int = Field(0, description = "Estimated total bytes to download (0 = unknown)")
     fraction: float = Field(0.0, description = "bytes_downloaded / bytes_total, clamped to [0,1]")
@@ -5404,6 +5422,14 @@ class DiffusionStatusResponse(BaseModel):
     """Current diffusion backend state."""
 
     loaded: bool = Field(False, description = "Whether a diffusion model is loaded")
+    evicted: List[str] = Field(
+        default_factory = list,
+        description = "Models this load unloaded to make room. Filled only on the load answer.",
+    )
+    evicted_slots: List[EvictedSlot] = Field(
+        default_factory = list,
+        description = "The same models as evicted, each with its kind and public model id.",
+    )
     repo_id: Optional[str] = Field(None, description = "Loaded repo id or local path")
     display_repo_id: Optional[str] = Field(None, description = "Logical Hub id of a local snapshot")
     family: Optional[str] = Field(None, description = "Detected diffusion family")
@@ -6633,9 +6659,9 @@ class VideoGenerateProgressResponse(BaseModel):
 class VideoLoadProgressResponse(BaseModel):
     """Download/finalize progress for an in-flight video load."""
 
-    phase: Optional[Literal["downloading", "finalizing", "ready", "error"]] = Field(
-        None, description = "Load phase; null when idle"
-    )
+    phase: Optional[
+        Literal["downloading", "finalizing", "saving_chat_context", "ready", "error"]
+    ] = Field(None, description = "Load phase; null when idle")
     downloaded_bytes: int = Field(0, description = "Bytes present in the HF cache so far")
     expected_bytes: Optional[int] = Field(
         None, description = "Estimated total bytes to download (null = unknown)"
@@ -6707,6 +6733,14 @@ class VideoStatusResponse(BaseModel):
     """Current video backend state."""
 
     loaded: bool = Field(False, description = "Whether a video model is loaded")
+    evicted: List[str] = Field(
+        default_factory = list,
+        description = "Models this load unloaded to make room. Filled only on the load answer.",
+    )
+    evicted_slots: List[EvictedSlot] = Field(
+        default_factory = list,
+        description = "The same models as evicted, each with its kind and public model id.",
+    )
     repo_id: Optional[str] = Field(None, description = "Loaded repo id or local path")
     display_repo_id: Optional[str] = Field(None, description = "Logical Hub id of a local snapshot")
     family: Optional[str] = Field(None, description = "Detected video family")
