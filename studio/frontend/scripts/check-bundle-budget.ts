@@ -210,8 +210,12 @@ export const BUDGET = {
   // by that growth.
   // The audio.cpp v0.9.2 picker rows (#14073) add 253 B raw / 59 B transfer to the eager audio catalog
   // table (one machine and build, chunk count unchanged at 95). Raised by that.
-  transferBytes: 2_047_608,
-  rawBytes: 6_806_087,
+  // The Images pill making images and videos with the loaded local models adds 4,975 B raw / 1,658 B transfer
+  // (6,797,963 -> 6,802,938 B raw, 2,044,964 -> 2,046,622 B transfer against d0ffef38b7, one machine and build,
+  // Node 24, chunk count unchanged at 95): the local image and video cards in the eager tool UI registry and the
+  // composer and adapter gates in the eager chat chunk. Raised by that growth.
+  transferBytes: 2_049_266,
+  rawBytes: 6_811_062,
 };
 
 // The chunk count is reported but not budgeted. Splitting a page out of the entry raises it while lowering the
