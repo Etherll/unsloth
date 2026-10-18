@@ -1,0 +1,76 @@
+{
+ "base_sha": "e795149d9926382207b361f68f4c27e918e5e814",
+ "head_sha": "d0ffef38b78a6e8fe5e7e05e6d934120b7987097",
+ "head_note": "uncommitted working tree on branch studio-g1-model-defaults-prompt-tips",
+ "viewport": "1440x900 @2x, light, reduced motion",
+ "sides": {
+  "base": {
+   "side": "base",
+   "port": 8871,
+   "scenes": {
+    "images-tip": {
+     "label": "Instruction",
+     "injected_prompt_hint": "Write the change you want as an instruction, such as \"make the sky orange\", not a description of the whole picture.",
+     "info_hint_trigger_next_to_label": false,
+     "tooltip_text": null,
+     "console_errors": []
+    },
+    "images-notip": {
+     "label": "Instruction",
+     "injected_prompt_hint": null,
+     "info_hint_trigger_next_to_label": false,
+     "tooltip_text": null,
+     "console_errors": []
+    },
+    "video-tip": {
+     "label": "Prompt",
+     "injected_prompt_hint": "A sample tip injected for this screenshot.",
+     "info_hint_trigger_next_to_label": false,
+     "tooltip_text": null,
+     "console_errors": []
+    },
+    "video-notip": {
+     "label": "Prompt",
+     "injected_prompt_hint": null,
+     "info_hint_trigger_next_to_label": false,
+     "tooltip_text": null,
+     "console_errors": []
+    }
+   }
+  },
+  "head": {
+   "side": "head",
+   "port": 8872,
+   "scenes": {
+    "images-tip": {
+     "label": "Instruction",
+     "injected_prompt_hint": "Write the change you want as an instruction, such as \"make the sky orange\", not a description of the whole picture.",
+     "info_hint_trigger_next_to_label": true,
+     "tooltip_text": "Write the change you want as an instruction, such as \"make the sky orange\", not a description of the whole picture.",
+     "console_errors": []
+    },
+    "images-notip": {
+     "label": "Instruction",
+     "injected_prompt_hint": null,
+     "info_hint_trigger_next_to_label": false,
+     "tooltip_text": null,
+     "console_errors": []
+    },
+    "video-tip": {
+     "label": "Prompt",
+     "injected_prompt_hint": "A sample tip injected for this screenshot.",
+     "info_hint_trigger_next_to_label": true,
+     "tooltip_text": "A sample tip injected for this screenshot.",
+     "console_errors": []
+    },
+    "video-notip": {
+     "label": "Prompt",
+     "injected_prompt_hint": null,
+     "info_hint_trigger_next_to_label": false,
+     "tooltip_text": null,
+     "console_errors": []
+    }
+   }
+  }
+ }
+}
