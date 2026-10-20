@@ -1,0 +1,51 @@
+{
+ "pr": 14349,
+ "before": "07546e7aa0864289184ca77eb4ae6e4fc136d6b7",
+ "after": "ceecaa315b4254d36c53252ec56dd5116722e24b",
+ "before_facts": {
+  "side": "before",
+  "sha": "07546e7a",
+  "viewport": {
+   "width": 1280,
+   "height": 1200
+  },
+  "dropdown_items": [
+   "Unsloth Docs",
+   "Context7 (Realtime Docs)",
+   "Hugging Face",
+   "Blender",
+   "Manage MCP servers"
+  ],
+  "tool_rows": 23,
+  "not_in_chat_rows": [],
+  "timestamp": "2026-10-20T17:44:44.317804+00:00"
+ },
+ "after_facts": {
+  "side": "after",
+  "sha": "ceecaa31",
+  "viewport": {
+   "width": 1280,
+   "height": 1200
+  },
+  "dropdown_items": [
+   "Unsloth Studio",
+   "Unsloth Docs",
+   "Context7 (Realtime Docs)",
+   "Hugging Face",
+   "Blender",
+   "Manage MCP servers"
+  ],
+  "tool_rows": 23,
+  "not_in_chat_rows": [
+   "load_model",
+   "unload_model",
+   "chat",
+   "start_training",
+   "export_model",
+   "cancel"
+  ],
+  "timestamp": "2026-10-20T17:45:54.539870+00:00"
+ },
+ "chat_turn": "Used tool: Unsloth Studio \u00b7 studio_status",
+ "chat_key_rows_after_call": 0
+}
