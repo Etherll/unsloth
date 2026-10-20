@@ -1,0 +1,24 @@
+{
+ "pr": 14348,
+ "before": "b25007f48095076f8c9a0c0542dc7b8689e5a162",
+ "after": "17246e2c18172d76c9f9a225e8e207577965054c",
+ "before_facts": {
+  "side": "before",
+  "viewport": "1440x1000@1x light",
+  "agents_row_present": false
+ },
+ "after_facts": {
+  "side": "after",
+  "viewport": "1440x1000@1x light",
+  "agents_row_present": true,
+  "agents_row_is_last_section": true,
+  "tools_off_after_toggle": [
+   "cancel",
+   "start_training"
+  ],
+  "switches_off_after_reload": 2,
+  "key_created": true,
+  "snippet_has_new_key": true,
+  "snippet_key_cleared_after_close": true
+ }
+}
