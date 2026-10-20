@@ -1,0 +1,41 @@
+{
+ "pr": 14348,
+ "before": "b25007f48095076f8c9a0c0542dc7b8689e5a162",
+ "after": "f8fa004ddaf4044ffd480a46ecd190403ef13541",
+ "before_facts": {
+  "side": "before",
+  "viewport": "1440x1000@1x light",
+  "rail_has_mcp_tab": false,
+  "api_tab_old_mcp_card": true,
+  "api_tab_status_row": false,
+  "agents_tab_status_row": false,
+  "agents_open_mcp_button": false,
+  "api_mcp_access_keys": [
+   "enabled",
+   "forced_by_env",
+   "url"
+  ],
+  "api_disabled_tools": []
+ },
+ "after_facts": {
+  "side": "after",
+  "viewport": "1440x1000@1x light",
+  "rail_has_mcp_tab": true,
+  "api_tab_old_mcp_card": false,
+  "api_tab_status_row": true,
+  "agents_tab_status_row": true,
+  "agents_open_mcp_button": true,
+  "mcp_tool_rows": 23,
+  "mcp_tool_switches_off": 2,
+  "api_mcp_access_keys": [
+   "enabled",
+   "forced_by_env",
+   "tools",
+   "url"
+  ],
+  "api_disabled_tools": [
+   "cancel",
+   "start_training"
+  ]
+ }
+}
