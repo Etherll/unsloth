@@ -3195,19 +3195,27 @@ class UnslothTrainer:
         return (train_data, eval_data)
 
     @staticmethod
+    def _resolve_local_path(dataset_file: str) -> Path:
+        if os.path.isabs(dataset_file):
+            return Path(dataset_file)
+        if os.path.exists(dataset_file):
+            # A path relative to the current working directory (CLI usage)
+            return Path(os.path.abspath(dataset_file))
+        return Path(str(resolve_dataset_path(dataset_file)))
+
+    @staticmethod
+    def _load_saved_dataset(file_paths: list):
+        if len(file_paths) != 1:
+            return None
+        from utils.datasets.saved import load_saved_dataset
+        return load_saved_dataset(UnslothTrainer._resolve_local_path(file_paths[0]))
+
+    @staticmethod
     def _resolve_local_files(file_paths: list) -> list[str]:
         """Resolve a list of local dataset paths to concrete file paths."""
         all_files: list[str] = []
         for dataset_file in file_paths:
-            if os.path.isabs(dataset_file):
-                file_path = dataset_file
-            elif os.path.exists(dataset_file):
-                # A path relative to the current working directory (CLI usage)
-                file_path = os.path.abspath(dataset_file)
-            else:
-                file_path = str(resolve_dataset_path(dataset_file))
-
-            file_path_obj = Path(file_path)
+            file_path_obj = UnslothTrainer._resolve_local_path(dataset_file)
 
             if file_path_obj.is_dir():
                 all_files.extend(str(p) for p in dataset_files_in_dir(file_path_obj))
@@ -3358,7 +3366,11 @@ class UnslothTrainer:
             if local_datasets:
                 # load_dataset() is Arrow-backed; an in-memory Dataset.from_list() has no cache and forces num_proc=1
                 # during tokenization.
-                all_files = self._resolve_local_files(local_datasets)
+                saved = self._load_saved_dataset(local_datasets)
+                all_files = [] if saved is not None else self._resolve_local_files(local_datasets)
+                if saved is not None:
+                    dataset = saved
+                    logger.info(f"Loaded {len(dataset)} samples from a saved dataset folder\n")
 
                 if all_files:
                     loader = self._loader_for_files(all_files)
