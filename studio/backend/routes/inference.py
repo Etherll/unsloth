@@ -14588,6 +14588,11 @@ class _GgufMemoryBreakdown(NamedTuple):
     gpu_layers: Optional[int]
     # Host-resident checkpoint share of kv_bytes. Keep last for positional callers.
     kv_checkpoint_bytes: int = 0
+    # Lookup-only tables (per-layer embeddings / Engram) in the main GGUF. Never on the GPU
+    # (llama.cpp pins input embeddings to the host); when lazy reading engages they are
+    # not in weights_bytes or total_bytes either, since only touched rows page in.
+    lookup_table_bytes: int = 0
+    lookup_table_on_disk: bool = False
 
 
 def _gguf_offloaded_layer_fraction(
@@ -15462,6 +15467,8 @@ def _gguf_memory_breakdown(
     # the more specific instruction. Without that, a stale "--device none" in the box
     # made a pinned load read as CPU-only and reported no GPU footprint at all.
     device_pin_governs: bool = False,
+    # The physical cards a pin selects: lazy auto resolves off when one lacks mmap support.
+    selected_gpu_ids: Optional[list[int]] = None,
 ) -> Optional[_GgufMemoryBreakdown]:
     """Itemize what loading this GGUF at ``n_ctx`` would cost. None if nothing sizes.
 
@@ -15755,6 +15762,189 @@ def _gguf_memory_breakdown(
     # --gpu-layers 0 report zero GPU bytes while both sat in VRAM.
     main_bytes = min(gpu_files_bytes, LlamaCppBackend._get_gguf_size_bytes(gguf_path))
     companion_bytes = max(0, gpu_files_bytes - main_bytes)
+    # A lookup table llama.cpp reads lazily (TENSOR_READ_LAZY, over 4 GiB, --lazy-mode auto
+    # by default) stays mmap'd from disk and pages in only the rows a token touches, and an
+    # input embedding is host-pinned in every mode. So it leaves the GPU share always, and
+    # the resident total whenever lazy reading engages (not on an iGPU / APU, where
+    # llama.cpp resolves auto to off).
+    from core.inference.llama_cpp import (
+        _effective_lazy_mode,
+        _is_per_layer_embedding,
+        _override_places_tensor_on_device,
+    )
+    from hub.utils.gguf_lookup_tables import local_lookup_info
+
+    _lt_backend = get_llama_cpp_backend()
+    try:
+        _lt_flag = str(
+            _lt_backend.probe_server_capabilities().get("lazy_mode_flag") or "--lazy-mode"
+        )
+    except Exception:  # noqa: BLE001 -- unknown build: the default spelling
+        _lt_flag = "--lazy-mode"
+    # An explicit "on" streams every flagged table, not only those over the threshold.
+    _lt_arch, _lt_bytes = local_lookup_info(
+        gguf_path,
+        "on" if _effective_lazy_mode(extras, os.environ, flag = _lt_flag) == "on" else "auto",
+    )
+    lookup_table_bytes = min(main_bytes, _lt_bytes)
+    lookup_table_on_disk = False
+    # A pin strips the device flags and their env twins at launch, so it does here too.
+    _lt_extras, _lt_env = extras, dict(os.environ)
+    if selected_gpu_ids:
+        _lt_extras = LlamaCppBackend._strip_device_extra_args(extras)
+        LlamaCppBackend._clear_device_placement_env(_lt_env)
+    if lookup_table_bytes:
+        # Streamed only on a build with a lazy mode whose devices keep it on disk.
+        lookup_table_on_disk = _lt_backend.lookup_tables_stream_by_default(
+            _lt_extras,
+            _lt_env,
+            gpu_ids = selected_gpu_ids,
+            tensor_parallel = tensor_parallel,
+        )
+    if not lookup_table_on_disk:
+        # A resident per-layer table (gemma3n's, or one under the lazy threshold) is still
+        # a host-pinned input: it leaves the GPU share, not the total.
+        try:
+            _lt_scan = _lt_backend._gguf_tensor_scan(gguf_path)
+        except Exception:  # noqa: BLE001 -- unread header: keep the lazy answer
+            _lt_scan = None
+        if _lt_scan:
+            _lt_arch = _lt_arch or _lt_scan[0]
+            _resident = sum(
+                int(v) for k, v in (_lt_scan[1] or {}).items() if _is_per_layer_embedding(k)
+            )
+            lookup_table_bytes = min(main_bytes, max(lookup_table_bytes, _resident))
+
+    def _lt_override_moves_table() -> bool:
+        # The file's own per-layer table names (an indexed per_layer_token_embd_0 too),
+        # against the arguments the child gets after a pin strips its device flags.
+        try:
+            scan = _lt_backend._gguf_tensor_scan(gguf_path)
+        except Exception:  # noqa: BLE001 -- unread header: the canonical name alone
+            scan = None
+        names = [k for k in ((scan[1] if scan else None) or {}) if _is_per_layer_embedding(k)]
+        return any(
+            _override_places_tensor_on_device(name, _lt_extras, _lt_env)
+            for name in names or ["per_layer_token_embd.weight"]
+        )
+
+    # A resident table a device override places goes wholly to that card, whatever the
+    # layer fraction says (deepseek41's loader still forces it to the host).
+    _lt_device_bytes = 0
+    if lookup_table_bytes:
+        if not lookup_table_on_disk and _lt_arch != "deepseek41" and _lt_override_moves_table():
+            _lt_device_bytes, lookup_table_bytes = lookup_table_bytes, 0
+    if lookup_table_on_disk:
+        # The launch reads the table resident (--lazy-mode off) where RAM holds it beside
+        # the host share of the weights with a margin, unless the user set a lazy mode
+        # (_managed_lazy_mode_flags); price that choice the same way.
+        from core.inference.llama_cpp import (
+            _HOST_RAM_HEADROOM_MIB,
+            _LAZY_MODE_SPELLINGS,
+            _LAZY_RESIDENT_MARGIN_FRAC,
+            _extra_args_set_any_flag,
+            _kv_offload_from_args,
+            _pass_through_overrides_placement,
+            _prompt_cache_host_bytes,
+        )
+        from core.inference.llama_server_args import fit_target_margin_in
+
+        # Only the spelling this build reads, as _managed_lazy_mode_flags decides it.
+        _lt_flags, _lt_env_name = _LAZY_MODE_SPELLINGS.get(_lt_flag, (frozenset({_lt_flag}), ""))
+        _lt_user = bool(
+            (_lt_env_name and str(_lt_env.get(_lt_env_name) or "").strip())
+            or _extra_args_set_any_flag(_lt_extras, _lt_flags)
+        )
+        _lt_avail = LlamaCppBackend._available_system_memory_mib()
+        _lt_device_share = max(0, main_bytes - lookup_table_bytes)
+        _lt_forced_host = int(_lt_device_share * max(0.0, 1.0 - gpu_fraction))
+        _lt_table_host = lookup_table_bytes + int(lookup_table_bytes * _LAZY_RESIDENT_MARGIN_FRAC)
+
+        def _lt_resident_fits() -> bool:
+            # The launch's proof (_table_resident_fits / the Apple discount): the whole load
+            # fits with the table, the prompt cache and a margin charged to RAM alone. Auto
+            # asks for every layer, so what the cards cannot hold spills beside the table.
+            if not _lt_avail or not runtime.kv_estimable:
+                return False  # unsized: the launch keeps llama.cpp's default too
+            prompt = _prompt_cache_host_bytes(
+                None,
+                _lt_extras,
+                _lt_env,
+                supports_cache_ram = bool(
+                    (_lt_backend.probe_server_capabilities() or {}).get("supports_cache_ram")
+                ),
+            )
+            if prompt is None:
+                return False
+            host_only = _lt_forced_host + _lt_table_host + prompt
+            # --no-kv-offload keeps the whole cache in RAM whatever the layer placement.
+            if not _kv_offload_from_args(_lt_extras, env = _lt_env):
+                host_only += runtime.kv_bytes
+            footprint = (
+                _lt_device_share
+                # The drafter and projector files and pass-through adapters load too.
+                + companion_bytes
+                + adapter_bytes
+                + runtime.kv_bytes
+                + runtime.compute_bytes
+                + drafter_runtime_bytes
+                + _lt_table_host
+                + prompt
+            )
+            from utils.hardware import is_apple_silicon
+
+            if is_apple_silicon():
+                # One unified pool: Metal's ceiling and the RAM the OS can spare, together.
+                budget = _lt_backend._apple_metal_memory_budget_bytes()
+                if budget <= 0:
+                    return False
+                return footprint <= min(
+                    budget, max(0, _lt_avail - _HOST_RAM_HEADROOM_MIB) * 1024 * 1024
+                )
+            try:
+                rows = list(
+                    _lt_backend._get_gpu_memory(
+                        _lt_backend._find_llama_server_binary(), for_llama_server = True
+                    )
+                    or ()
+                )
+            except Exception:  # noqa: BLE001 -- unread cards: the whole load in RAM
+                rows = []
+            pick = sorted(int(i) for i in selected_gpu_ids) if selected_gpu_ids else None
+            # A CPU device or tensor override in the extras runs weights out of RAM the
+            # cards were credited for: no VRAM credit, as the launch's fit decides.
+            if not rows or _pass_through_overrides_placement(
+                _lt_extras,
+                _lt_env,
+                len(pick) if pick is not None else len(rows),
+                is_vulkan_backend = LlamaCppBackend._is_vulkan_backend(),
+                gpu_indices = pick,
+            ):
+                rows, pick = [], None
+            return bool(
+                _lt_backend._fits_without_paging(
+                    footprint,
+                    [(idx, free) for idx, free, _total in rows],
+                    gpu_indices = pick,
+                    # Vulkan reports total 0 for an iGPU: its free memory IS host RAM.
+                    shared_gpu_ids = {idx for idx, _free, total in rows if total <= 0},
+                    host_only_bytes = host_only,
+                    # llama.cpp's --fit-target default, or the pass-through margin.
+                    vram_margin_mib = max(1024.0, fit_target_margin_in(_lt_extras, _lt_env) or 0.0),
+                    avail_mib = _lt_avail,
+                )
+            )
+
+        if (
+            not _lt_user
+            # Read resident, a device override would apply to the table; the launch then
+            # keeps it streamed (deepseek41's loader forces it to the host regardless).
+            and (_lt_arch == "deepseek41" or not _lt_override_moves_table())
+            and _lt_resident_fits()
+        ):
+            lookup_table_on_disk = False
+    if lookup_table_on_disk:
+        weights_bytes = max(0, weights_bytes - lookup_table_bytes)
     # A drafter is only charged when it lands on the GPU (a CPU-pinned one is dropped
     # from the total upstream), so the projector is the single companion that can be
     # charged and off-GPU: --no-mmproj-offload keeps it in host RAM. Priced by itself
@@ -15774,7 +15964,8 @@ def _gguf_memory_breakdown(
         if _resolved_mmproj_offload(llama_extra_args) is False:
             host_companion_bytes = min(companion_bytes, mmproj_bytes)
     gpu_weights = (
-        int(main_bytes * gpu_fraction)
+        int((main_bytes - lookup_table_bytes - _lt_device_bytes) * gpu_fraction)
+        + _lt_device_bytes
         + int(adapter_bytes * gpu_fraction)
         + companion_bytes
         - host_companion_bytes
@@ -15872,6 +16063,8 @@ def _gguf_memory_breakdown(
         layer_count = layer_count,
         gpu_layers = gpu_layers if gpu_memory_mode == "manual" else None,
         kv_checkpoint_bytes = runtime.kv_checkpoint_bytes,
+        lookup_table_bytes = lookup_table_bytes,
+        lookup_table_on_disk = lookup_table_on_disk,
     )
 
 
@@ -22666,6 +22859,7 @@ async def estimate_memory(
             # A pin names the cards, so the launch strips any device flag that says
             # otherwise and this must read the same way.
             device_pin_governs = bool(request.selected_gpu_ids),
+            selected_gpu_ids = pinned_gpu_ids,
         )
         breakdown = price(n_ctx = request.n_ctx or 0)
         if breakdown is None:
