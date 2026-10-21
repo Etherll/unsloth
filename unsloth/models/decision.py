@@ -1076,7 +1076,10 @@ def _clef_mixed_precision(model, args) -> None:
             print(
                 "Unsloth: Qwen3.5 overflows under float16 autocast, so Clef trains without autocast, keeping float32 activations."
             )
-        args.fp16 = args.bf16 = False
+        # fp16 only for its loss scaler: DecisionTrainer turns autocast off, but the float16 weights
+        # still backpropagate in float16, and unscaled that left Gemma 3's adapter gradients mostly
+        # rounding noise, so it never learned (#14439).
+        args.fp16, args.bf16 = True, False
     elif args.fp16 and getattr(model._backbone(), "dtype", None) == torch.bfloat16:
         print("Unsloth: Clef is in bfloat16, so fp16 = True is switched to bf16 = True.")
         args.fp16, args.bf16 = False, True
@@ -1212,6 +1215,9 @@ class DecisionTrainer(Trainer):
                 return backward(loss, **backward_kwargs)
 
         self.accelerator.backward = _backward
+        if clef and _clef_forced_float32(model):
+            from accelerate.utils import AutocastKwargs
+            self.accelerator.autocast_handler = AutocastKwargs(enabled = False)
 
     @contextlib.contextmanager
     def _dataset_field_order(self):
@@ -1239,6 +1245,8 @@ class DecisionTrainer(Trainer):
             batches = math.ceil(len(self.train_dataset) / self.args.train_batch_size)
             forwards = int(batches * self.args.num_train_epochs)
         amp_dtype = torch.bfloat16 if self.args.bf16 else torch.float16 if self.args.fp16 else None
+        if _clef_forced_float32(self.model):
+            amp_dtype = None
         try:
             max_length = max(len(item["input_ids"]) for item in self.train_dataset)
         except (TypeError, KeyError, ValueError):

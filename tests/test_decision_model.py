@@ -1411,9 +1411,17 @@ def test_clef_trains_in_float16_and_bfloat16(clef_checkpoint, tmp_path, dtype):
         ),
         callbacks = [Grads()],
     )
-    assert trainer.args.fp16 is False and trainer.args.bf16 == (dtype == torch.bfloat16)
+    # The float32 path keeps fp16's loss scaler with autocast off (#14439).
+    assert trainer.args.fp16 == (dtype == torch.float16) and trainer.args.bf16 == (
+        dtype == torch.bfloat16
+    )
+    handler = trainer.accelerator.autocast_handler
+    assert (handler is not None and handler.enabled is False) == (dtype == torch.float16)
     trainer.train()
-    assert grads and all(math.isfinite(loss) and math.isfinite(g) and g > 0 for loss, g in grads)
+    assert grads and all(math.isfinite(loss) for loss, _ in grads)
+    # fp16's loss scaler skips the steps that overflow while it calibrates; they log a nan grad norm.
+    stepped = [g for _, g in grads if math.isfinite(g)]
+    assert len(stepped) * 2 >= len(grads) and all(g > 0 for g in stepped), grads
     assert math.isfinite(FastDecisionModel.evaluate(model, processor, items)["loss"])
 
 
@@ -1498,8 +1506,9 @@ def test_clef_trains_under_the_autocast_it_evaluates_in(tmp_path, monkeypatch, f
     args = _args(tmp_path)
     assert not args.bf16 and not args.fp16
     decision._clef_mixed_precision(model, args)
-    expected = "no" if forced else "bf16"
-    assert args.bf16 == (not forced) and not args.fp16, (args.bf16, args.fp16)
+    # The float32 path takes fp16 for its loss scaler only; DecisionTrainer turns its autocast off.
+    expected = "fp16" if forced else "bf16"
+    assert args.bf16 == (not forced) and args.fp16 == forced, (args.bf16, args.fp16)
     assert decision.os.environ["ACCELERATE_MIXED_PRECISION"] == expected
     assert getattr(args, "mixed_precision", expected) == expected
 
