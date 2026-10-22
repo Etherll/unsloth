@@ -1210,15 +1210,24 @@ class GraphedForward:
         ]
         if not picks:
             return self._eager(args, kwargs)
+        oom = _torch().cuda.OutOfMemoryError
         try:
             copies = self._statics([live[i] for i in picks])
-        except (
-            _torch().cuda.OutOfMemoryError
-        ):  # no room for the copies: run as before, at the cost of a recompile
+        except oom:  # no room for the copies: run as before, at the cost of a recompile
             return self._eager(args, kwargs)
         for i, fresh in zip(picks, copies):
             live[i] = fresh
-        args, kwargs = _rebuild(spec, live)
+        del copies, fresh  # only ``copied`` may hold the copies past here
+        copied = _rebuild(spec, live)
+        del live
+        try:
+            return self._eager(*copied)
+        except oom as exc:
+            # The copies fit but the step beside them did not: free them (the traceback's frames hold them too) and
+            # run the step as before on the caller's own tensors, which the step alone fitted beside.
+            exc.__traceback__ = None
+        del copied
+        self.stats["eager_calls"] -= 1
         return self._eager(args, kwargs)
 
     def _engage_fallback(self) -> None:
@@ -1354,11 +1363,14 @@ class GraphedForward:
                 return self._eager(eager_args, eager_kwargs)
             if scope is not None:
                 self._render_scopes.add(scope)
-            if scope in getattr(self, "_sealed_scopes", ()) and (
-                self.placement is None or key not in self._recorded
+            if (
+                scope in getattr(self, "_sealed_scopes", ())
+                and (self.placement is None or key not in self._recorded)
+                and not (self.plan is not None and key in self._warmed)
             ):
                 # A prompt length first seen after the first render: no warm-up, no capture, no eviction on this
-                # render. (An offloaded key it recorded before re-records after its weights moved, as before.)
+                # render. (An offloaded key it recorded before re-records after its weights moved, as before. A
+                # planned key warmed before the seal, true CFG's other-length negative, still records.)
                 self.stats["length_eager"] += 1
                 return self._eager_as_recorded(eager_args, eager_kwargs)
             if self.placement is not None and speed_check_enabled():
