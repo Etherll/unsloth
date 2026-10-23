@@ -398,8 +398,10 @@ export const BUDGET = {
   // 2,085,257 -> 2,085,884 B transfer against 1f5576747, Node 24, 98 chunks), where main was already 315 B raw /
   // 239 B transfer over. Set to the measured build plus about 300 B raw / 100 B transfer (CI builds measure
   // about 100 B over a local one).
-  transferBytes: 2_085_990,
-  rawBytes: 6_925_130,
+  // Browser use step names, docs link and card fence strip (#14681): about +1.9 KB raw / +0.7 KB transfer
+  // (6,764.4 KB raw, 2,037.7 KB transfer merged onto bb89072db, Node 24, 98 chunks). Measured plus the same margin.
+  transferBytes: 2_086_750,
+  rawBytes: 6_927_100,
 };
 
 // The chunk count is reported but not budgeted. Splitting a page out of the entry raises it while lowering the
