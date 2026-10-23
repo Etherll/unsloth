@@ -409,8 +409,9 @@ export const BUDGET = {
   // The waiting-for-approval mark, Desktop attention request and tool_approved handling (#14877): measured
   // 6,929,942 B raw / 2,087,788 B transfer merged with main at b3004af53 (Node 24, 99 chunks). Set to
   // that plus about 300 B raw / 100 B transfer, as for #14568.
-  transferBytes: 2_087_890,
-  rawBytes: 6_930_250,
+  // Raised for the Cosmos3 video families (#14554).
+  transferBytes: 2_088_108,
+  rawBytes: 6_930_716,
 };
 
 // The chunk count is reported but not budgeted. Splitting a page out of the entry raises it while lowering the
