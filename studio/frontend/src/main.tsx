@@ -20,6 +20,11 @@ import {
 } from "./components/assistant-ui/reasoning-row-containment";
 import { fetchDeviceType } from "./config/env";
 import { refreshSession } from "./features/auth/api";
+import { loadGpuRendering } from "./features/settings/api/gpu-rendering";
+import {
+  getAppliedInterfaceZoom,
+  subscribeAppliedInterfaceZoom,
+} from "./features/settings/lib/interface-scale-runtime";
 import {
   applyInterfaceScaleBeforeFirstPaint,
   useInterfaceScaleStore,
@@ -49,6 +54,19 @@ if (isTauri) {
 const uaLower = navigator.userAgent.toLowerCase();
 if (uaLower.includes("linux") && !uaLower.includes("android")) {
   document.documentElement.classList.add("render-linux");
+}
+
+// WebKitGTK's CPU painter re-blurs CSS shadows on every repaint; large ones become images.
+// Loaded on use: only the Linux desktop app needs it.
+if (isTauri && document.documentElement.classList.contains("render-linux")) {
+  void import("./lib/cpu-paint-shadows").then(({ armCpuPaintShadows }) =>
+    armCpuPaintShadows({
+      interfaceZoom: getAppliedInterfaceZoom,
+      subscribeInterfaceZoom: subscribeAppliedInterfaceZoom,
+      cpuPainting: () =>
+        loadGpuRendering().then((status) => status.cpuPainting),
+    }),
+  );
 }
 
 // index.css keys off this to restore ::-webkit-scrollbar styling on Windows.
