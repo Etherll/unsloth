@@ -24,19 +24,58 @@ _CACHE_DIRS = [
 ]
 
 
-def _configured_cache_dirs() -> List[Path]:
-    """Cache dirs outside the source tree: the configured one, and the CWD. The candidates above are all source-tree relative, so a cache created in the launcher's CWD (the user profile on Windows) was invisible to cleanup. The CWD is still checked for installs that predate the pinned location."""
-    import os
+_DEFAULT_COMPILE_LEAF = "unsloth_compiled_cache"
 
-    dirs: List[Path] = []
-    configured = (os.environ.get("UNSLOTH_COMPILE_LOCATION") or "").strip()
-    if configured:
-        dirs.append(Path(configured).expanduser())
+
+def _makedirs_could_succeed(path: Path) -> bool:
+    """Whether os.makedirs(path, exist_ok=True) would work, decided without creating anything."""
     try:
-        dirs.append(Path.cwd() / "unsloth_compiled_cache")
-    except OSError:
-        pass
-    return dirs
+        if path.is_dir():
+            return True
+        probe = path
+        while not os.path.lexists(probe):
+            parent = probe.parent
+            if parent == probe:
+                return False
+            probe = parent
+        return probe.is_dir() and os.access(probe, os.W_OK | os.X_OK)
+    except (OSError, ValueError):
+        return False
+
+
+def _configured_location() -> str:
+    """UNSLOTH_COMPILE_LOCATION verbatim, as os.makedirs in unsloth_zoo.compiler takes it (no ``~``, no strip). Blank = unset, as in setup_cache_env."""
+    configured = os.environ.get("UNSLOTH_COMPILE_LOCATION") or ""
+    return configured if configured.strip() else ""
+
+
+def _configured_cache_dirs() -> List[Path]:
+    """Where unsloth_zoo.compiler writes (``_get_compile_folder``): the location, else ``<tempdir>/<leaf>``. Never the CWD default beside a configured location: the compiler does not write there, so that folder is somebody else's."""
+    import tempfile
+
+    configured = _configured_location()
+    raw = configured or _DEFAULT_COMPILE_LEAF
+    try:
+        location = Path(raw) if configured else Path.cwd() / raw
+    except (OSError, RuntimeError, ValueError):
+        return []
+    dirs: List[Path] = []
+    if _makedirs_could_succeed(location):
+        dirs.append(location)
+        # makedirs passes on an existing read-only dir, then the compiler's write fails over to the temp dir.
+        try:
+            if not (location.is_dir() and not os.access(location, os.W_OK | os.X_OK)):
+                return dirs
+        except OSError:
+            return dirs
+    # basename, as the compiler does it; an empty one (a trailing separator) would make the temp dir itself the cache.
+    leaf = os.path.basename(raw)
+    if not leaf:
+        return dirs
+    try:
+        return dirs + [Path(tempfile.gettempdir()) / leaf]
+    except (OSError, RuntimeError, ValueError):
+        return dirs
 
 
 def get_existing_cache_dirs() -> List[Path]:
@@ -79,9 +118,9 @@ def _is_dedicated_cache(path: Path) -> bool:
 def _trusted_cache_paths() -> set:
     """Where a cache is ours by where it is: the source-tree candidates, and whatever UNSLOTH_COMPILE_LOCATION names, since that is the caller's answer to where the cache lives. Never the launch directory."""
     trusted = _builtin_cache_paths()
-    configured = (os.environ.get("UNSLOTH_COMPILE_LOCATION") or "").strip()
+    configured = _configured_location()
     if configured:
-        trusted.add(str(Path(configured).expanduser()))
+        trusted.add(str(Path(configured)))
     return trusted
 
 
