@@ -3127,6 +3127,7 @@ export const ja = {
           jobs: "ジョブ",
           other: "その他",
         },
+        chatNote: "チャットでは {tools} は使えません。",
       },
       status: {
         on: "オン",

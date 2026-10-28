@@ -434,8 +434,12 @@ export const BUDGET = {
   // (6,972,239 -> 6,975,832 B raw, 2,102,226 -> 2,103,312 B transfer against a5956882f6, one machine and build,
   // Node 24, 103 chunks both): the Agents panel and its tools dialog are lazy, so the growth is their strings in the
   // eager English catalog plus the agents-mcp scroll target. Raised by that.
-  transferBytes: 2_104_296,
-  rawBytes: 6_980_222,
+  // The chat's Unsloth tools preset, its Desktop media links and the tools dialog's chat note (#14349) add
+  // 1,363 B raw / 366 B transfer on top (6,975,832 -> 6,977,195 B raw, 2,103,312 -> 2,103,678 B transfer against
+  // 8eeb3df91b, one machine and build, Node 24, 103 chunks both), in the eager chat chunk and English catalog.
+  // Raised by that.
+  transferBytes: 2_104_662,
+  rawBytes: 6_981_585,
 };
 
 // Chunk count is not budgeted: splitting a page out raises it while lowering bytes.

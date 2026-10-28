@@ -3152,6 +3152,7 @@ export const ar = {
           jobs: "المهام",
           other: "أخرى",
         },
+        chatNote: "لا تحصل الدردشة أبدًا على {tools}.",
       },
       status: {
         on: "مفعّل",
