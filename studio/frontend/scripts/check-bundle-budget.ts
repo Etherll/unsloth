@@ -430,8 +430,12 @@ export const BUDGET = {
   // with startup code (chat-settings-api, sidebar-organization-keys) split into their own eager chunks, plus the
   // mount hook and store wiring: +3,074 B raw / +2,025 B transfer (6,958,762 -> 6,961,836 B raw, 2,099,260 ->
   // 2,101,285 B transfer against 9c397197e0, Node 24, 106 -> 109 chunks). Raised by that growth.
-  transferBytes: 2_103_210,
-  rawBytes: 6_976_629,
+  // The per-tool MCP switches at the end of Settings > Agents (#14348) add 3,593 B raw / 1,086 B transfer
+  // (6,972,239 -> 6,975,832 B raw, 2,102,226 -> 2,103,312 B transfer against a5956882f6, one machine and build,
+  // Node 24, 103 chunks both): the Agents panel and its tools dialog are lazy, so the growth is their strings in the
+  // eager English catalog plus the agents-mcp scroll target. Raised by that.
+  transferBytes: 2_104_296,
+  rawBytes: 6_980_222,
 };
 
 // Chunk count is not budgeted: splitting a page out raises it while lowering bytes.
