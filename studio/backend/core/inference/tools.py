@@ -20126,6 +20126,19 @@ def _killpg_captured(pgid) -> None:
         pass
 
 
+def _captured_group_alive(pgid) -> bool:
+    """Windows jobs count as alive (terminating an empty job is harmless)."""
+    if pgid is None:
+        return False
+    if isinstance(pgid, tuple):
+        return True
+    try:
+        os.killpg(pgid, 0)
+    except (ProcessLookupError, PermissionError, OSError):
+        return False
+    return True
+
+
 def _cancel_watcher(
     proc,
     cancel_event,
@@ -21223,6 +21236,11 @@ def _missing_path_hint(output: str, workdir: str | None = None) -> str:
 
 # Kept past the spill's head so a trailing traceback still reaches `_missing_path_hint`; also the drain's read size.
 _DRAIN_TAIL_CHARS = 64 * 1024
+_DRAIN_EOF_GRACE_S = 1.5
+_BACKGROUND_STOPPED_NOTE = (
+    "[Background processes still writing to this output were stopped when the command exited. "
+    "To keep one running, redirect its output to a file, e.g. `nohup cmd > out.log 2>&1 &`.]\n"
+)
 
 
 def _drain_process_output(
@@ -21286,30 +21304,34 @@ def _drain_process_output(
             proc.wait(timeout = 5)
         except subprocess.TimeoutExpired:
             pass
-    # A grandchild that inherited stdout can hold the pipe open past the main process's exit.
+    # A grandchild that inherited stdout can hold the pipe open past the leader's exit: like bwrap's
+    # PID namespace, end it after a short grace. An empty group means the reader is only draining.
+    background_stopped = False
     if not timed_out:
-        if timeout is not None:
-            # Poll cancel_event in slices: the cancel watcher is gone once the leader exits.
-            deadline = started_at + timeout
-            while reader.is_alive():
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    timed_out = True
-                    _killpg_captured(pgid)
-                    break
-                if cancel_event is not None and cancel_event.is_set():
-                    _killpg_captured(pgid)
-                    break
-                reader.join(timeout = min(0.5, remaining))
-        else:
-            # Unlimited timeout drains until the pipe closes, like communicate(timeout=None); cancel stops it.
-            while reader.is_alive():
-                if cancel_event is not None and cancel_event.is_set():
-                    _killpg_captured(pgid)
-                    break
-                reader.join(timeout = 0.5)
+        deadline = None if timeout is None else started_at + timeout
+        grace_end = time.monotonic() + _DRAIN_EOF_GRACE_S
+        if deadline is not None:
+            grace_end = min(grace_end, deadline)
+        # Poll cancel_event in slices: the cancel watcher is gone once the leader exits.
+        while reader.is_alive():
+            if cancel_event is not None and cancel_event.is_set():
+                _killpg_captured(pgid)
+                break
+            now = time.monotonic()
+            if now >= grace_end and _captured_group_alive(pgid):
+                _killpg_captured(pgid)
+                background_stopped = True
+                break
+            if deadline is not None and now >= deadline:
+                timed_out = True
+                _killpg_captured(pgid)
+                break
+            reader.join(timeout = 0.25)
     reader.join(timeout = 5)
-    return "".join(chunks) + "".join(tail), timed_out, (omitted_chars, omitted_lines)
+    output = "".join(chunks) + "".join(tail)
+    if background_stopped:
+        output += ("\n" if output and not output.endswith("\n") else "") + _BACKGROUND_STOPPED_NOTE
+    return output, timed_out, (omitted_chars, omitted_lines)
 
 
 _MAX_REPORTED_FILES = 25
