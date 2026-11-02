@@ -232,6 +232,7 @@ def test_heterogeneous_composite_keeps_one_copy_of_an_unwrapped_converter(monkey
         WeightConverter,
     )
     from transformers.quantizers.quantizer_finegrained_fp8 import FineGrainedFP8HfQuantizer
+    from transformers.quantizers.base import HfQuantizer
 
     target = "mlp.experts.gate_up_proj"
 
@@ -252,8 +253,13 @@ def test_heterogeneous_composite_keeps_one_copy_of_an_unwrapped_converter(monkey
         FineGrainedFP8Config(dequantize = True, weight_block_size = [BLOCK, BLOCK])
     )
     quantizer.pre_quantized = True
-    loaded = quantizer.update_weight_conversions(plain())
-    model = SimpleNamespace(_weight_conversions = loaded)
+    model = SimpleNamespace(named_parameters = lambda: iter(()))
+    # Zoo's subclass wrapper hides the model argument; the base interface retains it.
+    if "model" in inspect.signature(HfQuantizer.update_weight_conversions).parameters:
+        loaded = quantizer.update_weight_conversions(plain(), model)
+    else:
+        loaded = quantizer.update_weight_conversions(plain())
+    model._weight_conversions = loaded
     monkeypatch.setattr(cm, "get_model_conversion_mapping", lambda *a, **k: plain())
     assert _helper()(model) > 0
 
