@@ -34,13 +34,14 @@ def _wrapped_call(
     monkeypatch.setattr(u, "_flex_tuned_bwd_device_ok", lambda: False)
     monkeypatch.setattr(u, "_flex_small_smem_device_ok", lambda: small_ok)
     monkeypatch.setattr(u, "_flex_call_needs_backward", lambda *a: needs_backward)
+    monkeypatch.setattr(u, "_flex_small_smem_short_query_tiles", lambda: False)
     wrapped = u._wrap_flex_attention_forward(fake_flex)
 
     class M(torch.nn.Module):
         is_causal = True
 
-    q = torch.randn(1, 2, q_len, head_dim)
-    k = torch.randn(1, 2, 128, head_dim)
+    q = torch.randn(1, 2, q_len, head_dim, dtype = torch.bfloat16)
+    k = torch.randn(1, 2, 128, head_dim, dtype = torch.bfloat16)
     wrapped(M(), q, k, k.clone(), object(), **kwargs)
     return seen["kernel_options"]
 
