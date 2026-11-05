@@ -11,7 +11,6 @@ import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useSidebarPin } from "@/hooks/use-sidebar-pin";
-import { useChatPreferencesStore } from "@/features/chat";
 import { useT } from "@/i18n";
 import { isTauri } from "@/lib/api-base";
 import {
@@ -23,6 +22,7 @@ import {
   CodeFontRow,
   CodeFontSizeRow,
   ComposerOutlineSliderRow,
+  ComposerPositionSliderRow,
   ContrastSliderRow,
   FontSmoothingSwitch,
   HeadingFontRow,
@@ -41,6 +41,7 @@ import { SettingsRow } from "../components/settings-row";
 import { SidebarMenuCustomizer } from "../components/sidebar-menu-customizer";
 import { SidebarNavCustomizer } from "../components/sidebar-nav-customizer";
 import { SettingsSection } from "../components/settings-section";
+import { ThemeFileSection } from "../appearance-theme/ui/theme-file-section";
 import { ThemeSegmented } from "../components/theme-segmented";
 import { gpuRenderingNotes } from "../gpu-rendering-notes";
 import { useGpuRenderingSetting } from "../hooks/use-gpu-rendering-setting";
@@ -163,12 +164,6 @@ function GpuRenderingRow() {
 export function AppearanceTab() {
   const t = useT();
   const { pinned, setPinned } = useSidebarPin();
-  const composerAtBottom = useChatPreferencesStore(
-    (s) => s.newChatComposerAtBottom,
-  );
-  const setComposerAtBottom = useChatPreferencesStore(
-    (s) => s.setNewChatComposerAtBottom,
-  );
   const sidebarNavSectionRef = useRef<HTMLDivElement | null>(null);
   const scrollTarget = useSettingsDialogStore((s) => s.scrollTarget);
   const consumeScrollTarget = useSettingsDialogStore(
@@ -286,14 +281,10 @@ export function AppearanceTab() {
           <ChatWidthSelect />
         </SettingsRow>
         <SettingsRow
-          label={t("settings.chat.composerAtBottom")}
-          description={t("settings.chat.composerAtBottomDescription")}
+          label={t("settings.chat.composerPosition")}
+          description={t("settings.chat.composerPositionDescription")}
         >
-          <Switch
-            aria-label={t("settings.chat.composerAtBottom")}
-            checked={composerAtBottom}
-            onCheckedChange={setComposerAtBottom}
-          />
+          <ComposerPositionSliderRow />
         </SettingsRow>
         <SettingsRow label={t("chatBackground.outline")}>
           <ComposerOutlineSliderRow />
@@ -334,6 +325,8 @@ export function AppearanceTab() {
           </SettingsRow>
         ))}
       </SettingsSection>
+
+      <ThemeFileSection />
 
       {isTauri ? (
         <SettingsSection title={t("settings.appearance.gpuRendering.sectionTitle")}>
