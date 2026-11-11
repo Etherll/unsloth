@@ -26,8 +26,11 @@ import {
   type AnchorSample,
   type MountWindow,
   CHUNK_MESSAGES,
+  type FillSample,
+  PROBE_MESSAGES,
   anchorCorrection,
   alignAnchorCorrection,
+  fillWindow,
   initialWindow,
   nextMountChunk,
   watchProgressiveScroll,
@@ -183,6 +186,26 @@ function frontierAbove(viewport: HTMLElement | null): number | null {
   return viewport.getBoundingClientRect().top - first.getBoundingClientRect().top;
 }
 
+/** Mounted rows against the bottom-pinned viewport; null when there is nothing to measure. */
+function sampleFill(viewport: HTMLElement): FillSample | null {
+  const rows = viewport.querySelectorAll("[data-role][data-message-id]");
+  if (rows.length === 0 || !viewport.isConnected) return null;
+  const top = viewport.getBoundingClientRect().top;
+  const first = rows.item(0).getBoundingClientRect();
+  const last = rows.item(rows.length - 1).getBoundingClientRect();
+  const firstTop = first.top - top + viewport.scrollTop;
+  return {
+    runwayPx: viewport.scrollHeight - viewport.clientHeight - firstTop,
+    clientHeight: viewport.clientHeight,
+    rowsPx: last.bottom - first.top,
+  };
+}
+
+/** Scrolled to the top of a scrollable viewport: no native scroll is left to protect. */
+function atMountedTop(viewport: HTMLElement | null): boolean {
+  return viewport != null && viewport.scrollTop <= 1 && viewport.scrollHeight > viewport.clientHeight + 1;
+}
+
 function isAnchorVisible(viewport: HTMLElement, element: Element): boolean {
   const box = element.getBoundingClientRect();
   const fold = viewport.getBoundingClientRect().top;
@@ -230,7 +253,7 @@ function useProgressiveMountWindow(
   }, [aui]);
 
   const [mountWindow, setMountWindow] = useState<MountWindow>(() =>
-    initialWindow(count, isRunningNow(), renderableAt()),
+    initialWindow(count, isRunningNow(), renderableAt(), PROBE_MESSAGES),
   );
 
   // Re-arm per thread during render. Unexercised while an ancestor key remounts on switch, but
@@ -238,7 +261,7 @@ function useProgressiveMountWindow(
   const [previousKey, setPreviousKey] = useState(resetKey);
   if (previousKey !== resetKey) {
     setPreviousKey(resetKey);
-    setMountWindow(initialWindow(count, isRunningNow(), renderableAt()));
+    setMountWindow(initialWindow(count, isRunningNow(), renderableAt(), PROBE_MESSAGES));
   }
 
   // Arm on the commit that first brings rows into an empty tree: history arrives after mount, and
@@ -247,7 +270,7 @@ function useProgressiveMountWindow(
   if (previousCount !== count) {
     setPreviousCount(count);
     if (previousCount === 0 && count > 0) {
-      setMountWindow(initialWindow(count, isRunningNow(), renderableAt()));
+      setMountWindow(initialWindow(count, isRunningNow(), renderableAt(), PROBE_MESSAGES));
     }
   }
 
@@ -325,8 +348,9 @@ function useProgressiveMountWindow(
         setMountWindow(null);
         return;
       }
-      // A prepend's instant anchor correction also interrupts native wheel momentum.
-      if (scrollActivity.current?.blocked(inputPointerHeld())) {
+      // A prepend's instant anchor correction also interrupts native wheel momentum, except for a
+      // reader already stopped at the top of the mounted rows: waiting would only hold them there.
+      if (scrollActivity.current?.blocked(inputPointerHeld(), atMountedTop(viewportRef.current))) {
         frame = requestAnimationFrame(advance);
         return;
       }
@@ -355,6 +379,15 @@ function useProgressiveMountWindow(
     const viewport = viewportRef.current;
     if (!viewport) return;
     if (!captured) {
+      // A probe tail that does not fill the viewport widens before its first paint: an update
+      // from a layout effect commits synchronously, so the reader never sees the short tail.
+      if (mountWindow?.fillTo != null) {
+        const filled = fillWindow(mountWindow, count, sampleFill(viewport));
+        if (filled !== mountWindow) {
+          setMountWindow(filled);
+          return;
+        }
+      }
       // The initial tail has no earlier anchor. Pin it before its first paint,
       // just as later prepends are corrected in this commit.
       adjustForContentInsertedAbove(0);

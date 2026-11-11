@@ -86,10 +86,11 @@ test("the window is only ever advanced through widen", () => {
     const ok =
       call === "null" ||
       call.startsWith("initialWindow(") ||
-      call.includes("widen(current, count, chunk)");
+      call.includes("widen(current, count, chunk)") ||
+      call === "filled";
     assert.ok(
       ok,
-      `setMountWindow(${call}) is not one of null / initialWindow / widen`,
+      `setMountWindow(${call}) is not one of null / initialWindow / widen / fillWindow`,
     );
   }
 });
@@ -126,7 +127,7 @@ test("the widening step is deferred and WebKit commits inside the animation fram
     /setTimeout|setInterval|queueMicrotask/,
     "cancelAnimationFrame does not cancel a timer, so a closed window would still widen",
   );
-  assert.match(widening, /if \(scrollActivity\.current\?\.blocked\(inputPointerHeld\(\)\)\) \{\s*frame = requestAnimationFrame\(advance\);\s*return;/);
+  assert.match(widening, /if \(scrollActivity\.current\?\.blocked\(inputPointerHeld\(\), atMountedTop\(viewportRef\.current\)\)\) \{\s*frame = requestAnimationFrame\(advance\);\s*return;/);
 });
 
 test("only WebKitGTK sizes the step by the prepend frontier; other engines keep CHUNK_MESSAGES", () => {
