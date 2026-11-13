@@ -144,6 +144,7 @@ import {
   LayerIcon,
   ApiIcon,
   Clock01Icon,
+  TranslateIcon,
 } from "@hugeicons/core-free-icons";
 import { Folder02Icon, FolderExportIcon } from "@/lib/folder-icons";
 import { Copy01Icon } from "@/lib/copy-icon";
@@ -3524,6 +3525,19 @@ export function AppSidebar() {
           </span>
         </button>
       ),
+    },
+    translate: {
+      icon: TranslateIcon,
+      label: t("shell.navigation.translate"),
+      badge: t("shell.navigation.newBadge"),
+      active: pathname === "/translate",
+      onClick: () => {
+        navigateFromRow({ to: "/translate" });
+        closeMobileIfOpen();
+      },
+      onIntent: () => {
+        preloadSilently(router.preloadRoute({ to: "/translate" }));
+      },
     },
   };
   const navRowPinned = (item: SidebarNavItemPref) =>
