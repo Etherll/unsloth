@@ -58,6 +58,9 @@ export interface NpuModel {
   supports_tools: boolean;
   max_context_length: number | null;
   resume_percent: number | null;
+  /** FastFlowLM's Hugging Face repo (owner/name) and revision; absent from older servers. */
+  hf_repo?: string | null;
+  hf_revision?: string | null;
 }
 
 export function npuRowsFor(
@@ -93,11 +96,39 @@ export function npuRuntimeLabel(
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
+export interface NpuCapability {
+  key: "vision" | "reasoning" | "tools";
+  label: string;
+}
+
+export function npuCapabilities(model: NpuModel): NpuCapability[] {
+  const out: NpuCapability[] = [];
+  if (model.supports_vision) out.push({ key: "vision", label: "Vision" });
+  if (model.supports_reasoning)
+    out.push({ key: "reasoning", label: "Reasoning" });
+  if (model.supports_tools) out.push({ key: "tools", label: "Tools" });
+  return out;
+}
+
+export function npuContextLabel(tokens: number | null): string | null {
+  if (tokens == null || tokens <= 0) return null;
+  return tokens >= 1024 && tokens % 1024 === 0
+    ? `${tokens / 1024}K context`
+    : `${tokens.toLocaleString("en-US")} context`;
+}
+
 export function npuSizeLabel(sizeGb: number | null): string | null {
   if (sizeGb == null) return null;
   return sizeGb < 1
     ? `${Math.round(sizeGb * 1000)} MB`
     : `${sizeGb.toFixed(1)} GB`;
+}
+
+/** FastFlowLM pins repos by branch, which moves; only a commit revision matches the hash-checked files. */
+export function npuReadmeNote(model: NpuModel): string | null {
+  return model.hf_repo && !/^[0-9a-f]{40}$/i.test(model.hf_revision ?? "")
+    ? "Latest on Hugging Face (may be newer than the installed files)"
+    : null;
 }
 
 export function npuResumeLabel(model: NpuModel): string | null {
