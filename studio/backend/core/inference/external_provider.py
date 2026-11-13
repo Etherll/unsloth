@@ -7411,6 +7411,7 @@ class ExternalProviderClient:
         language: Optional[str] = None,
         response_format: str = "json",
         timestamp_granularities: Optional[list[str]] = None,
+        prompt: Optional[str] = None,
     ) -> tuple[bytes, str]:
         """Post audio to an OpenAI-compatible transcription endpoint."""
         data = {
@@ -7419,6 +7420,8 @@ class ExternalProviderClient:
         }
         if language:
             data["language"] = language
+        if prompt:
+            data["prompt"] = prompt
         if timestamp_granularities:
             # Repeated field, so httpx wants the list under the bracketed name OpenAI uses.
             data["timestamp_granularities[]"] = list(timestamp_granularities)
