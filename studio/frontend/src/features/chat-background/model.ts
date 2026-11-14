@@ -4,6 +4,20 @@
 // On "all" the sidebar stays solid.
 export const SCOPES = ["newChat", "chats", "all"] as const;
 export type BackgroundScope = (typeof SCOPES)[number];
+export type BackgroundRoute = "newChat" | "chat" | "page";
+export function sanitizeScope(
+	value: unknown,
+	fallback: BackgroundScope,
+): BackgroundScope {
+	return SCOPES.includes(value as BackgroundScope)
+		? (value as BackgroundScope)
+		: fallback;
+}
+export function inScope(scope: BackgroundScope, route: BackgroundRoute): boolean {
+	if (scope === "all") return true;
+	if (scope === "chats") return route !== "page";
+	return route === "newChat";
+}
 
 export const EFFECTS = [
 	"None",
@@ -38,6 +52,10 @@ export const LENS_SCALE: Record<LensMode, number> = {
 export function sanitizeLens(value: unknown): LensMode {
 	return LENS_MODES.includes(value as LensMode) ? (value as LensMode) : "off";
 }
+// Off draws nothing: without GPU rendering, WebKitGTK repaints each wallpaper copy and its filter on every frame.
+export function lensDrawn(material: WindowMaterial, lens: LensMode): boolean {
+	return material !== "solid" && lens !== "off";
+}
 export function sanitizeStrength(value: unknown, fallback = 50): number {
 	return typeof value === "number" && Number.isFinite(value)
 		? Math.max(0, Math.min(100, Math.round(value)))
@@ -45,6 +63,20 @@ export function sanitizeStrength(value: unknown, fallback = 50): number {
 }
 export type GlassStrengths = { light: number; dark: number };
 export const DEFAULT_GLASS_STRENGTH: GlassStrengths = { light: 40, dark: 15 };
+export type GlassSettings = {
+	material: WindowMaterial;
+	strength: GlassStrengths;
+	lens: LensMode;
+	menus: boolean;
+	scope: BackgroundScope;
+};
+export const DEFAULT_GLASS: GlassSettings = {
+	material: "solid",
+	strength: DEFAULT_GLASS_STRENGTH,
+	lens: "off",
+	menus: true,
+	scope: "all",
+};
 export function sanitizeStrengths(value: unknown): GlassStrengths {
 	const stored =
 		value && typeof value === "object" ? (value as Partial<GlassStrengths>) : {};

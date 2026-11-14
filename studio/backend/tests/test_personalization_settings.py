@@ -88,7 +88,8 @@ def test_customization_defaults():
     c = p.appearance.customization
     assert c.contrast == 50
     assert c.composerOutline is None
-    assert c.reduceMotion == "system"
+    assert c.elementOutline is None
+    assert c.reduceMotion == "on"
     assert c.fontSmoothing is True
     assert c.pointerCursors is False
     assert c.codeLineNumbers is False
@@ -105,7 +106,7 @@ def test_customization_defaults():
         ("darkMode", True),
         ("guidedTour", True),
         ("profile", False),
-        ("appearance", False),
+        ("appearance", True),
         ("resources", False),
         ("chat", False),
         ("connections", False),
@@ -158,7 +159,7 @@ def test_customization_sidebar_menu_normalized():
         ("api", True),
         ("darkMode", True),
         ("profile", False),
-        ("appearance", False),
+        ("appearance", True),
         ("resources", False),
         ("chat", False),
         ("connections", False),
@@ -507,6 +508,7 @@ def test_personalization_route_roundtrip_real_shape(monkeypatch):
                 "codeFontSize": 13,
                 "contrast": 60,
                 "composerOutline": 40,
+                "elementOutline": 0,
                 "pointerCursors": True,
                 "reduceMotion": "off",
                 "fontSmoothing": True,
