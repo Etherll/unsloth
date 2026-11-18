@@ -662,3 +662,159 @@ def test_the_artifact_frame_installs_the_agent_without_eval():
     assert "buildAgent(data.code)" in html
     assert "unsafe-eval" not in _ARTIFACT_PREVIEW_FRAME_STRICT_CSP
     assert "new Function" not in html and "eval(" not in html
+
+
+@pytest.fixture
+def workspace(tmp_path, monkeypatch):
+    root = tmp_path / "ws"
+    root.mkdir()
+    (root / "draw.html").write_text("<canvas></canvas>")
+    (root / "sub").mkdir()
+    (root / "sub" / "pic.svg").write_text("<svg/>")
+    monkeypatch.setattr(tools_mod, "resolve_sandbox_workdir", lambda session_id = None: str(root))
+    return root
+
+
+@pytest.mark.parametrize(
+    "target, path",
+    [
+        ("draw.html", "draw.html"),
+        ("./draw.html", "draw.html"),
+        ("sub/pic.svg", "sub/pic.svg"),
+        ("draw.html?x=1#top", "draw.html"),
+    ],
+)
+def test_navigate_opens_a_workspace_file_in_the_panel(workspace, target, path):
+    request = _request("browser_navigate", {"url": target})
+    assert request["op"] == "open_file" and request["path"] == path
+    assert request["name"] == path.rsplit("/", 1)[-1]
+    raw = (workspace / path).read_bytes()
+    assert __import__("base64").b64decode(request["data"]) == raw
+    assert request["content_type"] in ("text/html", "image/svg+xml")
+
+
+def test_absolute_and_file_url_paths_inside_the_workspace_open(workspace):
+    full = workspace / "draw.html"
+    uri = full.as_uri()
+    for target in (str(full), uri, uri.replace("file://", "file://localhost", 1)):
+        assert _request("browser_navigate", {"url": target})["path"] == "draw.html"
+
+
+@pytest.mark.parametrize(
+    "target",
+    ["/etc/passwd", "file:///etc/passwd", "../outside.html", "sub/../../outside.html", "~/x.html"],
+)
+def test_a_path_outside_the_workspace_is_refused_with_what_to_do(workspace, target):
+    (workspace.parent / "outside.html").write_text("secret")
+    with pytest.raises(ValueError) as caught:
+        _request("browser_navigate", {"url": target})
+    assert "outside the workspace" in str(caught.value)
+    assert "Write or copy the file there first" in str(caught.value)
+
+
+def test_a_link_out_of_the_workspace_is_refused(workspace):
+    (workspace.parent / "outside.html").write_text("secret")
+    (workspace / "link.html").symlink_to(workspace.parent / "outside.html")
+    with pytest.raises(ValueError, match = "outside the workspace"):
+        _request("browser_navigate", {"url": "link.html"})
+
+
+def test_a_missing_or_large_workspace_file_says_what_to_do(workspace, monkeypatch):
+    with pytest.raises(ValueError, match = "no file mandelbrot.html in the workspace"):
+        _request("browser_navigate", {"url": "mandelbrot.html"})
+    monkeypatch.setattr(browser_agent, "_MAX_WORKSPACE_FILE_BYTES", 4)
+    with pytest.raises(ValueError, match = "up to"):
+        _request("browser_navigate", {"url": "draw.html"})
+
+
+@pytest.mark.parametrize(
+    "url, opened",
+    [
+        ("example.com/page.html", "https://example.com/page.html"),
+        ("localhost:3000/draw.html", "http://localhost:3000/draw.html"),
+        ("example.md", "https://example.md"),
+    ],
+)
+def test_sites_with_file_like_paths_stay_sites(workspace, url, opened):
+    assert _request("browser_navigate", {"url": url}) == {"op": "navigate", "url": opened}
+
+
+@pytest.mark.parametrize("url", ["file://evil.example/x.html", "javascript:alert(1)"])
+def test_non_local_file_urls_and_other_schemes_are_still_refused(workspace, url):
+    with pytest.raises(ValueError, match = "only http"):
+        _request("browser_navigate", {"url": url})
+
+
+def test_the_file_reaches_the_tab_for_this_chats_workspace(tmp_path, monkeypatch):
+    seen_sessions = []
+
+    def workdir(session_id = None):
+        seen_sessions.append(session_id)
+        folder = tmp_path / (session_id or "_default")
+        folder.mkdir(exist_ok = True)
+        (folder / "page.html").write_text(f"<p>{session_id}</p>")
+        return str(folder)
+
+    monkeypatch.setattr(tools_mod, "resolve_sandbox_workdir", workdir)
+    callback, seen = _answer_with({"ok": True, "file": "page.html", "text": "s7"}, session = "s7")
+    out = tools_mod.execute_tool(
+        "browser_navigate", {"url": "page.html"}, session_id = "s7", output_callback = callback
+    )
+    assert seen_sessions == ["s7"] and seen[0]["op"] == "open_file"
+    assert __import__("base64").b64decode(seen[0]["data"]) == b"<p>s7</p>"
+    assert "File: page.html" in out
+
+
+def test_status_badge_names_a_workspace_file():
+    from core.inference.tool_loop_controller import status_for_tool
+    assert status_for_tool("browser_navigate", {"url": "./out/draw.html"}) == "Opening: draw.html"
+    assert status_for_tool("browser_navigate", {"url": "file:///w/x.svg"}) == "Opening: x.svg"
+
+
+def test_a_code_file_named_like_a_domain_opens_only_when_the_workspace_has_it(workspace):
+    (workspace / "script.py").write_text("print(1)")
+    (workspace / "notes.md").write_text("# hi")
+    (workspace / "main.go").write_text("package main")
+    (workspace / "nb.ipynb").write_text("{}")
+    assert _request("browser_navigate", {"url": "main.go"})["path"] == "main.go"
+    assert _request("browser_navigate", {"url": "nb.ipynb"})["path"] == "nb.ipynb"
+    assert _request("browser_navigate", {"url": "example.go"})["op"] == "navigate"
+    assert _request("browser_navigate", {"url": "example.com/../script.py"}) == {
+        "op": "navigate",
+        "url": "https://example.com/../script.py",
+    }
+    assert _request("browser_navigate", {"url": "script.py"})["path"] == "script.py"
+    assert _request("browser_navigate", {"url": "notes.md"})["content_type"] == "text/markdown"
+    with pytest.raises(ValueError, match = "no file app.ts in the workspace"):
+        _request("browser_navigate", {"url": "app.ts"})
+    assert _request("browser_navigate", {"url": "example.py"}) == {
+        "op": "navigate",
+        "url": "https://example.py",
+    }
+
+
+def test_a_malformed_file_url_is_refused_and_its_badge_does_not_raise():
+    from core.inference.tool_loop_controller import status_for_tool
+    assert status_for_tool("browser_navigate", {"url": "file://["}) == "Opening a page..."
+    with pytest.raises(ValueError):
+        _request("browser_navigate", {"url": "file://["})
+
+
+def test_browsing_a_site_creates_no_sandbox(tmp_path, monkeypatch):
+    monkeypatch.setenv("UNSLOTH_STUDIO_SANDBOX_HOME", str(tmp_path / "sandbox"))
+    monkeypatch.setattr(tools_mod, "_validate_and_resolve_host", lambda host, port: (True, "", []))
+    request = browser_agent._validated_request(
+        "browser_navigate", {"url": "example.com"}, None, "chat-browse-only"
+    )
+    assert request == {"op": "navigate", "url": "https://example.com"}
+    assert not (tmp_path / "sandbox").exists()
+
+
+def test_a_windows_file_url_keeps_its_drive(monkeypatch):
+    monkeypatch.setattr(browser_agent, "_WINDOWS", True)
+    assert (
+        browser_agent.workspace_path_of("file:///C:/Users/me/ws/a%20b.html")
+        == "C:/Users/me/ws/a b.html"
+    )
+    monkeypatch.setattr(browser_agent, "_WINDOWS", False)
+    assert browser_agent.workspace_path_of("file:///C:/x.html") == "/C:/x.html"
