@@ -2921,8 +2921,7 @@ def test_the_chat_picker_marks_ollama_targets_unloadable_by_the_api():
     assert "apiLoadable: apiAutoSwitchMayLoad([id, loadId], meta.isLora)," in handoff
     assert "apiLoadable: apiAutoSwitchMayLoad([modelId], isLora)," in handoff
     predicate = " ".join(_read("features/model-picker/model-config/model-identity.ts").split())
-    # An Ollama MLX tag's checkpoint is indexed by the resolver, so only a materialized .gguf link is
-    # unloadable by the API (#18253).
+    # An MLX-format Ollama tag is a checkpoint the resolver indexes, so only materialized .gguf links are refused.
     assert "return !isLora && !ids.some(isMaterializedOllamaLink);" in predicate
     backfill = " ".join(_read("features/model-picker/api/migrate-model-overrides.ts").split())
     assert "!isMaterializedOllamaLink(entry.modelId) &&" in backfill
