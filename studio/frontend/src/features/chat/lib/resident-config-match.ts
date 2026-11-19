@@ -5,6 +5,7 @@ import type { PerModelConfig } from "@/features/model-picker";
 import {
   normalizeMlxKvQuant,
   normalizeMlxOffload,
+  sameEngramPrecision,
 } from "@/features/model-picker/model-config/per-model-config";
 
 import {
@@ -55,6 +56,7 @@ type ResidentRuntime = Pick<
   | "requested_cache_ram"
   | "tensor_parallel"
   | "disable_vision"
+  | "engram_precision"
   | "chat_template_override"
   | "requested_llama_extra_args"
   | "gpu_memory_mode"
@@ -103,7 +105,7 @@ export type StandingConfigDefaults = {
     savedIndexKind: GpuIndexKind | null | undefined,
   ) => number[] | null;
   defaultEngineGpuIds?: number[];
-  /** Unset length is not 0: a GGUF re-pick resolves to the resident context. */
+  /** The length the load would send: an unset GGUF length resolves to 0 (Auto). */
   resolveContextLength: (customContextLength: number | null) => number;
   /** Server default for an unset `--parallel`; null when unreadable. */
   parallelSlots: number | null;
@@ -219,7 +221,7 @@ const cleanTemplate = (value: string | null | undefined): string | null =>
 
 const SETTING_CHECKS: SettingCheck[] = [
   {
-    // Resolved, not raw: unset is Auto, sent as 0 cross-model or resident ctx on a re-pick.
+    // Resolved, not raw: an unset length is sent as 0 for GGUF and as a default for other engines.
     pinned: () => true,
     agrees: (c, s, standing) =>
       standing.resolveContextLength(c.customContextLength ?? null) ===
@@ -375,6 +377,12 @@ const SETTING_CHECKS: SettingCheck[] = [
     chatOnly: true,
     pinned: () => true,
     agrees: (c, s) => c.disableVision === (s.disable_vision ?? false),
+  },
+  {
+    // The table is part of the weights, so a different one is a different load.
+    chatOnly: true,
+    pinned: () => true,
+    agrees: (c, s) => sameEngramPrecision(c.engramPrecision, s.engram_precision),
   },
   {
     mlxComparable: true,

@@ -7,14 +7,21 @@ import {
   adoptCachedRepoConfig,
   loadedContextFields,
   normalizeMlxKvQuant,
+  normalizeNpuPowerMode,
   resolveResidentInitialConfig,
   savedContextPin,
 } from "@/features/model-picker/model-config/per-model-config";
+// eslint-disable-next-line no-restricted-imports -- Leaf module; the model-picker index pulls in chat.
+import { pinnedReasoningEnabled } from "@/features/model-picker/components/model-selector/reasoning-enabled-pin";
 import { modelDisplayName } from "@/features/hub/lib/model-identity";
+// eslint-disable-next-line no-restricted-imports -- Leaf module; the npu index pulls in its React views.
+import { npuDisplayNameNow } from "@/features/npu/use-npu-display-name";
 import { getInferenceStatus } from "../api/chat-api";
 import { isSpeechOnlyStatus } from "./speech-only-status";
+import { isTranslationHeldSlot } from "@/lib/translation-models";
 import {
   mergeBackendRecommendedInference,
+  recommendedValuesForPick,
   replayMaxTokensCap,
 } from "../presets/preset-policy";
 import { clampReasoningEffortToLevels } from "../provider-capabilities";
@@ -121,7 +128,9 @@ function ensureActiveModelInStoreList(
   }
   const summary: ChatModelRow = {
     id: checkpointId,
-    name: modelDisplayName(status.active_model ?? checkpointId),
+    name:
+      npuDisplayNameNow(checkpointId) ??
+      modelDisplayName(status.active_model ?? checkpointId),
     isVision: status.is_vision ?? false,
     isLora: false,
     isGguf: status.is_gguf ?? false,
@@ -192,6 +201,7 @@ export function applyActiveModelStatusToStore(
         response: status,
         modelId: checkpointId,
         presetSource: store.activePresetSource,
+        presetEditedKeys: store.presetEditedKeys,
         loadedContextLength: loadedContextFields(status).loadedContextLength,
       }),
       // Remembered settings outrank the recommendation, capped at the loaded context.
@@ -225,6 +235,10 @@ export function applyActiveModelStatusToStore(
   const preserveThinkingOnLoad = resolvePreserveThinkingOnLoad(status);
   const supportsTools = status.supports_tools ?? false;
   const storedReasoningEnabled = loadOptionalBool(CHAT_REASONING_ENABLED_KEY);
+  // Page-start adoption keeps the restored chat / installation value; the pin seeds loads only.
+  const pinnedThinking = options.adoptingExistingServerModel
+    ? null
+    : pinnedReasoningEnabled(checkpointId);
   const currentSpecType = normalizeSpeculativeType(status.speculative_type);
   const incomingMlxKvQuant = normalizeMlxKvQuant(status.mlx_kv_quant_requested);
   const incomingMlxInt8Prefill = status.mlx_int8_prefill_requested === true;
@@ -291,6 +305,17 @@ export function applyActiveModelStatusToStore(
     incoming: status.requested_load_mode,
     isGguf: status.is_gguf ?? true,
     previous: { value: prevState.loadMode, loaded: prevState.loadedLoadMode },
+    seedLoadParams,
+    modelChanged: slotsModelChanged,
+  });
+  // The echo is the table the load runs with; null is the quant's own.
+  const engramPrecisionSeed = resolveBatchSizeSeed<string>({
+    incoming: status.engram_precision,
+    isGguf: (status.is_gguf ?? true) && status.is_diffusion !== true,
+    previous: {
+      value: prevState.engramPrecision,
+      loaded: prevState.loadedEngramPrecision,
+    },
     seedLoadParams,
     modelChanged: slotsModelChanged,
   });
@@ -443,11 +468,13 @@ export function applyActiveModelStatusToStore(
       preserveThinking: preserveThinkingOnLoad,
     }),
     supportsTools,
-    ...resolveToolsEnabledOnLoad(supportsTools),
+    ...resolveToolsEnabledOnLoad(supportsTools, checkpointId),
     reasoningEnabled: supportsReasoning
       ? reasoningStyle === "reasoning_effort"
         ? true
-        : useChatRuntimeStore.getState().reasoningEnabled
+        : hydratingExistingModel && pinnedThinking !== null
+          ? pinnedThinking
+          : useChatRuntimeStore.getState().reasoningEnabled
       : true,
     ...loadedContextFields(status),
     ...(status.is_gguf
@@ -586,6 +613,14 @@ export function applyActiveModelStatusToStore(
             loadedMlxFastVerifyRequested: false,
             ...incomingMlxOffload,
           })),
+    ...(seedLoadParams && {
+      npuPowerMode:
+        status.is_npu === true ? normalizeNpuPowerMode(status.npu_power_mode) : null,
+      npuPrefillChunkLen:
+        status.is_npu === true ? (status.npu_prefill_chunk_len ?? null) : null,
+      npuImgPreResize:
+        status.is_npu === true ? (status.npu_img_pre_resize ?? null) : null,
+    }),
     // Baseline only, never the control: the echo is the RESOLVED count and would pin a blank
     ...(seedLoadParams &&
       status.requested_parallel_slots != null && {
@@ -648,6 +683,12 @@ export function applyActiveModelStatusToStore(
       loadedLoadMode: loadModeSeed.loaded ?? null,
     }),
     ...("value" in loadModeSeed && { loadMode: loadModeSeed.value ?? null }),
+    ...("loaded" in engramPrecisionSeed && {
+      loadedEngramPrecision: engramPrecisionSeed.loaded ?? null,
+    }),
+    ...("value" in engramPrecisionSeed && {
+      engramPrecision: engramPrecisionSeed.value ?? null,
+    }),
     ...("loaded" in specDraftCacheSeed && {
       loadedSpecDraftCacheDtype: specDraftCacheSeed.loaded ?? null,
     }),
@@ -699,7 +740,8 @@ export function applyActiveModelStatusToStore(
   if (
     supportsReasoning &&
     hydratingExistingModel &&
-    storedReasoningEnabled === null
+    storedReasoningEnabled === null &&
+    pinnedThinking === null
   ) {
     // Anchored size regex; mirrors use-chat-model-runtime.ts and the inline regex in llama_cpp.py.
     let reasoningDefault = true;
@@ -731,11 +773,15 @@ export function applyActiveModelStatusToStore(
   // Layer the active Qwen mode over the family defaults so a refresh cannot undo performLoad.
   if (status.inference && supportsReasoning) {
     const current = useChatRuntimeStore.getState();
-    const qwenParams = resolveQwenThinkingParams(
-      checkpointId,
-      reasoningAlwaysOn || current.reasoningEnabled,
+    const qwenParams = recommendedValuesForPick(
+      resolveQwenThinkingParams(
+        checkpointId,
+        reasoningAlwaysOn || current.reasoningEnabled,
+      ),
+      current.activePresetSource,
+      current.presetEditedKeys,
     );
-    if (qwenParams !== null && current.activePresetSource === "builtin-default") {
+    if (qwenParams !== null) {
       current.setParams(
         { ...current.params, ...qwenParams },
         {
@@ -774,7 +820,8 @@ export async function tryAdoptServerActiveModel(options?: {
   if (
     !status.active_model ||
     (status.loading?.length ?? 0) > 0 ||
-    isSpeechOnlyStatus(status)
+    isSpeechOnlyStatus(status) ||
+    isTranslationHeldSlot(status.active_model, null)
   ) {
     return false;
   }

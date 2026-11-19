@@ -378,7 +378,7 @@ test("a partial GGUF repo carries its own menu, not an empty gutter", () => {
   );
   assert.match(
     row,
-    /\) : \([\s\S]*?<span className=\{cn\(ROW_ACTIONS_PINNED_CLASS, "h-6"\)\}>\s*\{soleQuantPending \? null : \(/,
+    /\) : \([\s\S]*?<span\s+className=\{cn\(\s*ROW_ACTIONS_PINNED_CLASS,\s*"h-6 max-md:h-auto max-md:self-stretch",?\s*\)\}\s*>\s*\{soleQuantPending \? null : \(/,
     "and a complete repo's gutter holds only the expand chevron",
   );
   assert.ok(row.includes("cachePath={{ repoId: c.repo_id }}"), "reveal");
@@ -572,7 +572,7 @@ test("a torn quant inside the expander keeps its own menu", () => {
   // A partial still occupies disk, so its quant row needs reveal and delete.
   assert.match(
     PICKERS,
-    /\{\(v\.downloaded \|\| v\.partial === true\) &&\n\s*\(allowPin \|\|/,
+    /const variantHasMenu = \(v: GgufVariantDetail\): boolean =>\n\s*\(v\.downloaded === true \|\| v\.partial === true\) &&\n\s*Boolean\(\n\s*allowPin \|\|/,
     "the menu follows disk, not completeness",
   );
   // Pinning an unloadable quant would put a dead row at the top of the list.
@@ -581,7 +581,8 @@ test("a torn quant inside the expander keeps its own menu", () => {
     /pin=\{\n\s*allowPin && v\.downloaded\n\s*\? \{/,
     "pin stays for complete quants only",
   );
-  assert.ok(PICKERS.includes("{v.downloaded && onConfigure && ("));
+  // Settings follow loadability: only a local folder short a shard has nothing to configure.
+  assert.ok(PICKERS.includes("{!unusableLocal && onConfigure && ("));
 });
 
 test("a torn quant is labelled, not left looking undownloaded", () => {

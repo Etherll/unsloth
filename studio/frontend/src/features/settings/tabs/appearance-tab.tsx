@@ -11,18 +11,15 @@ import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useSidebarPin } from "@/hooks/use-sidebar-pin";
-import { useChatPreferencesStore } from "@/features/chat";
 import { useT } from "@/i18n";
 import { isTauri } from "@/lib/api-base";
 import {
   ActiveColorControl,
   ChatFontRow,
-  ChatWidthSelect,
   CodeDisplaySwitch,
-  SentAttachmentsSelect,
   CodeFontRow,
   CodeFontSizeRow,
-  ComposerOutlineSliderRow,
+  ElementOutlineSliderRow,
   ContrastSliderRow,
   FontSmoothingSwitch,
   HeadingFontRow,
@@ -41,6 +38,7 @@ import { SettingsRow } from "../components/settings-row";
 import { SidebarMenuCustomizer } from "../components/sidebar-menu-customizer";
 import { SidebarNavCustomizer } from "../components/sidebar-nav-customizer";
 import { SettingsSection } from "../components/settings-section";
+import { ThemeFileSection } from "../appearance-theme/theme-file-section";
 import { ThemeSegmented } from "../components/theme-segmented";
 import { gpuRenderingNotes } from "../gpu-rendering-notes";
 import { useGpuRenderingSetting } from "../hooks/use-gpu-rendering-setting";
@@ -163,25 +161,29 @@ function GpuRenderingRow() {
 export function AppearanceTab() {
   const t = useT();
   const { pinned, setPinned } = useSidebarPin();
-  const composerAtBottom = useChatPreferencesStore(
-    (s) => s.newChatComposerAtBottom,
-  );
-  const setComposerAtBottom = useChatPreferencesStore(
-    (s) => s.setNewChatComposerAtBottom,
-  );
   const sidebarNavSectionRef = useRef<HTMLDivElement | null>(null);
+  const profileMenuSectionRef = useRef<HTMLDivElement | null>(null);
   const scrollTarget = useSettingsDialogStore((s) => s.scrollTarget);
   const consumeScrollTarget = useSettingsDialogStore(
     (s) => s.consumeScrollTarget,
   );
   useEffect(() => {
-    if (scrollTarget !== "appearance-sidebar-nav") return;
+    if (
+      scrollTarget !== "appearance-sidebar-nav" &&
+      scrollTarget !== "appearance-profile-menu"
+    ) {
+      return;
+    }
+    const section =
+      scrollTarget === "appearance-sidebar-nav"
+        ? sidebarNavSectionRef
+        : profileMenuSectionRef;
     const frame = window.requestAnimationFrame(() => {
-      sidebarNavSectionRef.current?.scrollIntoView({
+      section.current?.scrollIntoView({
         block: "start",
         behavior: "smooth",
       });
-      consumeScrollTarget("appearance-sidebar-nav");
+      consumeScrollTarget(scrollTarget);
     });
     return () => window.cancelAnimationFrame(frame);
   }, [consumeScrollTarget, scrollTarget]);
@@ -253,6 +255,12 @@ export function AppearanceTab() {
         >
           <InterfaceScaleRow />
         </SettingsRow>
+        <SettingsRow
+          label={t("settings.appearance.custom.elementOutline.label")}
+          description={t("settings.appearance.custom.elementOutline.description")}
+        >
+          <ElementOutlineSliderRow />
+        </SettingsRow>
         <GreetingSettingsRows />
         <SettingsRow
           label={t("settings.appearance.custom.pointerCursors.label")}
@@ -275,36 +283,6 @@ export function AppearanceTab() {
           )}
         >
           <FontSmoothingSwitch />
-        </SettingsRow>
-      </SettingsSection>
-
-      <SettingsSection title={t("settings.appearance.composer.title")}>
-        <SettingsRow
-          label={t("settings.appearance.custom.chatWidth.label")}
-          description={t("settings.appearance.custom.chatWidth.description")}
-        >
-          <ChatWidthSelect />
-        </SettingsRow>
-        <SettingsRow
-          label={t("settings.chat.composerAtBottom")}
-          description={t("settings.chat.composerAtBottomDescription")}
-        >
-          <Switch
-            aria-label={t("settings.chat.composerAtBottom")}
-            checked={composerAtBottom}
-            onCheckedChange={setComposerAtBottom}
-          />
-        </SettingsRow>
-        <SettingsRow label={t("chatBackground.outline")}>
-          <ComposerOutlineSliderRow />
-        </SettingsRow>
-        <SettingsRow
-          label={t("settings.appearance.custom.sentAttachments.label")}
-          description={t(
-            "settings.appearance.custom.sentAttachments.description",
-          )}
-        >
-          <SentAttachmentsSelect />
         </SettingsRow>
       </SettingsSection>
 
@@ -335,6 +313,8 @@ export function AppearanceTab() {
         ))}
       </SettingsSection>
 
+      <ThemeFileSection />
+
       {isTauri ? (
         <SettingsSection title={t("settings.appearance.gpuRendering.sectionTitle")}>
           <GpuRenderingRow />
@@ -360,14 +340,16 @@ export function AppearanceTab() {
         </SettingsSection>
       </div>
 
-      <SettingsSection
-        title={t("settings.appearance.sidebarMenu.title")}
-        description={t("settings.appearance.sidebarMenu.description")}
-      >
-        <div className="pt-3">
-          <SidebarMenuCustomizer />
-        </div>
-      </SettingsSection>
+      <div ref={profileMenuSectionRef} className="scroll-mt-4">
+        <SettingsSection
+          title={t("settings.appearance.sidebarMenu.title")}
+          description={t("settings.appearance.sidebarMenu.description")}
+        >
+          <div className="pt-3">
+            <SidebarMenuCustomizer />
+          </div>
+        </SettingsSection>
+      </div>
 
       <div className="flex justify-end border-t border-border/60 pt-4">
         <ResetCustomizationButton />
