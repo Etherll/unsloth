@@ -1141,12 +1141,63 @@ def replica_working_mib(module: Any) -> int:
     return max(int(_WORKING_SET_MIN_MIB), int(_WORKING_SET_BLOCKS) * int(largest))
 
 
+def _config_int(config: Any, *names: str) -> int:
+    for name in names:
+        value = getattr(config, name, None)
+        if value is None and isinstance(config, Mapping):
+            value = config.get(name)
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            return int(value)
+    return 0
+
+
+def _replica_tokens(module: Any) -> int:
+    """Tokens per branch of ``module``'s default request, else the 1024px canvas (as :func:`replica_layout`)."""
+    with contextlib.suppress(Exception):
+        for pipe, request in list(_DEFAULT_REQUESTS.items()):
+            if request.tokens and any(
+                getattr(pipe, n, None) is module for n in ("transformer", "unet")
+            ):
+                return int(request.tokens)
+    from .diffusion_memory import _COST_CANVAS_PX, _DIT_PIXELS_PER_TOKEN
+
+    return (_COST_CANVAS_PX // _DIT_PIXELS_PER_TOKEN) ** 2
+
+
+def replica_activation_mib(module: Any, tokens: Optional[int] = None) -> int:
+    """MiB one batch-1 guidance branch holds in the widest block over the weights; 0 without a DiT width (U-Nets)."""
+    try:
+        config = getattr(module, "config", None)
+        heads = _config_int(config, "num_attention_heads", "num_heads")
+        head_dim = _config_int(config, "attention_head_dim", "head_dim")
+        inner = heads * head_dim
+        hidden = _config_int(config, "hidden_size", "dim", "inner_dim") or inner
+        if hidden <= 0:
+            return 0
+        dtype = getattr(module, "dtype", None)
+        if not getattr(dtype, "is_floating_point", False):
+            dtype = next((p.dtype for p in module.parameters() if p.is_floating_point()), None)
+        # quantized weights still compute in >= 16-bit activations
+        elem = max(2, int(getattr(dtype, "itemsize", 2) or 2))
+        from .diffusion_attention import block_activation_bytes
+
+        per_query, per_key = block_activation_bytes(hidden, inner or hidden, hidden, elem)
+        n = int(tokens) if tokens else _replica_tokens(module)
+        return int(-(-n * (per_query + per_key) // (1 << 20)))
+    except Exception:  # noqa: BLE001 - unreadable config: the weights-only need, as before
+        return 0
+
+
 def replica_need_mib(module: Any) -> int:
-    """MiB beyond :func:`_replica_reserve_mib`: weights plus working set over the reserve."""
+    """MiB beyond :func:`_replica_reserve_mib`: weights, one branch's activations, working set over the reserve."""
     weights = sum(
         t.numel() * t.element_size() for t in (*module.parameters(), *module.buffers())
     ) // (1 << 20)
-    return int(weights) + max(0, replica_working_mib(module) - _REPLICA_BASE_RESERVE_MIB)
+    return (
+        int(weights)
+        + replica_activation_mib(module)
+        + max(0, replica_working_mib(module) - _REPLICA_BASE_RESERVE_MIB)
+    )
 
 
 def replica_fits(free_mib: Optional[int], total_mib: Optional[int], need_mib: int) -> bool:
