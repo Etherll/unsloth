@@ -1474,6 +1474,7 @@ _CONTENDED_BUSY_TIMEOUT_SECONDS = 30.0
 def reset_schema_state_for_tests() -> None:
     with _schema_lock:
         _schema_ready.clear()
+    close_settings_readers()
 
 
 def get_connection(
@@ -1516,6 +1517,9 @@ def get_connection(
             conn.close()
             raise
     return conn
+
+
+_get_connection = get_connection  # the real factory: only its connections are cached
 
 
 # Held open so the last-writer close does not checkpoint the WAL several times a second (#9934).
@@ -2102,14 +2106,11 @@ def cleanup_orphaned_runs() -> None:
 
 
 def list_scan_folders() -> list[dict]:
-    conn = get_connection()
-    try:
-        rows = conn.execute(
-            "SELECT id, path, created_at, recursive FROM scan_folders ORDER BY created_at"
-        ).fetchall()
-        return [{**dict(row), "recursive": bool(row["recursive"])} for row in rows]
-    finally:
-        conn.close()
+    # Read on every sandboxed tool launch (model folders are granted read-only): the shared reader.
+    rows = _shared_read_rows(
+        "SELECT id, path, created_at, recursive FROM scan_folders ORDER BY created_at", ()
+    )
+    return [{**dict(row), "recursive": bool(row["recursive"])} for row in rows]
 
 
 def add_scan_folder_with_status(path: str, recursive: bool | None = None) -> tuple[dict, bool]:
@@ -5972,15 +5973,140 @@ def list_chat_messages_for_threads(
         conn.close()
 
 
-def get_app_setting(key: str, fallback = None):
+# One long-lived read connection per database for app-setting lookups. A tool launch reads about a
+# dozen settings, and a fresh connection per read (open, three PRAGMAs, close, all under the
+# process-wide sqlite_gate) cost 1-3 ms each. Every autocommit SELECT starts a new read
+# transaction, so writes from any connection or process are seen by the next read.
+class _SettingsReader(NamedTuple):
+    identity: tuple[int, int]
+    conn: sqlite3.Connection
+    # Held while a query runs: one connection serves one query at a time.
+    busy: threading.Lock
+
+
+_settings_readers: dict[Path, _SettingsReader] = {}
+# Guards the map only; queries run outside it, so a database waiting on a lock stalls no other.
+_settings_reader_lock = threading.Lock()
+_settings_generation = 0
+
+
+def _reset_settings_readers_after_fork() -> None:
+    # A child must not reuse, close or free the parent's handles; it opens its own.
+    global _settings_reader_lock, _settings_readers
+    _inherited_settings_readers.extend(_settings_readers.values())
+    _settings_readers = {}
+    _settings_reader_lock = threading.Lock()
+
+
+_inherited_settings_readers: list[_SettingsReader] = []
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child = _reset_settings_readers_after_fork)
+
+
+def _db_file_identity(path: Path) -> tuple[int, int] | None:
+    try:
+        metadata = os.stat(path)
+    except OSError:
+        return None
+    if not metadata.st_ino:
+        # No file id here, so a replaced database could not be told apart: read uncached.
+        return None
+    return (metadata.st_dev, metadata.st_ino)
+
+
+def _close_reader(reader: _SettingsReader) -> None:
+    # Waits out a query in flight on this connection; later borrowers see it closed and read once.
+    with reader.busy:
+        try:
+            reader.conn.close()
+        except Exception as exc:  # noqa: BLE001 - a failed close must not block the keeper close
+            logger.warning("Could not close a studio.db settings reader: %s", exc)
+
+
+def close_settings_readers() -> None:
+    global _settings_generation
+    with _settings_reader_lock:
+        readers = list(_settings_readers.values())
+        _settings_readers.clear()
+        _settings_generation += 1  # a reader opening right now is used once, never published
+    for reader in readers:
+        _close_reader(reader)
+
+
+def _read_once(sql: str, params: tuple | list) -> list:
     conn = get_connection()
     try:
-        row = conn.execute("SELECT value_json FROM app_settings WHERE key = ?", (key,)).fetchone()
-        if row is None:
-            return fallback
-        return _json_loads(row["value_json"], fallback)
+        return conn.execute(sql, params).fetchall()
     finally:
         conn.close()
+
+
+def _settings_reader(db_path: Path) -> _SettingsReader | None:
+    if get_connection is not _get_connection:
+        return None  # a substituted factory (tests) is read through, never cached
+    identity = _db_file_identity(db_path)
+    with _settings_reader_lock:
+        reader = _settings_readers.get(db_path)
+        if reader is not None and reader.identity == identity:
+            return reader
+        # The database was replaced or removed (restore, account reset): never read a stale file.
+        stale = _settings_readers.pop(db_path, None)
+        generation = _settings_generation
+    if stale is not None:
+        _close_reader(stale)
+    conn = get_connection(check_same_thread = False)  # creates the database on first use
+    opened = _db_file_identity(db_path)
+    reader = _SettingsReader(opened, conn, threading.Lock())
+    with _settings_reader_lock:
+        # Published only if the file did not move while it opened and no close ran meanwhile.
+        if opened is not None and identity in (None, opened) and generation == _settings_generation:
+            current = _settings_readers.setdefault(db_path, reader)
+        else:
+            current = None
+    if current is not reader:
+        _close_reader(reader)
+    return current
+
+
+def _shared_read_rows(sql: str, params: tuple | list) -> list:
+    db_path = studio_db_path()
+    # The account-retirement check get_connection runs before every fresh connection.
+    ensure_account_dir(db_path.parent)
+    reader = _settings_reader(db_path)
+    if reader is None or not reader.busy.acquire(blocking = False):
+        # Another read is using the connection: a one-shot read, as before the cache, so readers never queue.
+        return _read_once(sql, params)
+    try:
+        return reader.conn.execute(sql, params).fetchall()
+    except sqlite3.Error as exc:
+        # Never keep a failed handle: closed by close_settings_readers between the lookup and this
+        # query, or broken. A busy database raises as an uncached read would; anything else is retried once.
+        _drop_reader(db_path, reader)
+        if isinstance(exc, sqlite3.OperationalError):
+            raise
+    finally:
+        reader.busy.release()
+    return _read_once(sql, params)
+
+
+def _drop_reader(db_path: Path, reader: _SettingsReader) -> None:
+    with _settings_reader_lock:
+        if _settings_readers.get(db_path) is reader:
+            del _settings_readers[db_path]
+    try:
+        reader.conn.close()  # the caller holds reader.busy
+    except Exception:  # noqa: BLE001
+        pass
+
+
+on_wal_keeper_closed(close_settings_readers)
+
+
+def get_app_setting(key: str, fallback = None):
+    rows = _shared_read_rows("SELECT value_json FROM app_settings WHERE key = ?", (key,))
+    if not rows:
+        return fallback
+    return _json_loads(rows[0]["value_json"], fallback)
 
 
 def get_app_settings(keys: list[str]) -> dict[str, Any]:
@@ -5988,16 +6114,12 @@ def get_app_settings(keys: list[str]) -> dict[str, Any]:
     unique = list(dict.fromkeys(keys))
     if not unique:
         return {}
-    conn = get_connection()
-    try:
-        placeholders = ",".join("?" for _ in unique)
-        rows = conn.execute(
-            f"SELECT key, value_json FROM app_settings WHERE key IN ({placeholders})",
-            unique,
-        ).fetchall()
-        return {row["key"]: _json_loads(row["value_json"], None) for row in rows}
-    finally:
-        conn.close()
+    placeholders = ",".join("?" for _ in unique)
+    rows = _shared_read_rows(
+        f"SELECT key, value_json FROM app_settings WHERE key IN ({placeholders})",
+        unique,
+    )
+    return {row["key"]: _json_loads(row["value_json"], None) for row in rows}
 
 
 def compare_and_set_app_setting(
