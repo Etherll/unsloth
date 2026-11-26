@@ -711,6 +711,43 @@ def _native_audio_repo_files(
     return required
 
 
+_GGUF_FLOAT_LABEL = re.compile(r"(?:^|[-_.])(fp(?:8|16|32))$")
+_GGUF_BPW = re.compile(r"-\d+(?:\.\d+)?bpw")
+
+
+def _gguf_quants(siblings: list[Any]) -> dict[str, set[str]]:
+    """Quant labels per GGUF model, read the way the Hub reads variants: split parts count once,
+    projectors not at all, and a companion model (a codec, a VAE) is its own model rather than
+    another quant."""
+    from hub.utils.gguf import _gguf_stem, quant_token_with_bpw
+
+    models: dict[str, set[str]] = {}
+    for sibling in siblings:
+        path = str(getattr(sibling, "rfilename", "")).strip().replace("\\", "/")
+        if not path.lower().endswith(".gguf") or "mmproj" in path.lower():
+            continue
+        stem = _gguf_stem(path).lower()
+        quant = (quant_token_with_bpw(path) or "").lower()
+        if not quant and (floating := _GGUF_FLOAT_LABEL.search(stem)):
+            quant = floating.group(1)
+        token, model = _GGUF_BPW.sub("", quant), _GGUF_BPW.sub("", stem)
+        at = model.rfind(token) if token else -1
+        if at >= 0:
+            model = model[:at] + model[at + len(token) :]
+        models.setdefault(model.strip("-_."), set()).add(quant)
+    return models
+
+
+_NATIVE_WEIGHTS = re.compile(
+    r"(^|/)(?!adapter_model)([^/]*\.safetensors|pytorch_model[^/]*\.bin)$", re.IGNORECASE
+)
+
+
+def _has_native_weights(siblings: list[Any]) -> bool:
+    """A Transformers checkpoint, whose GGUF quants are a side format; a stray .pt or a PEFT adapter is not one."""
+    return any(_NATIVE_WEIGHTS.search(str(getattr(s, "rfilename", "")).strip()) for s in siblings)
+
+
 def native_audio_download_plan(model_name: str, hf_token: Optional[str] = None) -> dict[str, Any]:
     """Native models add companion codec repos, and MiniMax skips legacy weights its index never names."""
     normalized = str(model_name or "").strip()
@@ -759,6 +796,21 @@ def native_audio_download_plan(model_name: str, hf_token: Optional[str] = None) 
         )
         if not siblings:
             raise ValueError(f"{repo_id} does not publish files required by its audio loader.")
+        # No audio loader names this repo, so its plan is every file; for a GGUF-only repo with
+        # several quants that is all of them (terabytes for a large chat model). A GGUF pick names one.
+        if audio_type is None and any(
+            len(quants) > 1 for quants in _gguf_quants(siblings).values()
+        ):
+            if not _has_native_weights(siblings):
+                raise ValueError(
+                    f"{repo_id} is a GGUF repository: pick one of its GGUF files instead of downloading all of them."
+                )
+            # The native loader reads the checkpoint, never the quants published beside it.
+            siblings = [
+                s
+                for s in siblings
+                if not str(getattr(s, "rfilename", "")).lower().endswith(".gguf")
+            ]
         revision = str(getattr(info, "sha", "") or "") or None
         missing_files = []
         missing_bytes = 0
