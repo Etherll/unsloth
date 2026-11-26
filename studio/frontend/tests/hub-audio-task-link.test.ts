@@ -55,11 +55,16 @@ test("a typed Hub search still keeps only the linked audio tasks", () => {
   );
 });
 
-test("Separate's Search Hub link narrows to audio-to-audio, not the speak picker's tasks", () => {
-  // The speak tasks (text-to-speech, text-to-audio) filtered out every separation model.
+test("Separate's Search Hub opens the audio.cpp repo, which no Hub task filter lists", () => {
   const audioPage = readSrc("features/audio/audio-page.tsx");
   const selector = readSrc("features/model-picker/components/model-selector.tsx");
-  assert.match(audioPage, /hubTask=\{pageWorkflow === "separate" \? "audio-to-audio" : undefined\}/);
-  assert.match(selector, /const linkedTask = hubTask \?\? task;[\s\S]{0,200}?audioTask:\s*hubCapability === "audio" && linkedTask \? \[linkedTask\]\.flat\(\)/);
-  assert.deepEqual(hubAudioTaskSearch("audio-to-audio", "audio"), ["audio-to-audio"]);
+  assert.match(audioPage, /const AUDIO_CPP_REPO_URL = `https:\/\/huggingface\.co\/\$\{AUDIO_CPP_REPO\}`;/);
+  assert.match(audioPage, /hubLink=\{pageWorkflow === "separate" \? AUDIO_CPP_REPO_URL : undefined\}/);
+  assert.doesNotMatch(audioPage, /"audio-to-audio"/);
+  assert.match(selector, /setOpen\(false\);\s*if \(hubLink\) \{\s*openLink\(hubLink\);\s*return;\s*\}/);
+  assert.match(selector, /audioTask:\s*hubCapability === "audio" && task \? \[task\]\.flat\(\)/);
+  assert.match(selector, /browseHubHint=\{hubLink \? "Open these models on Hugging Face" : undefined\}/);
+  const pickers = readSrc("features/model-picker/components/model-selector/pickers.tsx");
+  assert.match(pickers, /aria-label="Search more models on the Hub"/);
+  assert.match(pickers, /<TooltipContent>\{browseHubHint \?\? "Search all models"\}<\/TooltipContent>/);
 });
