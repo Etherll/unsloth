@@ -33,6 +33,7 @@ _ENV = (
     "UNSLOTH_PARALLEL",
     "UNSLOTH_PARALLEL_AUTO_RESOLVED",
     "UNSLOTH_PARALLEL_AUTO_GB",
+    "UNSLOTH_PARALLEL_AUTO_OFFLOAD_RESOLVED",
     "UNSLOTH_FSDP2",
     "UNSLOTH_TP_SIZE",
     "UNSLOTH_PP_SIZE",
@@ -127,8 +128,15 @@ def clean(monkeypatch):
     monkeypatch.setattr(auto, "_peft_base_real", getattr(auto, "_peft_base", None), raising = False)
     monkeypatch.setattr(auto, "_peft_base", lambda name, call, revision: None, raising = False)
     _stub_loader_facts(auto, monkeypatch.setattr)
+    # Host independent: no streamed DDP layout unless a test asks for one (a PCIe CUDA host would offer it).
+    monkeypatch.setattr(
+        auto,
+        "_discrete_cuda_why",
+        lambda: "the test host is not sized for block swap",
+        raising = False,
+    )
     yield monkeypatch, env, auto
-    auto._STATE.update(choice = None, reason = None)
+    auto._STATE.update(choice = None, reason = None, offload = False, offload_pending = False)
 
 
 def _snapshot():
@@ -1161,3 +1169,285 @@ def test_fp8_to_nf4_load_is_sized_in_4bit(clean, kwargs, env, want):
 
     got = auto.resolve_for_load(from_pretrained, ("org/model-fp8",), kwargs)
     assert got == want, auto._STATE["reason"]
+
+
+# DDP + offload_layers = "auto" instead of sharded FSDP2 for a LoRA load that does not fit one GPU.
+_GiB = 1024**3
+# One 8 GiB 16-bit linear (plus its fresh r = 16 adapter): with the 20% margin it fits a 10.1 GiB budget.
+_BIG = [("model.layers.0.mlp.up_proj.weight", "BF16", (32768, 131072))]
+
+
+def _offload_env(
+    mp,
+    auto,
+    budget_gib = 7.5,
+    nvlink = False,
+    host_gib = 64,
+    cuda = None,
+    local_world = 2,
+    quant_method = None,
+):
+    _auto_env(mp, auto, budget_mib = budget_gib * 1024)
+    mp.setattr(auto, "_checkpoint_tensors", lambda *a, **k: _BIG)
+    mp.setattr(auto, "_discrete_cuda_why", lambda: cuda, raising = False)
+    mp.setattr(auto, "_nvlink_active", lambda: nvlink, raising = False)
+    mp.setattr(auto, "_host_share", lambda: int(host_gib * _GiB), raising = False)
+    mp.setattr(auto, "_local_world", lambda: local_world, raising = False)
+    mp.setattr(
+        auto, "_checkpoint_quant_method", lambda name, call, revision: quant_method, raising = False
+    )
+    mp.delenv("UNSLOTH_PARALLEL_AUTO_OFFLOAD", raising = False)
+
+
+class _DefaultDeviceMap(str):
+    """Stands in for loader_utils.DEFAULT_DEVICE_MAP, the loaders' own device_map default."""
+
+
+def _from_pretrained(
+    model_name = "x",
+    load_in_4bit = True,
+    full_finetuning = False,
+    fast_inference = False,
+    device_map = _DefaultDeviceMap("sequential"),
+    **kwargs,
+):
+    return model_name
+
+
+def test_tight_lora_load_streams_under_ddp_instead_of_fsdp2(clean):
+    """About 2 GiB over a 7.5 GiB budget, no NVLink, host RAM to spare: DDP with offload_layers = "auto"
+    (Kaggle 2x T4, Qwen3-8B 16-bit LoRA: 12.3 s/step vs 18.8 s/step for sharded FSDP2)."""
+    mp, _, auto = clean
+    _offload_env(mp, auto)
+    kwargs = {"load_in_4bit": False}
+    assert auto.resolve_for_load(_from_pretrained, ("org/model",), kwargs) == "ddp", auto._STATE[
+        "reason"
+    ]
+    assert kwargs["offload_layers"] == "auto", kwargs
+    assert (
+        os.environ["UNSLOTH_FSDP2"] == "0" and os.environ["UNSLOTH_PARALLEL_AUTO_RESOLVED"] == "ddp"
+    )
+    assert "offload_layers = 'auto'" in auto._STATE["reason"] and "PCIe" in auto._STATE["reason"]
+    # A caller's own "auto" is kept, and nothing is added to a load that fits.
+    auto._STATE.update(choice = None, reason = None)
+    kwargs = {"load_in_4bit": False, "offload_layers": "auto"}
+    assert auto.resolve_for_load(_from_pretrained, ("org/model",), kwargs) == "ddp"
+    assert kwargs["offload_layers"] == "auto"
+    auto._STATE.update(choice = None, reason = None)
+    _offload_env(mp, auto, budget_gib = 64)
+    kwargs = {"load_in_4bit": False}
+    assert auto.resolve_for_load(_from_pretrained, ("org/model",), kwargs) == "ddp"
+    assert "offload_layers" not in kwargs and "fits on every rank" in auto._STATE["reason"]
+
+
+@pytest.mark.parametrize(
+    "setup, kwargs, why",
+    [
+        ({"nvlink": True}, {}, "NVLink"),
+        ({"nvlink": None}, {}, "NVML could not tell"),
+        ({"host_gib": 4}, {}, "host RAM per local rank"),
+        ({"budget_gib": 4}, {}, "over half"),
+        ({"local_world": 1}, {}, "more than one node"),
+        ({"cuda": "block swap here needs an NVIDIA CUDA GPU"}, {}, "NVIDIA CUDA GPU"),
+        ({}, {"offload_layers": 0}, "offload_layers = 0 was passed"),
+        ({}, {"device_map": "balanced"}, "device_map = 'balanced'"),
+        ({"budget_gib": 3.5}, {"load_in_8bit": True}, "load_in_8bit"),  # 4.1 GiB in 8-bit
+        ({}, {"state_dict": {}}, "state_dict"),
+        ({"env": True}, {}, "UNSLOTH_PARALLEL_AUTO_OFFLOAD=0"),
+        # What the loaders refuse or do not plan, so offload_layers = "auto" would load every layer on the GPU.
+        ({}, {"num_labels": 3}, "num_labels"),
+        ({}, {"config": object()}, "caller-supplied config"),
+        ({}, {"auto_model": object()}, "auto_model"),
+        ({}, {"text_only": True}, "text_only"),
+        ({}, {"qat_scheme": "int4"}, "qat_scheme"),
+        ({"quant_method": "gptq"}, {}, "gptq checkpoints"),
+        ({"quant_method": "compressed-tensors"}, {}, "compressed-tensors checkpoints"),
+    ],
+)
+def test_streamed_ddp_is_refused_where_fsdp2_is_the_safer_layout(clean, setup, kwargs, why):
+    mp, _, auto = clean
+    setup = dict(setup)
+    env = setup.pop("env", False)
+    _offload_env(mp, auto, **setup)
+    if env:
+        mp.setenv("UNSLOTH_PARALLEL_AUTO_OFFLOAD", "0")
+    kwargs = {"load_in_4bit": False, **kwargs}
+    before = dict(kwargs)
+    assert auto.resolve_for_load(_from_pretrained, ("org/model",), kwargs) == "fsdp2", auto._STATE[
+        "reason"
+    ]
+    assert kwargs == before, kwargs  # nothing injected
+    assert os.environ["UNSLOTH_FSDP2"] == "1"
+    assert why in auto._STATE["reason"], auto._STATE["reason"]
+
+
+def test_explicit_offload_count_takes_ddp_since_fsdp2_refuses_block_swap(clean):
+    mp, _, auto = clean
+    _offload_env(mp, auto, budget_gib = 4, nvlink = True)
+    kwargs = {"load_in_4bit": False, "offload_layers": 6}
+    assert auto.resolve_for_load(_from_pretrained, ("org/model",), kwargs) == "ddp", auto._STATE[
+        "reason"
+    ]
+    assert kwargs["offload_layers"] == 6 and "native FSDP2 refuses" in auto._STATE["reason"]
+
+
+def test_offload_plan_arithmetic(clean, monkeypatch):
+    _, _, auto = clean
+    monkeypatch.setattr(auto, "_host_share", lambda: 16 * _GiB)
+    monkeypatch.setattr(auto, "_nvlink_active", lambda: False)
+    monkeypatch.setattr(auto, "_local_world", lambda: 1)
+    monkeypatch.setattr(auto, "_world", lambda environ: 1)
+    # 4 GiB over of 10 GiB of weights: 1.5 x 4 + 4 = 10 GiB of host RAM, 16 available.
+    assert auto._offload_plan(10 * _GiB, 20 * _GiB, 16 * _GiB, None)[0] is True
+    assert auto._offload_plan(10 * _GiB, 22 * _GiB, 16 * _GiB, None)[0] is False  # 6 GiB > half
+    monkeypatch.setattr(auto, "_host_share", lambda: 9 * _GiB)
+    assert auto._offload_plan(10 * _GiB, 20 * _GiB, 16 * _GiB, None)[0] is False
+    assert auto._offload_plan(10 * _GiB, 20 * _GiB, 16 * _GiB, "why") == (False, "why")
+
+
+def test_nvlink_probe_answers_without_raising():
+    _, auto = _modules()
+    assert auto._nvlink_active() in (True, False, None)
+
+
+def _offload_worker(rank, world, port, out, nvlink_by_rank):
+    """Through the decorator every Unsloth from_pretrained carries: what the loader receives under auto."""
+    _init(rank, world, port)
+    import torch.distributed as dist
+
+    try:
+        _load_native()
+        utils = types.ModuleType("unsloth.models._utils")
+        utils.patch_gradient_accumulation_fix = lambda cls: None
+        sys.modules["unsloth.models._utils"] = utils
+        sys.modules["unsloth.models.loader_utils"] = _stub_name_mapping()
+        sys.modules["unsloth.device_type"] = _stub_device_type()
+        _, auto = _modules()
+        _stub_loader_facts(auto, lambda obj, name, value, raising = False: setattr(obj, name, value))
+        auto._checkpoint_tensors = lambda *a, **k: _BIG
+        auto._discrete_cuda_why = lambda: None
+        auto._host_share = lambda: 64 * _GiB
+        auto._nvlink_active = lambda: nvlink_by_rank[rank]
+        auto._checkpoint_quant_method = lambda name, call, revision: None
+        auto._STATE.update(choice = None, reason = None)
+        os.environ.update(UNSLOTH_PARALLEL = "auto", UNSLOTH_PARALLEL_AUTO_GB = "7.5")
+        seen = {}
+
+        def from_pretrained(
+            model_name = "x",
+            load_in_4bit = True,
+            **kwargs,
+        ):
+            seen.update(kwargs)
+            return model_name
+
+        load = importlib.import_module("unsloth.models.fsdp2_load")
+        load.sharded_load_env(from_pretrained)("org/model", load_in_4bit = False)
+        out.put(
+            (
+                rank,
+                dict(
+                    choice = auto.resolved_choice(),
+                    loader_kwargs = dict(seen),
+                    fsdp2_env = os.environ.get("UNSLOTH_FSDP2"),
+                    reason = auto._STATE["reason"],
+                ),
+            )
+        )
+    except Exception as exc:
+        import traceback
+        out.put((rank, {"crash": f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"}))
+    finally:
+        dist.destroy_process_group()
+
+
+@pytest.mark.parametrize(
+    "nvlink_by_rank, expected",
+    [((False, False), "ddp"), ((False, None), "fsdp2")],
+)
+def test_ranks_agree_on_the_streamed_ddp_layout(nvlink_by_rank, expected):
+    results = _spawn(_offload_worker, nvlink_by_rank)
+    for rank, r in results.items():
+        print("AUTO_OFFLOAD", rank, r)
+        assert r["choice"] == expected, r
+        assert r["fsdp2_env"] == ("0" if expected == "ddp" else "1"), r
+        assert r["loader_kwargs"].get("offload_layers") == (
+            "auto" if expected == "ddp" else None
+        ), r
+    if expected == "fsdp2":
+        assert "NVML could not tell" in results[0]["reason"], results[0]["reason"]
+
+
+def test_fp8_and_int32_packed_checkpoints_are_not_streamed(clean):
+    _, _, auto = clean
+    fp8 = [("a.weight", "F8_E4M3", (8, 8))]
+    gptq = [("a.qweight", "I32", (8, 8))]
+    assert "FP8" in auto._checkpoint_block_swap_refusal("x", {}, None, fp8, ["llama"])
+    assert "GPTQ" in auto._checkpoint_block_swap_refusal("x", {}, None, gptq, ["llama"])
+
+
+def test_child_inherits_the_streamed_ddp_layout(clean):
+    """A parent that streamed its load exports the marker; the child's first load streams too, once."""
+    mp, env, auto = clean
+    _offload_env(mp, auto)
+    kwargs = {"load_in_4bit": False}
+    assert auto.resolve_for_load(_from_pretrained, ("org/model",), kwargs) == "ddp"
+    assert os.environ.get("UNSLOTH_PARALLEL_AUTO_OFFLOAD_RESOLVED") == "1"
+    environ = {
+        "UNSLOTH_PARALLEL": "auto",
+        "UNSLOTH_FSDP2": "0",
+        "UNSLOTH_PARALLEL_AUTO_RESOLVED": "ddp",
+        "UNSLOTH_PARALLEL_AUTO_OFFLOAD_RESOLVED": "1",
+        "WORLD_SIZE": "2",
+    }
+    auto._STATE.update(choice = None, reason = None, offload = False)
+    env.apply_parallel_env(environ)
+    child = {"load_in_4bit": False}
+    assert auto.resolve_for_load(_from_pretrained, ("org/model",), child) == "ddp"
+    assert child["offload_layers"] == "auto"
+    second = {"load_in_4bit": False}
+    auto.resolve_for_load(_from_pretrained, ("org/model",), second)
+    assert "offload_layers" not in second  # only the first load
+    # Without the marker an inherited DDP adds nothing.
+    auto._STATE.update(choice = None, reason = None, offload = False)
+    env.apply_parallel_env({**environ, "UNSLOTH_PARALLEL_AUTO_OFFLOAD_RESOLVED": ""})
+    plain = {"load_in_4bit": False}
+    auto.resolve_for_load(_from_pretrained, ("org/model",), plain)
+    assert "offload_layers" not in plain
+
+
+def test_streamed_ddp_refuses_loads_without_checkpointing(clean):
+    """Block swap needs gradient checkpointing: a load that turns it off keeps FSDP2."""
+    _, _, auto = clean
+    for off in (False, 0):
+        why = auto._block_swap_refusal({"use_gradient_checkpointing": off})
+        assert why is not None and "gradient checkpointing" in why, why
+    for on in ("unsloth", True):
+        why = auto._block_swap_refusal({"use_gradient_checkpointing": on})
+        assert why is None or "gradient checkpointing" not in why, why
+
+
+def test_streamed_ddp_needs_the_zoo_streaming_functions(clean, tmp_path, monkeypatch):
+    """A zoo that ships block_swap.py without load_layers_to_host / plan_block_swap would load every layer."""
+    _, _, auto = clean
+    pkg = tmp_path / "unsloth_zoo"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("")
+    (pkg / "block_swap.py").write_text("def swap():\n    pass\n")
+    (pkg / "device_map_planner.py").write_text("def plan_block_swap(*a):\n    pass\n")
+    spec = types.SimpleNamespace(origin = str(pkg / "__init__.py"))
+    monkeypatch.setattr(auto.importlib.util, "find_spec", lambda name: spec)
+    assert "load_layers_to_host" in auto._block_swap_refusal({})
+    (pkg / "block_swap.py").write_text("def load_layers_to_host(n):\n    pass\n")
+    (pkg / "device_map_planner.py").write_text("x = 1\n")
+    assert "plan_block_swap" in auto._block_swap_refusal({})
+    (pkg / "device_map_planner.py").write_text("def plan_block_swap(*a):\n    pass\n")
+    why = auto._block_swap_refusal({})
+    assert why is None or "unsloth_zoo" not in why, why
+
+
+def test_streamed_ddp_refuses_an_explicit_null_device_map(clean):
+    """device_map = None is not replaced with the rank's GPU, so block swap would plan zero layers."""
+    _, _, auto = clean
+    why = auto._block_swap_refusal({"device_map": None})
+    assert why is not None and "device_map" in why, why

@@ -10,11 +10,20 @@ else (quantization_config, fp8, vLLM, FORCE_FLOAT32 / CUSTOM_DTYPE, unknown dtyp
 config / header) declines to FSDP2, the launcher default, with the reason in the rank 0 line. A gguf_file load
 is not sized either: FSDP2, or DDP when this torch's FSDP2 would refuse its gguf_packed blocks (no
 fully_shard(ignored_params)); a built model with packed weights on such a torch takes DDP too.
+
+A LoRA / QLoRA load that does not fit takes DDP + from_pretrained(offload_layers = "auto") instead of FSDP2
+when block swap can stream it: at most half of the weights over the GPU budget, no NVLink between the GPUs
+(NVML; unknown keeps FSDP2), one node, and enough host RAM per local rank. Sharded FSDP2 all-gathers the
+other ranks' frozen weights over the same PCIe link twice per micro-batch, while block swap copies only
+the part that does not fit, once per step with layer-major GA (Kaggle 2x T4, Qwen3-8B 16-bit LoRA, GA 4:
+12.3 s/step vs 18.8 s/step). UNSLOTH_PARALLEL_AUTO_OFFLOAD=0 keeps FSDP2. An explicit offload_layers = N
+(block swap, which native FSDP2 refuses) takes DDP.
 """
 
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import math
 import os
 
@@ -33,6 +42,9 @@ AUTO = "auto"
 FLAG = "UNSLOTH_PARALLEL"
 RESOLVED = "UNSLOTH_PARALLEL_AUTO_RESOLVED"
 BUDGET = "UNSLOTH_PARALLEL_AUTO_GB"
+OFFLOAD = "UNSLOTH_PARALLEL_AUTO_OFFLOAD"
+# Exported beside RESOLVED=ddp when the parent streamed its load: a child's first load streams too.
+OFFLOAD_RESOLVED = "UNSLOTH_PARALLEL_AUTO_OFFLOAD_RESOLVED"
 DDP, FSDP2 = "ddp", "fsdp2"
 # Matches loader_utils._plan_fits_first_device. Kaggle 2x T4 sweep: DDP training peak above post-setup
 # reserved was 0.97 GB median, 3.04 GB p90 (21% of a 14.56 GB T4).
@@ -42,7 +54,16 @@ _GiB = 1024**3
 _TRUTHY = ("1", "true", "yes", "on")
 _EMBEDDING_NAMES = ("embed", "wte", "wpe", "lm_head", "output_layer", "shared")
 
-_STATE = {"choice": None, "reason": None}
+# DDP + block swap instead of sharded FSDP2: at most this share of the weights streams from host RAM
+# (FSDP2 moves half of them per micro-batch at 2 ranks, so block swap moves fewer bytes up to here).
+_OFFLOAD_MAX_SHARE = 0.5
+# Host RAM per local rank for the streamed bytes: block swap pins only while max(4 GiB, 15%) stays free, and
+# a load stages a layer beside its pinned copy.
+_OFFLOAD_HOST_FACTOR = 1.5
+_OFFLOAD_HOST_RESERVE = 4 * 1024**3
+_FALSY = ("0", "false", "no", "off")
+
+_STATE = {"choice": None, "reason": None, "offload": False, "offload_pending": False}
 
 
 def auto_requested(environ = None):
@@ -77,7 +98,13 @@ def check_auto_env(environ = None):
             )
     # After it: a parent that picked FSDP2 exported UNSLOTH_FSDP2 and accelerate's FSDP env itself.
     if inherited in (DDP, FSDP2) and fsdp2 == ("1" if inherited == FSDP2 else "0"):
-        _STATE.update(choice = inherited, reason = f"inherited {RESOLVED}={inherited}")
+        offload = inherited == DDP and str(environ.get(OFFLOAD_RESOLVED, "")).strip() == "1"
+        _STATE.update(
+            choice = inherited,
+            reason = f"inherited {RESOLVED}={inherited}",
+            offload = offload,
+            offload_pending = offload,
+        )
         return
     if fsdp2:
         raise ValueError(
@@ -275,17 +302,223 @@ def _gguf_route(call):
     )
 
 
+def _nvlink_active():
+    """True when a GPU on this host has an active NVLink, False when none does, None when NVML cannot tell
+    (no NVIDIA driver library, ROCm, a failed call). Read through the driver's NVML, as torch does."""
+    import ctypes
+
+    lib = None
+    for name in ("libnvidia-ml.so.1", "nvml.dll"):
+        try:
+            lib = ctypes.CDLL(name)
+            break
+        except OSError:
+            continue
+    if lib is None:
+        return None
+    try:
+        if lib.nvmlInit_v2() != 0:
+            return None
+    except Exception:
+        return None
+    try:
+        count = ctypes.c_uint()
+        if lib.nvmlDeviceGetCount_v2(ctypes.byref(count)) != 0 or count.value == 0:
+            return None
+        for index in range(count.value):
+            handle = ctypes.c_void_p()
+            if lib.nvmlDeviceGetHandleByIndex_v2(index, ctypes.byref(handle)) != 0:
+                return None
+            for link in range(18):  # NVML_NVLINK_MAX_LINKS
+                state = ctypes.c_int()
+                # NVML_SUCCESS with NVML_FEATURE_ENABLED; a missing link answers NOT_SUPPORTED / INVALID_ARGUMENT.
+                if (
+                    lib.nvmlDeviceGetNvLinkState(handle, link, ctypes.byref(state)) == 0
+                    and state.value == 1
+                ):
+                    return True
+        return False
+    except Exception:
+        return None
+    finally:
+        try:
+            lib.nvmlShutdown()
+        except Exception:
+            pass
+
+
+def _local_world():
+    try:
+        return max(int(os.environ.get("LOCAL_WORLD_SIZE", "1") or "1"), 1)
+    except ValueError:
+        return 1
+
+
+def _host_share():
+    """Available host RAM / local ranks (every local rank reads the same number), 0 when unknown."""
+    try:
+        import psutil
+        return int(psutil.virtual_memory().available) // _local_world()
+    except Exception:
+        return 0
+
+
+def _discrete_cuda_why():
+    """None when block swap has a discrete CUDA GPU to stream to, else why not."""
+    import torch
+    from .rocm_build import is_rocm_torch
+
+    if not torch.cuda.is_available() or is_rocm_torch(torch):
+        return "block swap here needs an NVIDIA CUDA GPU"
+    try:
+        from .models._uma_safetensors import is_integrated_unified_memory_gpu
+        if is_integrated_unified_memory_gpu():
+            return "unified memory has no separate host RAM to stream from"
+    except Exception:
+        pass
+    return None
+
+
+def _block_swap_refusal(call):
+    """Why from_pretrained(offload_layers = "auto") would not stream this load (the loaders' refusals), else None."""
+    requested = call.get("offload_layers", call.get("block_swap_layers"))
+    if requested is not None and requested != "auto" and not requested:
+        return "offload_layers = 0 was passed"
+    for key, why in (
+        ("full_finetuning", "full finetuning trains every weight"),
+        ("fast_inference", "vLLM (fast_inference) is on"),
+        ("load_in_8bit", "block swap supports 16-bit and 4-bit loads, not load_in_8bit"),
+    ):
+        if call.get(key):
+            return why
+    for key, why in (
+        ("num_labels", "a classification head (num_labels) is loaded"),
+        (
+            "config",
+            "a caller-supplied config may not describe the repo the block swap planner rebuilds",
+        ),
+        ("auto_model", "an explicit auto_model may not be the class the block swap planner sizes"),
+        ("qat_scheme", "QAT (qat_scheme) is on"),
+        ("resize_model_vocab", "resize_model_vocab changes the embedding the planner sizes"),
+    ):
+        if call.get(key) is not None:
+            return why
+    if call.get("text_only"):
+        return "text_only loads a decoder the repo config does not describe"
+    gc = call.get("use_gradient_checkpointing")
+    if gc is not None and not gc:
+        return "use_gradient_checkpointing = False (block swap needs gradient checkpointing)"
+    if call.get("state_dict") is not None:
+        return "a state_dict load cannot stream from host RAM"
+    if call.get("use_safetensors") is False:
+        return "block swap needs a safetensors checkpoint"
+    # The loaders' signatures default to DEFAULT_DEVICE_MAP, so any other value, None included, was passed: the
+    # loaders neither move device_map = None to this rank's GPU nor stream it (zero offloaded layers).
+    if "device_map" in call and type(call["device_map"]).__name__ != "_DefaultDeviceMap":
+        return f"device_map = {call['device_map']!r} was passed"
+    try:
+        # Without importing unsloth_zoo (find_spec of a submodule would).
+        zoo = importlib.util.find_spec("unsloth_zoo")
+        origin = zoo.origin if zoo is not None else None
+    except (ImportError, ValueError):
+        origin = None
+    if not origin:
+        return "this unsloth_zoo has no block swap"
+    # The loaders fall back to zero offloaded layers when either is missing, so read for both, by source.
+    for file, fn in (
+        ("block_swap.py", "load_layers_to_host"),
+        ("device_map_planner.py", "plan_block_swap"),
+    ):
+        path = os.path.join(os.path.dirname(origin), file)
+        try:
+            with open(path, encoding = "utf-8") as f:
+                found = f"def {fn}(" in f.read()
+        except OSError:
+            found = False
+        if not found:
+            return f"this unsloth_zoo has no {fn} (load-time block swap streaming)"
+    return _discrete_cuda_why()
+
+
+def _checkpoint_quant_method(name, call, revision):
+    """config.json's quantization_config.quant_method (None when unquantized); raises when unreadable."""
+    quant = getattr(_config(name, call, revision), "quantization_config", None)
+    if quant is None:
+        return None
+    method = (
+        quant.get("quant_method")
+        if isinstance(quant, dict)
+        else getattr(quant, "quant_method", None)
+    )
+    return str(getattr(method, "value", method) or "unknown").lower()
+
+
+def _checkpoint_block_swap_refusal(name, call, revision, tensors, model_types):
+    """The checkpoint side of _block_swap_refusal: block swap rebuilds the host layers as dense or bnb 4-bit."""
+    if any(dt.startswith("F8") or dt == "I32" for _, dt, _ in tensors):
+        return "block swap does not rebuild FP8 or int32-packed (GPTQ / AWQ) layers"
+    try:
+        method = _checkpoint_quant_method(name, call, revision)
+    except Exception as exc:
+        return f"the checkpoint's quantization could not be read ({type(exc).__name__})"
+    if method not in (None, "bitsandbytes"):
+        return f"block swap does not rebuild {method} checkpoints"
+    if method == "bitsandbytes" and any("falcon_h1" in t for t in model_types):
+        return "a prequantized Falcon-H1 checkpoint is not planned for block swap"
+    return None
+
+
+def _offload_plan(weights, need, capacity, refusal):
+    """(True, why) when DDP + offload_layers = "auto" should replace sharded FSDP2 on this rank, else (False, why)."""
+    if refusal:
+        return False, refusal
+    if str(os.environ.get(OFFLOAD, "")).strip().lower() in _FALSY:
+        return False, f"{OFFLOAD}=0"
+    over = int(need) - int(capacity)
+    if over > _OFFLOAD_MAX_SHARE * int(weights):
+        return (
+            False,
+            f"{_gib(over)} of the {_gib(weights)} of weights would stream from host RAM, over half",
+        )
+    if _world(os.environ) != _local_world():
+        return False, "the launch spans more than one node"
+    host = _host_share()
+    want = int(_OFFLOAD_HOST_FACTOR * over) + _OFFLOAD_HOST_RESERVE
+    if host < want:
+        return (
+            False,
+            f"host RAM per local rank is {_gib(host)}, streaming {_gib(over)} needs {_gib(want)}",
+        )
+    nvlink = _nvlink_active()
+    if nvlink is None:
+        return False, "NVML could not tell whether the GPUs share an NVLink"
+    if nvlink:
+        return False, "the GPUs share an NVLink, so FSDP2's all-gathers are cheap"
+    return True, f"{_gib(over)} streams from host RAM over PCIe"
+
+
 def _gib(n):
     return f"{n / _GiB:.2f} GiB" if n >= _GiB / 10 else f"{n / 1024**2:.1f} MiB"
 
 
-def _resolve(estimate, install_trainer_init):
-    """Run once: `estimate()` -> (weights, state, held); agree over ranks; write UNSLOTH_FSDP2."""
+def _resolve(
+    estimate,
+    install_trainer_init,
+    offload = None,
+):
+    """Run once: `estimate()` -> (weights, state, held); agree over ranks; write UNSLOTH_FSDP2. `offload`, a dict
+    the estimate fills with "refusal" (None when block swap can stream the load), lets a load that does not
+    fit take DDP + offload_layers = "auto" (_offload_plan on every rank) instead of FSDP2."""
     if _STATE["choice"] is not None or not auto_requested():
         return _STATE["choice"]
     world = _world(os.environ)
     if world <= 1:
-        _STATE.update(choice = "single", reason = "one process: nothing to choose")
+        _STATE.update(
+            choice = "single",
+            reason = "one process: nothing to choose",
+            offload = False,
+            offload_pending = False,
+        )
         return _STATE["choice"]
     try:
         weights, state, held, *rest = estimate()
@@ -299,16 +532,34 @@ def _resolve(estimate, install_trainer_init):
             state = state,
             margin = need - weights - state,
         )
+        if offload is not None and not fits:
+            entry["offload"], entry["offload_why"] = _offload_plan(
+                weights,
+                need,
+                capacity,
+                offload.get("refusal", "the load was not sized for block swap"),
+            )
     except _Route as route:
         entry = dict(fits = route.choice == DDP, why = route.why, route = route.choice)
     except Exception as exc:
         entry = dict(fits = False, why = f"could not size the model ({type(exc).__name__}: {exc})")
     entries = _gather(entry)
     choice = DDP if all(e.get("fits") for e in entries) else FSDP2
-    reason = _describe(choice, entries)
+    streamed = (
+        choice == FSDP2
+        and all(e.get("fits") or e.get("offload") for e in entries)
+        and any(e.get("offload") for e in entries)
+    )
+    if streamed:
+        choice = DDP
+    reason = _describe(choice, entries, streamed)
     os.environ["UNSLOTH_FSDP2"] = "1" if choice == FSDP2 else "0"
     os.environ[RESOLVED] = choice
-    _STATE.update(choice = choice, reason = reason)
+    _STATE.update(choice = choice, reason = reason, offload = streamed, offload_pending = False)
+    if streamed:
+        os.environ[OFFLOAD_RESOLVED] = "1"
+    else:
+        os.environ.pop(OFFLOAD_RESOLVED, None)
     from .fsdp2_launch import apply_unsloth_fsdp2_launch_env
 
     apply_unsloth_fsdp2_launch_env()
@@ -320,9 +571,24 @@ def _resolve(estimate, install_trainer_init):
     return choice
 
 
-def _describe(choice, entries):
+def _describe(
+    choice,
+    entries,
+    streamed = False,
+):
     head = f"Unsloth: {FLAG}=auto picked {'DDP (UNSLOTH_FSDP2=0)' if choice == DDP else 'native FSDP2 (UNSLOTH_FSDP2=1)'}"
     first = entries[0]
+    if streamed:
+        tight = max(
+            (e for e in entries if e.get("offload")), key = lambda e: e["need"] - e["capacity"]
+        )
+        return (
+            f"{head} with offload_layers = 'auto': weights {_gib(tight['weights'])} + training state "
+            f"{_gib(tight['state'])} + activation margin {_gib(tight['margin'])} does not fit in "
+            f"{_gib(tight['capacity'])}, and {tight['offload_why']} (block swap copies it once per step with "
+            f"layer-major GA; sharded FSDP2 would all-gather half the weights twice per micro-batch). Set "
+            f"{OFFLOAD}=0 or {FLAG}=\"fsdp=1\" to force FSDP2."
+        )
     routed = next((e for e in entries if e.get("route")), None)
     if choice == DDP and routed is not None:
         return f"{head}: {routed['why']}."
@@ -345,6 +611,7 @@ def _describe(choice, entries):
             reasons.append(
                 f"rank {rank} needs {_gib(e['need'])} (weights {_gib(e['weights'])} + training state "
                 f"{_gib(e['state'])} + activation margin {_gib(e['margin'])}) but has {_gib(e['capacity'])}"
+                + (f" (no offload_layers: {e['offload_why']})" if e.get("offload_why") else "")
             )
     split = (
         " (the ranks disagree, so all take FSDP2)" if any(e.get("fits") for e in entries) else ""
@@ -564,7 +831,13 @@ def _loaded_dtype(dtype, supports_bf16):
 def resolve_for_load(loader, args, kwargs):
     """First Unsloth `from_pretrained` under UNSLOTH_PARALLEL=auto: size the checkpoint before it loads."""
     if _STATE["choice"] is not None or not auto_requested():
+        if _STATE.get("offload_pending"):
+            # A child inheriting a streamed DDP decision: its first load streams like the parent's.
+            _STATE["offload_pending"] = False
+            if _STATE["choice"] == DDP:
+                kwargs.setdefault("offload_layers", "auto")
         return _STATE["choice"]
+    probe = {}
 
     def estimate():
         import inspect
@@ -584,6 +857,19 @@ def resolve_for_load(loader, args, kwargs):
             raise ValueError(f"model_name {name!r} is not a checkpoint name or path")
         if call.get("gguf_file"):
             _gguf_route(call)
+        requested = call.get("offload_layers", call.get("block_swap_layers"))
+        if (
+            isinstance(requested, int)
+            and not isinstance(requested, bool)
+            and requested > 0
+            and not call.get("full_finetuning")
+        ):
+            raise _Route(
+                DDP,
+                f"offload_layers = {requested} streams decoder layers from host RAM (block swap), which native "
+                "FSDP2 refuses, so DDP",
+            )
+        probe["refusal"] = _block_swap_refusal(call)
         if call.get("quantization_config") is not None or call.get("load_in_fp8") not in (
             None,
             False,
@@ -651,6 +937,10 @@ def resolve_for_load(loader, args, kwargs):
             name, call.get("load_in_16bit")
         )
         model_types = _model_types(name, call, revision)
+        if probe.get("refusal") is None:
+            probe["refusal"] = _checkpoint_block_swap_refusal(
+                name, call, revision, tensors, model_types
+            )
         joined = ",".join(model_types) + ","
         if loaded == "float16" and any(
             f in joined or any(f == t.replace("-", "").replace("_", "") for t in model_types)
@@ -699,7 +989,15 @@ def resolve_for_load(loader, args, kwargs):
         state = training_state_bytes(trainable, grad_itemsize = dtype_bytes if full else 4)
         return weights, state, 0
 
-    return _resolve(estimate, install_trainer_init = True)
+    choice = _resolve(estimate, install_trainer_init = True, offload = probe)
+    if (
+        choice == DDP
+        and _STATE.get("offload")
+        and kwargs.get("offload_layers", kwargs.get("block_swap_layers")) is None
+    ):
+        # The streamed DDP layout: this load keeps what does not fit in host RAM (the loader plans how much).
+        kwargs["offload_layers"] = "auto"
+    return choice
 
 
 def resolve_for_trainer(model, training_args = None):

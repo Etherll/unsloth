@@ -27,8 +27,9 @@ mesh["pp"], context parallel mesh["cp"], and data parallel gradients (FSDP2 shar
 flattened (dp, cp) mesh, because context parallel peers hold different tokens of the same rows. The data loader
 splits over dp only. Size-1 axes are left out of the mesh, so they create no process group.
 
-UNSLOTH_PARALLEL=auto (opt-in) picks DDP when the model and its training state fit on every GPU, else native
-FSDP2, once per process at the first from_pretrained (unsloth/parallel_auto.py).
+UNSLOTH_PARALLEL=auto (opt-in) picks DDP when the model and its training state fit on every GPU, DDP with
+offload_layers = "auto" when a LoRA load is at most half over on PCIe-linked GPUs, else native FSDP2, once
+per process at the first from_pretrained (unsloth/parallel_auto.py).
 
 Imports nothing heavy at module level: the flag is translated before transformers / accelerate read it.
 """
