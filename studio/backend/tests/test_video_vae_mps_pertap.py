@@ -8,6 +8,7 @@ rule, the size guard and the kill switch."""
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import logging
 import sys
@@ -24,6 +25,9 @@ torch = pytest.importorskip("torch")
 import torch.nn.functional as F  # noqa: E402
 
 from core.inference import video_vae_mps_pertap as P  # noqa: E402
+
+# A torch before 2.14, where every Conv3d call on MPS runs per-tap: what a test of the per-tap path itself pins.
+OLD_TORCH = "2.10.0"
 
 _needs_diffusers = pytest.mark.skipif(
     importlib.util.find_spec("diffusers") is None, reason = "needs diffusers"
@@ -261,7 +265,7 @@ def test_wan_mps_zero_buffer_forward(on_cpu, monkeypatch, with_cache):
         patched.load_state_dict(stock.state_dict())
         root = torch.nn.Module()
         root.inner = patched
-        assert P.install(root) == 1
+        assert P.install(root, torch_version = OLD_TORCH) == 1
         with torch.no_grad():
             out_s = stock(x, cache)
             out_p = patched(x, cache)
@@ -329,7 +333,7 @@ def test_minimax_h3_cat_front_conv(on_cpu, monkeypatch, dtype):
     patched.forward = types.MethodType(_cat_front_h3_conv, patched)
     root = torch.nn.Module()
     root.inner = patched
-    assert P.install(root) == 1
+    assert P.install(root, torch_version = OLD_TORCH) == 1
     with torch.no_grad():
         ref = stock(x)  # diffusers' own F.pad forward
         got = patched(x)
@@ -433,18 +437,49 @@ def test_cpu_default_device_untouched(monkeypatch):
     assert P.pertap_calls(conv) == 0  # the gate only engages on MPS
 
 
-def test_kill_switch(on_cpu, monkeypatch):
-    conv = _conv()
-    assert P.install(conv) == 1
+# Each routing rule with a conv it sends per-tap: every call before 2.14, a wide conv over a small frame from it.
+@pytest.mark.parametrize(
+    "torch_version, channels, frame",
+    [(OLD_TORCH, 8, (4, 6, 6)), ("2.14.1", P.WIDE_CHANNELS, (3, 4, 4))],
+    ids = ["old_torch", "new_torch"],
+)
+def test_kill_switch(on_cpu, monkeypatch, torch_version, channels, frame):
+    conv = _conv(channels, 8)
+    assert P.install(conv, torch_version = torch_version) == 1
     monkeypatch.setenv(P.PERTAP_ENV, "0")
     with torch.no_grad():
-        conv(torch.randn(1, 8, 4, 6, 6))
+        conv(torch.randn(1, channels, *frame))
     assert P.pertap_calls(conv) == 0
-    assert P.install(_conv()) == 0  # off at install too
+    assert P.install(_conv(channels, 8), torch_version = torch_version) == 0  # off at install too
     monkeypatch.delenv(P.PERTAP_ENV)
     with torch.no_grad():
-        conv(torch.randn(1, 8, 4, 6, 6))
+        conv(torch.randn(1, channels, *frame))
     assert P.pertap_calls(conv) == 1
+
+
+def test_every_engagement_count_pins_the_torch_rule():
+    """From torch 2.14 the call-time rule keeps a narrow conv native, so a test that counts per-tap calls on the
+    installed torch's rule passed on torch < 2.14 and failed on the 2.15 CI legs. Each one picks the rule it tests."""
+    tree = ast.parse(Path(__file__).read_text(encoding = "utf-8"))
+    unpinned = []
+    for fn in tree.body:
+        if not isinstance(fn, ast.FunctionDef) or not fn.name.startswith("test_"):
+            continue
+        counts_engagement = any(
+            isinstance(n, ast.Compare)
+            and isinstance(n.left, ast.Call)
+            and getattr(n.left.func, "attr", None) == "pertap_calls"
+            and not (isinstance(n.comparators[0], ast.Constant) and n.comparators[0].value == 0)
+            for n in ast.walk(fn)
+        )
+        if counts_engagement and any(
+            isinstance(n, ast.Call)
+            and getattr(n.func, "attr", None) == "install"
+            and not any(k.arg == "torch_version" for k in n.keywords)
+            for n in ast.walk(fn)
+        ):
+            unpinned.append(fn.name)
+    assert not unpinned, unpinned
 
 
 def test_new_torch_shape_rule_and_size_guard(on_cpu, monkeypatch):
