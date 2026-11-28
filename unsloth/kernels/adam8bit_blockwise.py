@@ -49,7 +49,7 @@ _ELEMS_32 = 1024  # elements per program, 32-bit state
 
 
 @triton.jit
-def _mul(a, b, EXACT: tl.constexpr):
+def _mul(a, b, EXACT: tl.constexpr):  # EXACT: bnb-exact PTX rounding
     if EXACT:
         return tl.inline_asm_elementwise(
             "mul.rn.ftz.f32 $0, $1, $2;", "=r,r,r", [a, b], dtype = tl.float32, is_pure = True, pack = 1
@@ -59,7 +59,7 @@ def _mul(a, b, EXACT: tl.constexpr):
 
 
 @triton.jit
-def _add(a, b, EXACT: tl.constexpr):
+def _add(a, b, EXACT: tl.constexpr):  # EXACT: bnb-exact PTX rounding
     if EXACT:
         return tl.inline_asm_elementwise(
             "add.rn.ftz.f32 $0, $1, $2;", "=r,r,r", [a, b], dtype = tl.float32, is_pure = True, pack = 1
@@ -69,7 +69,7 @@ def _add(a, b, EXACT: tl.constexpr):
 
 
 @triton.jit
-def _fma(a, b, c, EXACT: tl.constexpr):
+def _fma(a, b, c, EXACT: tl.constexpr):  # EXACT: bnb-exact PTX rounding
     if EXACT:
         return tl.inline_asm_elementwise(
             "fma.rn.ftz.f32 $0, $1, $2, $3;",
@@ -84,7 +84,7 @@ def _fma(a, b, c, EXACT: tl.constexpr):
 
 
 @triton.jit
-def _div(a, b, EXACT: tl.constexpr):
+def _div(a, b, EXACT: tl.constexpr):  # EXACT: bnb-exact PTX rounding
     # __fdividef and fast-math `/`: rcp.approx(b) * a
     if EXACT:
         return tl.inline_asm_elementwise(
@@ -100,7 +100,7 @@ def _div(a, b, EXACT: tl.constexpr):
 
 
 @triton.jit
-def _sqrt(x, EXACT: tl.constexpr):
+def _sqrt(x, EXACT: tl.constexpr):  # EXACT: bnb-exact PTX rounding
     if EXACT:
         return tl.inline_asm_elementwise(
             "sqrt.approx.ftz.f32 $0, $1;", "=r,r", [x], dtype = tl.float32, is_pure = True, pack = 1
@@ -110,7 +110,7 @@ def _sqrt(x, EXACT: tl.constexpr):
 
 
 @triton.jit
-def _pow(x, y, EXACT: tl.constexpr):
+def _pow(x, y, EXACT: tl.constexpr):  # EXACT: bnb-exact PTX rounding
     # __powf / fast-math powf: ex2.approx(y * lg2.approx(x))
     if EXACT:
         lg = tl.inline_asm_elementwise(
@@ -130,7 +130,14 @@ def _pow(x, y, EXACT: tl.constexpr):
 
 @triton.jit
 def _scalars(
-    STEP, LR, BETA1, BETA2, WEIGHT_DECAY, shape, CAPTURABLE: tl.constexpr, EXACT: tl.constexpr
+    STEP,
+    LR,
+    BETA1,
+    BETA2,
+    WEIGHT_DECAY,
+    shape,
+    CAPTURABLE: tl.constexpr,  # STEP / LR are device pointers
+    EXACT: tl.constexpr,  # bnb-exact PTX rounding
 ):
     # The per-step constants as bitsandbytes' kernels form them, broadcast to `shape`.
     if CAPTURABLE:
@@ -152,7 +159,12 @@ def _scalars(
 
 
 @triton.jit
-def _quantize(Q, x, SIGNED: tl.constexpr, EXACT: tl.constexpr):
+def _quantize(
+    Q,
+    x,
+    SIGNED: tl.constexpr,  # signed code (first moment)
+    EXACT: tl.constexpr,  # bnb-exact PTX rounding
+):
     # bitsandbytes' quantize_2D: binary search over the sorted 256-entry code, then the nearer
     # side by midpoint (its quadrant shortcut reads the same entries as code[pivot]).
     pivot = tl.full(x.shape, 127, tl.int32)
@@ -266,10 +278,10 @@ def _adam32bit_kernel(
     EPS,
     WEIGHT_DECAY,
     GNORM_SCALE,
-    HAS_DECAY: tl.constexpr,
-    CAPTURABLE: tl.constexpr,
+    HAS_DECAY: tl.constexpr,  # weight decay folded into the update
+    CAPTURABLE: tl.constexpr,  # STEP / LR are device pointers
     BLOCK: tl.constexpr,  # elements per program
-    EXACT: tl.constexpr,
+    EXACT: tl.constexpr,  # bnb-exact PTX rounding
 ):
     offs = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
     valid = offs < N
@@ -335,11 +347,11 @@ def _adam8bit_multi_kernel(
     EPS0, EPS1, EPS2, EPS3, WD0, WD1, WD2, WD3,
     GNORM_SCALE,
     DTYPE: tl.constexpr,  # weight / gradient dtype of the whole launch
-    S2_PRODUCT_FMA: tl.constexpr,
+    S2_PRODUCT_FMA: tl.constexpr,  # where nvcc contracted s2's update
     ALIGNED: tl.constexpr,  # every pointer 16 byte aligned
     ROWS: tl.constexpr,  # 256-element blocks per program, as the per-tensor kernel
     BLOCK: tl.constexpr,  # 256
-    EXACT: tl.constexpr,
+    EXACT: tl.constexpr,  # bnb-exact PTX rounding
 ):  # fmt: skip
     b = tl.program_id(0)
     t = tl.load(BLOCK_T + b)
@@ -418,10 +430,10 @@ def _adam32bit_multi_kernel(
     LR0, LR1, LR2, LR3, B10, B11, B12, B13, B20, B21, B22, B23,
     EPS0, EPS1, EPS2, EPS3, WD0, WD1, WD2, WD3,
     GNORM_SCALE,
-    DTYPE: tl.constexpr,
-    ALIGNED: tl.constexpr,
-    BLOCK: tl.constexpr,
-    EXACT: tl.constexpr,
+    DTYPE: tl.constexpr,  # weight / gradient dtype of the launch
+    ALIGNED: tl.constexpr,  # every pointer 16 byte aligned
+    BLOCK: tl.constexpr,  # elements per program
+    EXACT: tl.constexpr,  # bnb-exact PTX rounding
 ):  # fmt: skip
     b = tl.program_id(0)
     t = tl.load(BLOCK_T + b)

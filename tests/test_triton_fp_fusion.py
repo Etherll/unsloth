@@ -24,6 +24,9 @@ _NOT_LAUNCHES = {
         "compiled",
         "call",
     },  # a CompiledKernel built by warmup(enable_fp_fusion=True)
+    "adam8bit_blockwise.py": {
+        "compiled"
+    },  # a CompiledKernel built by warmup(enable_fp_fusion=True)
     "utils.py": {"plan"},
     "nf4.py": {"kernel"},
     "triton_launch.py": {"kernel"},
