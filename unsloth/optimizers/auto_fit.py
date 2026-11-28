@@ -967,8 +967,11 @@ class InBackwardOptimizer(torch.optim.Optimizer):
         base.update_step(group, p, gi, pi)
         # bitsandbytes' step syncs the device after every weight. Inside backward that would drain the queued
         # backward kernels once per weight; its kernels run on the current stream, so only paged state (async
-        # page prefetches) needs it.
-        if getattr(base, "is_paged", False):
+        # page prefetches) needs it. UNSLOTH_BNB_OPTIMIZER_SYNC=1 (read at each step) keeps it for every weight.
+        if (
+            getattr(base, "is_paged", False)
+            or os.environ.get("UNSLOTH_BNB_OPTIMIZER_SYNC", "0") == "1"
+        ):
             _sync(p)
 
     def flush(self):

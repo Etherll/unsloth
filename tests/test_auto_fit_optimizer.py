@@ -1502,6 +1502,37 @@ def test_a_stepping_pass_that_raises_drops_the_measured_norm(af):
     wrapper.step()
 
 
+def test_bitsandbytes_sync_env_keeps_the_per_weight_sync(af, monkeypatch):
+    """UNSLOTH_BNB_OPTIMIZER_SYNC=1 keeps bitsandbytes' per-weight sync in the in-backward step too, as the core
+    and unsloth_zoo step patches do; read at each step. CPU: a stand-in for the bitsandbytes optimizer."""
+    import types
+
+    synced = []
+    monkeypatch.setattr(af, "_sync", synced.append)
+    p = torch.nn.Parameter(torch.zeros(2))
+    base = types.SimpleNamespace(
+        initialized = True,
+        is_paged = False,
+        param_groups = [{"params": [p]}],
+        state = {p: {"step": 0}},
+        prefetch_state = lambda p: None,
+        update_step = lambda group, p, gi, pi: None,
+    )
+    owner = types.SimpleNamespace(optimizer = base)
+    monkeypatch.delenv("UNSLOTH_BNB_OPTIMIZER_SYNC", raising = False)
+    for value, want in ((None, 0), ("1", 1), ("0", 0), ("", 0)):
+        synced.clear()
+        if value is not None:
+            monkeypatch.setenv("UNSLOTH_BNB_OPTIMIZER_SYNC", value)
+        af.InBackwardOptimizer._step_bitsandbytes(owner, 0, 0, p)
+        assert len(synced) == want, value
+    base.is_paged = True  # paged state always syncs
+    monkeypatch.delenv("UNSLOTH_BNB_OPTIMIZER_SYNC")
+    synced.clear()
+    af.InBackwardOptimizer._step_bitsandbytes(owner, 0, 0, p)
+    assert synced == [p]
+
+
 def test_a_real_second_gradient_is_still_reported(af):
     """Two backwards before one step still raise (in the hook, or at step() when one armed region sees the
     modules twice), and the step after that error is clean."""
