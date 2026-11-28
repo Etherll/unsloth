@@ -1827,29 +1827,31 @@ class _ReduceFromTP(torch.autograd.Function):
         return grad, None
 
 
-class _MeanFromTP(torch.autograd.Function):
-    """All-reduce mean forward, identity backward: a replicated block's output made bitwise equal on every tp
-    rank (CUDA scatter / index_add kernels are not deterministic), its gradient already the same everywhere."""
+class _BroadcastFromTP(torch.autograd.Function):
+    """Broadcast forward from the group's first rank, identity backward: a replicated block's output made bitwise
+    equal on every tp rank (CUDA scatter / index_add kernels are not deterministic), its gradient already the same
+    everywhere. In the output's own dtype: one copy of its bytes, not a float32 all-reduce of them."""
 
     @staticmethod
-    def forward(ctx, x, group, size):
-        if x.element_size() >= 4:
-            return _all_reduce(x, group) / size
-        # fp16 / bf16: sum in float32, or tp copies of a large finite value overflow to inf before the divide
-        return (_all_reduce(x.float(), group) / size).to(x.dtype)
+    def forward(ctx, x, group):
+        import torch.distributed._functional_collectives as funcol
+
+        out = funcol.broadcast(x.contiguous(), 0, group)  # src: the rank within the group
+        wait = getattr(out, "wait", None)
+        return wait() if callable(wait) else out
 
     @staticmethod
     def backward(ctx, grad):
-        return grad, None, None
+        return grad, None
 
 
 def _moe_post_hook(module, args, output):
     if module.__dict__.get("_unsloth_tp_gathered"):
         return None  # tp_replica: one rank may run alone
-    group, size = module._unsloth_tp_group, module._unsloth_tp_size
+    group = module._unsloth_tp_group
 
     def sync(y):
-        return _MeanFromTP.apply(y, group, size) if y.is_floating_point() else y
+        return _BroadcastFromTP.apply(y, group) if y.is_floating_point() else y
 
     if isinstance(output, torch.Tensor):
         return sync(output)

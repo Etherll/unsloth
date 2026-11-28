@@ -14,6 +14,7 @@ if multiprocessing.parent_process() is not None or getattr(
 
 import sys  # noqa: E402
 import tempfile  # noqa: E402
+import types  # noqa: E402
 
 import pytest  # noqa: E402
 import torch  # noqa: E402
@@ -121,17 +122,26 @@ def _case_parity(
     }
 
 
-def _case_mean_half(rank, world, tmp, dtype):
+def _case_replica_sync(rank, world, tmp, dtype):
+    """The replicated-MoE post hook on replicas that differ (as CUDA scatter / index_add can): tp groups of 2 (with
+    world 4, ranks [0, 1] and [2, 3], so the source is the group's first rank, not global rank 0)."""
     import torch.distributed as dist
 
+    groups = [dist.new_group(list(range(r, r + 2))) for r in range(0, world, 2)]
+    module = types.SimpleNamespace()
+    module._unsloth_tp_group, module._unsloth_tp_size = groups[rank // 2], 2
     out = {}
     for value in (40000.0, 3.0):
         x = torch.full((4,), value, dtype = getattr(torch, dtype))
-        out[value] = tpn._MeanFromTP.apply(x, dist.group.WORLD, world)
+        x[1:] += (rank % 2) * 2.0**-6 * value  # this rank's replica: rank-dependent rounding
+        x.requires_grad_(True)
+        y, extra = tpn._moe_post_hook(module, (), (x, "router"))
+        y.backward(torch.arange(4.0, dtype = x.dtype))
+        out[value] = (x.detach(), y.detach(), extra, x.grad)
     return out
 
 
-CASES = {"parity": _case_parity, "mean_half": _case_mean_half}
+CASES = {"parity": _case_parity, "replica_sync": _case_replica_sync}
 
 
 def _worker(rank, world, port, case, tmp, kwargs):
@@ -201,13 +211,18 @@ def _check(results):
     return results[0]
 
 
-@pytest.mark.parametrize("dtype", ["float16", "bfloat16"])
-def test_tp2_replicated_mean_does_not_overflow_half(dtype):
-    # 40000 is finite in fp16 but two replicas summed in fp16 are inf: the mean must not overflow.
-    for res in _spawn("mean_half", 2, dtype = dtype):
-        for value, y in res.items():
-            assert y.dtype == getattr(torch, dtype)
-            assert torch.equal(y, torch.full_like(y, value)), (value, y)
+@pytest.mark.parametrize("dtype", ["float16", "bfloat16", "float32"])
+def test_tp_replicated_moe_output_is_the_first_replica_bitwise(dtype, world = 4):
+    # Every tp rank gets its group's first replica bit for bit, in the output's own dtype (no float32 sum, so
+    # 40000 in fp16 cannot overflow), and the gradient passes through unchanged.
+    results = _spawn("replica_sync", world, dtype = dtype)
+    for rank, res in enumerate(results):
+        source = results[rank - rank % 2]
+        for value, (x, y, extra, grad) in res.items():
+            assert y.dtype == getattr(torch, dtype) and extra == "router"
+            assert torch.equal(y, source[value][0]), (rank, value, y, source[value][0])
+            assert torch.isfinite(y).all()
+            assert torch.equal(grad, torch.arange(4.0, dtype = grad.dtype)), (rank, grad)
 
 
 def test_tp2_moe_runs_replicated_and_matches_one_process():
