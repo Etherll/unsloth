@@ -80,18 +80,43 @@ def _rank_via_conftest(
     env,
     out,
     import_first = None,
+    group_first = False,
 ):
     """The harness pattern: rank variables and the test's env, then the conftest by path, then unsloth."""
     os.environ.update(RANK = str(rank), WORLD_SIZE = str(world), LOCAL_RANK = str(rank))
     os.environ.update(env)
-    if import_first:
-        __import__(import_first)
+    if group_first:
+        # As test_ep_moe_families_gloo's _worker: the group exists before the rank's first own import.
+        import datetime
+
+        import torch.distributed as dist
+
+        # A FileStore, or env:// (a TCPStore whose server lives in rank 0) when the case passes ("env",).
+        rendezvous = (
+            {"init_method": "env://"}
+            if group_first == ("env",)
+            else {"store": dist.FileStore(out.rsplit("_", 1)[0] + ".store", world)}
+        )
+        dist.init_process_group(
+            "gloo",
+            rank = rank,
+            world_size = world,
+            timeout = datetime.timedelta(seconds = 120),
+            **rendezvous,
+        )
+    for name in [import_first] if isinstance(import_first, str) else import_first or ():
+        __import__(name)
     import importlib.util
 
     spec = importlib.util.spec_from_file_location("_tp_conftest", CONFTEST)
     spec.loader.exec_module(importlib.util.module_from_spec(spec))
+    fingerprint = _fingerprint()
+    if group_first:
+        import torch.distributed as dist
+        dist.barrier()
+        dist.destroy_process_group()
     with open(out, "w", encoding = "utf-8") as f:
-        json.dump(_fingerprint(), f, sort_keys = True)
+        json.dump(fingerprint, f, sort_keys = True)
 
 
 def _rank_exit(code, queue):
@@ -114,10 +139,17 @@ def _drive(tmp, cases):
     )  # installs the zygote when enabled
     ctx = multiprocessing.get_context("spawn")
     report = {}
-    for name, (env, import_first) in cases.items():
+    for name, (env, import_first, *group_first) in cases.items():
+        if env.get("MASTER_PORT") == "0":
+            import socket
+            with socket.socket() as probe:
+                probe.bind(("127.0.0.1", 0))
+                env = {**env, "MASTER_PORT": str(probe.getsockname()[1])}
         outs = [os.path.join(tmp, f"{name}_{r}.json") for r in range(2)]
         procs = [
-            ctx.Process(target = _rank_via_conftest, args = (r, 2, env, outs[r], import_first))
+            ctx.Process(
+                target = _rank_via_conftest, args = (r, 2, env, outs[r], import_first, *group_first)
+            )
             for r in range(2)
         ]
         for p in procs:
@@ -155,8 +187,31 @@ CASES = {
     "imports_first_again": ({}, "transformers"),
 }
 
+# As test_ep_moe_families_gloo's dense case: a gloo group, then an import the conftest would make, in a rank of
+# plain's kind (a list argument does not choose a kind), so forked from a zygote that ran the conftest. It must
+# re-execute at its rendezvous: after it, the peer holds a connection to it (env://: rank 0 serves the TCPStore)
+# and a second rendezvous on the same store hangs. Each runs after plain's two cases, in a driver of its own.
+GROUP_CASES = {
+    "group_first": ({}, ["transformers"], True),
+    "group_first_env": (
+        {"MASTER_ADDR": "127.0.0.1", "MASTER_PORT": "0"},
+        ["transformers"],
+        ("env",),
+    ),
+}
+# Where each must re-execute: a FileStore exists before the call, so at the group; env:// at the rendezvous,
+# before rank 0's TCPStore server does.
+GROUP_REEXEC = {
+    "group_first": "a process group before the conftest",
+    "group_first_env": "a rendezvous before the conftest",
+}
 
-def _run(tmp_path, zygote):
+
+def _run(
+    tmp_path,
+    zygote,
+    names = None,
+):
     tmp = tmp_path / f"zygote{zygote}"
     tmp.mkdir()
     stats = tmp / "stats"
@@ -171,7 +226,12 @@ def _run(tmp_path, zygote):
     )
     for name in ("PYTEST_XDIST_TESTRUNUID", "PYTEST_XDIST_WORKER", "PYTEST_XDIST_WORKER_COUNT"):
         env.pop(name, None)  # its own learning, not the observations of the shard around it
-    code = f"import test_rank_zygote_gloo as t; t._drive({str(tmp)!r}, t.CASES)"
+    cases = (
+        "t.CASES"
+        if names is None
+        else f"{{k: {{**t.CASES, **t.GROUP_CASES}}[k] for k in {names!r}}}"
+    )
+    code = f"import test_rank_zygote_gloo as t; t._drive({str(tmp)!r}, {cases})"
     proc = subprocess.run(
         [sys.executable, "-c", code],
         env = env,
@@ -241,6 +301,22 @@ def test_the_zygote_path_is_taken(runs):
         "spawned: observed",
         "imported transformers before the conftest",
     }, summary
+
+
+@pytest.mark.parametrize("name", sorted(GROUP_CASES))
+def test_a_rank_that_rendezvouses_before_the_conftest_re_executes_first(tmp_path, name):
+    names = ("plain", "plain_again", name)
+    spawned, _ = _run(tmp_path, 0, names)
+    forked, summary = _run(tmp_path, 1, names)
+    assert spawned[name]["codes"] == [0, 0], spawned[name]
+    assert forked[name]["codes"] == [0, 0], forked[name]
+    for rank in range(2):
+        got, want = (dict(r[name]["ranks"][rank]) for r in (forked, spawned))
+        got.pop("str_hash"), want.pop("str_hash")
+        assert got == want, rank
+    # Both forked ranks re-executed before anything outside them knew them, not at the import after it.
+    assert summary["reasons"].get(GROUP_REEXEC[name]) == 2, summary
+    assert "imported transformers before the conftest" not in summary["reasons"], summary
 
 
 def test_exit_codes_exceptions_and_queues_come_back(runs):
