@@ -71,6 +71,15 @@ def on_cpu(monkeypatch):
     monkeypatch.setattr(P, "ENGAGE_DEVICE_TYPES", ("cpu",))
     monkeypatch.setattr(P, "ENGAGE_DTYPES", (*P.ENGAGE_DTYPES, "float64"))
     monkeypatch.delenv(P.PERTAP_ENV, raising = False)
+    # engagement tests describe torch < 2.14 (every call) on any installed torch; the >= 2.14 rule passes its own
+    install = P.install
+    monkeypatch.setattr(
+        P,
+        "install",
+        lambda vae, logger = None, *, torch_version = None: install(
+            vae, logger, torch_version = torch_version or "2.13.0"
+        ),
+    )
     return P
 
 
