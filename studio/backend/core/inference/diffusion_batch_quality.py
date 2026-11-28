@@ -95,6 +95,30 @@ SHIPPED[("sdxl", "NVIDIA L4", "eager")] = {
     "source": "batch_regate_nov28 (main f585e816d9)",
 }
 
+# LTX-2.5 dev fused guidance, UD-Q4_K_XL 768x512x49, 30 steps, n=48 vs an fp32-activation reference. Batch shape
+# only (IEEE-class): the mean diff is zero but the bound exceeds EPS, so it is judged against main's own kernel-swap
+# floor (LTX-2 full-mask drop off): within that floor and within EPS of it on both metrics.
+_LTX25_FUSED_A100 = {
+    "verdict": "PASS",
+    "rule": "kernel_floor",
+    "n": 48,
+    "upper": 0.0149,
+    "mean": -0.0000,
+    "worst_upper": 0.0204,
+    "worst_mean": 0.0026,
+    "kernel_floor_upper": 0.0311,
+    "kernel_floor_worst_upper": 0.0359,
+    "vs_kernel_floor_upper": -0.0006,
+    "vs_kernel_floor_worst_upper": 0.0025,
+    "eps": EPS,
+    "steps": 30,
+    "path": "any",
+    "metric": "mean-frame LPIPS (alex) to an fp32-activation reference",
+    "source": "ltx25_fg_regate a100_40 + a100_n48 (base d54ebcaab7)",
+}
+for _ltx_card in ("NVIDIA A100-SXM4-40GB", "NVIDIA A100-SXM4-80GB"):
+    SHIPPED[("ltx-2.5-dev-fused-guidance", _ltx_card, "any")] = dict(_LTX25_FUSED_A100)
+
 _LOCK = threading.Lock()
 _DEVICE_CLASS: dict[str, Optional[str]] = {}
 
@@ -182,13 +206,29 @@ def family_card_ok(family: Optional[str], pipe: Any) -> bool:
     )
 
 
+def _within_kernel_floor(verdict: dict) -> bool:
+    """Each bound is inside the kernel-swap floor's bound, and the change minus that control is within ``EPS``."""
+    pairs = (("upper", "kernel_floor_upper", "vs_kernel_floor_upper"),)
+    if "worst_upper" in verdict:
+        pairs += (("worst_upper", "kernel_floor_worst_upper", "vs_kernel_floor_worst_upper"),)
+    return all(
+        float(verdict[own]) <= float(verdict[floor]) and float(verdict[vs]) <= EPS
+        for own, floor, vs in pairs
+    )
+
+
 def passes(verdict: Any) -> bool:
-    """A stored verdict that lets a measured win serve: PASS, enough pairs, upper bound within ``EPS``."""
+    """A stored verdict that lets a measured win serve: PASS, enough pairs, upper bound within ``EPS`` (or the
+    kernel-swap floor for a ``kernel_floor`` verdict)."""
     if not isinstance(verdict, dict) or verdict.get("verdict") != "PASS":
         return False
     try:
-        return int(verdict.get("n", 0)) >= MIN_PAIRS and float(verdict.get("upper")) <= EPS
-    except (TypeError, ValueError):
+        if int(verdict.get("n", 0)) < MIN_PAIRS:
+            return False
+        if verdict.get("rule") == "kernel_floor":
+            return _within_kernel_floor(verdict)
+        return float(verdict.get("upper")) <= EPS
+    except (KeyError, TypeError, ValueError):
         return False
 
 

@@ -1892,11 +1892,13 @@ def render(
     on_step: Optional[Callable[..., Any]] = None,
     cancel: Optional[threading.Event] = None,
     on_stage: Optional[Callable[[int, int], Any]] = None,
+    fused_guidance: Optional[dict] = None,
 ) -> Any:
     """Run one LTX-2.5 request. ``kwargs`` is the generic video call (prompt, size, frames, steps, guidance,
     frame_rate, generator, negative_prompt, callback); returns the final pipeline output (``.frames`` / ``.audio``).
     ``on_stage(width, height)`` runs before each denoise stage with the size that stage denoises at (live previews
-    unpack the packed latents with it)."""
+    unpack the packed latents with it). ``fused_guidance``: the request's ``video_ltx25_fused_guidance.decide`` result
+    (dev only; None reads the env alone)."""
     failed = False
     try:
         return _render(
@@ -1908,6 +1910,7 @@ def render(
             on_step = on_step,
             cancel = cancel,
             on_stage = on_stage,
+            fused_decision = fused_guidance,
         )
     except BaseException:
         failed = True
@@ -2106,6 +2109,7 @@ def _render(
     on_step: Optional[Callable[..., Any]] = None,
     cancel: Optional[threading.Event] = None,
     on_stage: Optional[Callable[[int, int], Any]] = None,
+    fused_decision: Optional[dict] = None,
 ) -> Any:
     import inspect
 
@@ -2196,7 +2200,17 @@ def _render(
         if cb is not None:
             call["callback_on_step_end"] = cb
         _keep(width, height, frames)
-        return runner(**call)
+        from .video_ltx25_fused_guidance import dev_guidance
+
+        # Levers that rework a separate pass go in ``separate``; they run only when fused does not engage.
+        with dev_guidance(
+            runner,
+            call,
+            logger,
+            decision = fused_decision if isinstance(fused_decision, dict) else None,
+            separate = (),
+        ):
+            return runner(**call)
 
     distilled_sigmas = steps == len(LTX25_STAGE1_SIGMAS)
     guidance_off = _guidance_off(call_params)

@@ -8617,6 +8617,13 @@ class VideoStatusResponse(BaseModel):
         "planned_skips) and the denoiser call counts (calls, computed, skipped) of the clip in "
         "flight, else of the last one. null for any other step cache.",
     )
+    ltx25_fused_guidance: Optional[dict] = Field(
+        None,
+        description = "LTX-2.5 dev only: mode (auto | on | off from UNSLOTH_LTX25_FUSED_GUIDANCE), engaged (the "
+        "last clip ran the uncond, cond, STG and modality rows in one DiT call per step), decision (that request's "
+        "on / reason), quality (this card's G2c verdict) and stats (fused_calls, fused_rows, served_stg, "
+        "served_modality, misses, fallbacks, oom_fallbacks). null for any other load.",
+    )
     render_engagement: Optional[dict] = Field(
         None,
         description = "What the last clip actually ran: vae_decode = {untiled, tiled, wide, oom_fallback} "

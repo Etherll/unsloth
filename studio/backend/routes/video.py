@@ -1193,6 +1193,53 @@ async def cancel_video_generation(
     return {"cancelled": cancelled}
 
 
+class VideoFusedGuidanceRaceRequest(BaseModel):
+    width: Optional[int] = None
+    height: Optional[int] = None
+    num_frames: Optional[int] = None
+    steps: Optional[int] = None
+    guidance: Optional[float] = None
+    repeats: int = 3
+
+
+@router.post("/video/fused-guidance/race")
+async def video_fused_guidance_race(
+    body: Optional[VideoFusedGuidanceRaceRequest] = None,
+    current_subject: str = Depends(get_current_subject),
+):
+    """Owner only: race LTX-2.5 dev unfused vs fused guidance on an idle engine and persist the verdict Auto reads.
+    409 when the load cannot be raced or the engine is busy."""
+    import functools
+
+    from core.inference.diffusion_batch_race import RaceRefused
+
+    if account_access.managed_account():
+        raise HTTPException(
+            status_code = 403, detail = "Only the owner can run the fused-guidance race."
+        )
+    body = body or VideoFusedGuidanceRaceRequest()
+    backend = await asyncio.to_thread(_video_backend)
+    race = getattr(backend, "fused_guidance_race", None)
+    if race is None:
+        raise HTTPException(status_code = 409, detail = "The video engine has no fused-guidance race.")
+    try:
+        report = await asyncio.to_thread(
+            functools.partial(
+                race,
+                width = body.width,
+                height = body.height,
+                num_frames = body.num_frames,
+                steps = body.steps,
+                guidance = body.guidance,
+                repeats = max(3, min(int(body.repeats), 10)),
+            )
+        )
+    except RaceRefused as exc:
+        raise HTTPException(status_code = 409, detail = str(exc))
+    status = await asyncio.to_thread(backend.status)
+    return {"race": report, "ltx25_fused_guidance": (status or {}).get("ltx25_fused_guidance")}
+
+
 @router.get("/video/status", response_model = VideoStatusResponse)
 async def video_status(
     current_subject: str = Depends(get_current_subject),

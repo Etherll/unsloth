@@ -6622,6 +6622,46 @@ def video_offload_shortfall_message(
     )
 
 
+def _ltx25_fused_budget(
+    decision: dict,
+    *,
+    family: str,
+    floor_mib: int,
+    available_mib: int,
+    placement: str,
+    width: Optional[int],
+    height: Optional[int],
+    frames: Optional[int],
+    decode_floor_mib: Optional[int],
+    measured_extra_mib: Optional[int],
+    denoise_mib: Optional[int],
+    decode_mib: Optional[int] = None,
+) -> tuple[dict, Optional[int]]:
+    """LTX-2.5 dev fused guidance decision + denoise headroom. If the 4-row call does not fit, fall back to the
+    separate calls, so this never refuses a request main would admit."""
+    from .video_ltx25_fused_guidance import decline_for_budget, extra_rows_mib
+
+    fused_mib = (
+        DEFAULT_BASE_OVERHEAD_MIB if denoise_mib is None else int(denoise_mib)
+    ) + extra_rows_mib(width, height, frames)
+    shortfall = video_offload_shortfall_message(
+        family = family,
+        floor_mib = floor_mib,
+        available_mib = available_mib,
+        placement = placement,
+        width = width,
+        height = height,
+        frames = frames,
+        decode_floor_mib = decode_floor_mib,
+        measured_extra_mib = measured_extra_mib,
+        decode_mib = decode_mib,
+        denoise_mib = fused_mib,
+    )
+    if shortfall is None:
+        return decision, fused_mib
+    return decline_for_budget(decision, shortfall), denoise_mib
+
+
 def _progress(phase: Optional[str], **extra: Any) -> dict[str, Any]:
     return {"phase": phase, **extra}
 
@@ -16698,6 +16738,50 @@ class VideoBackend:
             accounts.discard(None)
             return frozenset(accounts)
 
+    def fused_guidance_race(
+        self,
+        *,
+        width: Optional[int] = None,
+        height: Optional[int] = None,
+        num_frames: Optional[int] = None,
+        steps: Optional[int] = None,
+        guidance: Optional[float] = None,
+        repeats: int = 3,
+    ) -> dict:
+        """LTX-2.5 dev: race unfused vs fused guidance on the idle engine and persist the verdict Auto reads. None
+        fields resolve as generate's defaults, so the verdict lands on the key a default request reads."""
+        from .diffusion_batch_race import RaceRefused
+        from .video_ltx25_fused_guidance import race_refusal, run_race
+
+        state = self._state
+        refusal = race_refusal(state)
+        if refusal is not None:
+            raise RaceRefused(refusal)
+
+        def idle() -> bool:
+            with self._lock:
+                return (
+                    self._state is state
+                    and not self._generate_job_active
+                    and self._forming is None
+                    and not self._teardown_waiters
+                    and self._encode_tail is None
+                )
+
+        def render(prompt: str, seed: int, n: Optional[int]) -> None:
+            self.generate(
+                prompt = prompt,
+                width = width,
+                height = height,
+                num_frames = num_frames,
+                steps = n,
+                guidance = guidance,
+                seed = seed,
+                live_preview = False,
+            )
+
+        return run_race(render, state, idle = idle, steps = steps, repeats = repeats)
+
     @keeps_system_awake
     @holds_inference
     @vram_budget_scope("video")
@@ -16932,6 +17016,25 @@ class VideoBackend:
                     if unmeasured is not None:
                         # Before any denoise: the clips render one at a time, none lost or rendered twice.
                         raise BatchDoesNotFit(unmeasured)
+                ltx25_fused = None
+                ltx25_fused_priced = False
+                if fam.name == "ltx-2.5" and getattr(state.pipe, "_unsloth_ltx25_dev", False):
+                    from .video_ltx25_fused_guidance import (
+                        decide as ltx25_fused_decide,
+                        extra_rows_mib as ltx25_fused_extra_mib,
+                    )
+                    ltx25_fused = ltx25_fused_decide(
+                        state,
+                        width = width,
+                        height = height,
+                        frames = frames,
+                        steps = steps,
+                        guidance = guidance,
+                        conditioned = first_pil is not None
+                        or last_pil is not None
+                        or bool(references),
+                        rows = batch_rows,
+                    )
 
                 if state.engine == "diffusers" and fam.modular_workflow and state.device != "cpu":
                     from .video_minimax_h3 import (
@@ -17141,6 +17244,11 @@ class VideoBackend:
                         calibration = video_stream_residency.with_extra(
                             calibration, "batch", batch_rows
                         )
+                    unfused_calibration = calibration
+                    if ltx25_fused is not None and ltx25_fused.get("on"):
+                        calibration = video_stream_residency.with_extra(
+                            calibration, "fused_guidance", 4
+                        )
                     # Tag BEFORE the residency fit: after a reload the fit reads process-wide peaks through this key.
                     video_stream_residency.arm_request(
                         state.pipe,
@@ -17170,7 +17278,12 @@ class VideoBackend:
                         video_stream_residency.fit_for_request(
                             state.pipe,
                             device = device_obj,
-                            floor_mib = request_floor_mib,
+                            floor_mib = request_floor_mib
+                            + (
+                                ltx25_fused_extra_mib(width, height, frames)
+                                if ltx25_fused is not None and ltx25_fused.get("on")
+                                else 0
+                            ),
                             width = width,
                             height = height,
                             frames = denoise_frames,
@@ -17215,6 +17328,48 @@ class VideoBackend:
                             fps = out_fps,
                         )
                     )
+                    request_decode_mib = _video_tiled_decode_mib(
+                        state,
+                        width = width,
+                        height = height,
+                        frames = frames,
+                        available_mib = int(available_bytes // (1024 * 1024)),
+                        device = device_obj,
+                        decode_floor_mib = request_decode_floor_mib,
+                    )
+                    if ltx25_fused is not None and ltx25_fused.get("on"):
+                        ltx25_fused_priced = True
+                        ltx25_fused, fused_denoise_mib = _ltx25_fused_budget(
+                            ltx25_fused,
+                            family = fam.name,
+                            floor_mib = request_floor_mib,
+                            available_mib = int(available_bytes // (1024 * 1024)),
+                            placement = f"'{state.offload_policy}' offload",
+                            width = width,
+                            height = height,
+                            frames = frames,
+                            decode_floor_mib = request_decode_floor_mib,
+                            measured_extra_mib = request_measured_mib,
+                            denoise_mib = request_denoise_mib,
+                            decode_mib = request_decode_mib,
+                        )
+                        if ltx25_fused.get("on"):
+                            request_denoise_mib = fused_denoise_mib
+                        else:
+                            calibration = unfused_calibration
+                            video_stream_residency.arm_request(
+                                state.pipe,
+                                key = calibration,
+                                width = width,
+                                height = height,
+                                frames = denoise_frames,
+                                device = device_obj,
+                                rearm = False,
+                            )
+                            request_measured_mib = video_stream_residency.measured_extra_mib(
+                                calibration, int(width) * int(height) * int(frames) * batch_rows
+                            )
+                            logger.info("ltx25.fused_guidance: %s", ltx25_fused.get("reason"))
                     apply_request_prefetch_depth(
                         state.pipe,
                         floor_mib = request_floor_mib,
@@ -17233,15 +17388,7 @@ class VideoBackend:
                         frames = frames,
                         decode_floor_mib = request_decode_floor_mib,
                         measured_extra_mib = request_measured_mib,
-                        decode_mib = _video_tiled_decode_mib(
-                            state,
-                            width = width,
-                            height = height,
-                            frames = frames,
-                            available_mib = int(available_bytes // (1024 * 1024)),
-                            device = device_obj,
-                            decode_floor_mib = request_decode_floor_mib,
-                        ),
+                        decode_mib = request_decode_mib,
                         denoise_mib = request_denoise_mib,
                     )
                     if shortfall is not None:
@@ -17249,6 +17396,20 @@ class VideoBackend:
                             from .video_batch import BatchDoesNotFit
                             raise BatchDoesNotFit(shortfall)
                         raise RuntimeError(shortfall)
+                if (
+                    ltx25_fused is not None
+                    and ltx25_fused.get("on")
+                    and ltx25_fused.get("mode") != "forced"
+                    and not ltx25_fused_priced
+                    and getattr(state, "vram_split_cards", None)
+                ):
+                    # A split placement's planner does not price the 4-row call: Auto stays off.
+                    from .video_ltx25_fused_guidance import (
+                        decline_for_budget as ltx25_fused_decline,
+                    )
+                    ltx25_fused = ltx25_fused_decline(
+                        ltx25_fused, "the split placement's planner does not price the 4-row call"
+                    )
 
                 # diffusers reproduces a Metal seed only with a CPU generator.
                 generator_device = (
@@ -17462,6 +17623,7 @@ class VideoBackend:
                             on_stage = lambda w, h: (
                                 previewer.set_render_size(h, w) if previewer is not None else None
                             ),
+                            fused_guidance = ltx25_fused,
                         )
 
                 started = time.monotonic()
@@ -17923,7 +18085,8 @@ class VideoBackend:
                 report_attention_run(state)
                 if len(video_frames) and not fam.modular_workflow:
                     from . import video_stream_residency
-
+                    if ltx25_fused is not None and ltx25_fused.get("fell_back"):
+                        video_stream_residency.discard_request(pipe)
                     # after decode and export: this peak sizes the next request of its size
                     video_stream_residency.record_request_peak(pipe, logger = logger)
                 duration_s = len(video_frames) / float(out_fps) if out_fps else 0.0
@@ -19121,6 +19284,7 @@ class VideoBackend:
                 "memory_mode": None,
                 "speed_mode": None,
                 "speed_optims": [],
+                "ltx25_fused_guidance": None,
                 "attention_backend": None,
                 "sd_cpp_cudnn_attention": None,
                 "sd_cpp_cudnn_reason": None,
@@ -19156,6 +19320,13 @@ class VideoBackend:
             getattr(getattr(state, "pipe", None), "_unsloth_cuda_graphs", ()) or (),
         )
         fam = state.family
+        ltx25_fused = None
+        if fam.name == "ltx-2.5":
+            from .video_ltx25_fused_guidance import status as ltx25_fused_status
+            ltx25_fused = ltx25_fused_status(state)
+            if ltx25_fused is not None and ltx25_fused.get("engaged"):
+                # Per request: never part of a calibration key.
+                speed_optims = [*speed_optims, "ltx25_fused_guidance"]
         default_steps, default_guidance = default_video_generation_params(
             state.variant_id,
             state.gguf_filename,
@@ -19193,6 +19364,7 @@ class VideoBackend:
             "memory_mode": state.memory_mode,
             "speed_mode": state.speed_mode,
             "speed_optims": speed_optims,
+            "ltx25_fused_guidance": ltx25_fused,
             "bg_compile": state.bg_compile.describe()
             if getattr(state, "bg_compile", None) is not None
             else None,
