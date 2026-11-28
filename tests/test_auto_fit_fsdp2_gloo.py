@@ -87,14 +87,23 @@ def test_weights_match_standard_fsdp2_and_single_process(results, case):
                 assert r["inb_vs_std"] == 0.0, r
                 assert r["loss_vs_std"] == 0.0, r
                 continue
-            # With clipping, the two arms round differently on some CPU kernels (not under ATEN_CPU_CAPABILITY=avx2)
-            # and five bfloat16 steps amplify it: the last loss differed by 4e-4 here and 1.004e-3 on CI, more than
-            # the other clip modes move it, so it tested nothing. The second loss is the first a clipped update
-            # reaches: exact gave 0 to 6.2e-6 on every kernel path tried, clipping with the partial norm 3.8e-5 to
-            # 1.2e-4. The coefficient itself is pinned to TOL by the float32 "exact" case.
-            first = abs(r["inb_stats"]["losses"][1] - r["std_stats"]["losses"][1])
-            assert first < 2e-5, (first, r["inb_stats"]["losses"], r["std_stats"]["losses"])
-            assert r["norm_vs_std"] < 2e-2, r
+            # With clipping the arms differ only in how the clip coefficient is rounded: float32 norms summed per
+            # group here, float64 in the standard arm. Once a bfloat16 forward reads weights one float32 ulp apart,
+            # some casts round the other way and every later step amplifies that, so later losses, norms and
+            # weights compare chaos (a correct run and a 1% wrong coefficient both moved the last loss by 1e-4 to
+            # 1e-3, depending on the CPU kernels). The first update is compared instead: both arms start from the
+            # same weights with bitwise the same gradients, so its error is bounded from the rounding alone.
+            # norm: a sum of n float32 squares is within n * eps of the exact one (n = the largest local tensor,
+            # plus the tensor, group and rank sums). update: AdamW's first step is lr * c g / (c |g| + eps_adam),
+            # whose sensitivity to a relative change d in c is at most lr * d / 4, plus one ulp of rounding of
+            # each arm's weight. Measured: 0 to 6e-8 on every ATEN_CPU_CAPABILITY / MKL_CBWR setting tried, under
+            # a 2.8e-6 bound; a missing all-reduce, clipping with the partial norm, no clipping or a coefficient
+            # 1% off move it by 2.5e-5 to 7e-3. Later steps' coefficients are pinned to TOL by the float32 cases.
+            eps = torch.finfo(torch.float32).eps
+            n = r["max_numel"] + 64
+            assert r["norm0_vs_std"] <= n * eps, r
+            bound = worker.LR * n * eps + 2 * eps * r["max_weight"]
+            assert r["first_vs_std"] <= bound, (r["first_vs_std"], bound)
             continue
         assert r["moved"] > 1e-3, r  # the weights trained, so equality is not trivial
         if clip in (None, "exact"):

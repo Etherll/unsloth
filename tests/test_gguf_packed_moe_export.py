@@ -36,6 +36,7 @@ _F16_FIELDS = {"Q8_0": (0,), "Q4_K": (0, 2), "Q6_K": (208,)}
 # activations stay O(1) and routing is stable under fp32 rounding.
 _SCALES = {"Q8_0": 1e-3, "Q4_K": 1e-5, "Q6_K": 1e-5}
 _EXPERT_STACKS = ("mlp.experts.gate_up_proj", "mlp.experts.down_proj")
+_LORA_RANK = 4
 
 
 def _blocks(name, rows, cols, seed):
@@ -148,7 +149,7 @@ def _write_qwen35moe_gguf(path):
 
 def _lora_config(peft):
     return peft.LoraConfig(
-        r = 4,
+        r = _LORA_RANK,
         lora_alpha = 16,  # scale 4: a merge that drops it is far outside the tolerance below
         target_modules = ["q_proj", "o_proj", "in_proj_qkv", "out_proj", "gate_proj", "down_proj"],
         target_parameters = list(_EXPERT_STACKS),
@@ -193,14 +194,27 @@ def _assert_is_the_oracle_merge(
             continue
         changed.append(key)
         assert value.shape == want.shape, (key, value.shape, want.shape)
-        # Within one 16-bit ulp of the oracle; the LoRA delta is many ulps, so a wrong expert merge fails here.
+        # Within one 16-bit ulp of the oracle, plus the float32 rounding of the delta itself: the save computes
+        # B @ A in another order than the oracle (a per-expert loop on CPU, one bmm on an accelerator, and the
+        # BLAS kernels differ by OS and CPU), which moves it by up to (rank + 1) float32 eps of |base| + |B| |A|.
+        # Where base and delta nearly cancel that is many ulps of the tiny result (want 1e-8 from a base of
+        # 1.7e-3 here: 4 float32 ulps of delta move it 14 bf16 ulps; Windows CI saw 22), so the slack is absolute,
+        # 2 (rank + 2) eps of the tensor's largest |base| + |delta|. A wrong expert merge is off by about |delta|,
+        # orders of magnitude more, and the delta must be far above the tolerance, so it still fails here.
         spacing = torch.ldexp(
             torch.ones_like(want, dtype = torch.float32),
             torch.frexp(want.float().abs().clamp_min(1e-30))[1] - 8,
         )
-        ulps = (value.float() - want.float()).abs() / spacing
-        assert float(ulps.max()) <= 1.0, (key, float(ulps.max()))
-        assert float((delta.abs() / spacing).max()) > 32, key
+        rounding = (
+            2
+            * (_LORA_RANK + 2)
+            * torch.finfo(torch.float32).eps
+            * float((base[key].abs() + delta.abs()).max())
+        )
+        tol = spacing + rounding
+        err = (value.float() - want.float()).abs() / tol
+        assert float(err.max()) <= 1.0, (key, float(err.max()), float((err * tol / spacing).max()))
+        assert float((delta.abs() / tol).max()) > 32, key
     return changed
 
 

@@ -174,6 +174,7 @@ def fsdp_arm(
         model = shard(tiny_llama(), mp)
         base = torch.optim.AdamW(model.parameters(), lr = LR, foreach = True)
     stats = dict(peak_live = 0, live_after_backward = [], norms = [], losses = [])
+    first = None
     flag = {"sync": True}
     opt = base
     if mode.startswith("in_backward"):
@@ -251,11 +252,16 @@ def fsdp_arm(
             stats["late_steps"] = opt.late_steps
             stats["measured_steps"] = opt.measured_steps
         opt.zero_grad(set_to_none = True)
+        if s == 0:
+            first = full_state(
+                model
+            )  # after one update, before any forward has run on updated weights
         t = torch.tensor(total)
         torch.distributed.all_reduce(t)
         stats["losses"].append(float(t) / torch.distributed.get_world_size())
     stats["total_params"] = len(params)
     stats["groups"] = fsdp_group_sizes(model)
+    stats["first"] = first
     return full_state(model), stats
 
 
@@ -341,8 +347,13 @@ def run_rank(rank, port, queue, cases):
                 norm_vs_std = max(
                     abs(a - b) / b for a, b in zip(inb_stats["norms"], std_stats["norms"])
                 ),
-                std_stats = {k: v for k, v in std_stats.items() if k != "norms"},
-                inb_stats = inb_stats,
+                std_stats = {k: v for k, v in std_stats.items() if k not in ("norms", "first")},
+                inb_stats = {k: v for k, v in inb_stats.items() if k != "first"},
+                first_vs_std = max_diff(inb_stats["first"], std_stats["first"]),
+                norm0_vs_std = abs(inb_stats["norms"][0] - std_stats["norms"][0])
+                / std_stats["norms"][0],
+                max_weight = max(float(t.abs().max()) for t in std_stats["first"].values()),
+                max_numel = max(t.numel() for t in std_stats["first"].values()),
             )
             if not mp:
                 ref, ref_norms, ref_losses = reference(data, ga, clip, calibrate)
