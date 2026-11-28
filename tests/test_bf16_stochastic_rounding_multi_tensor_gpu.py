@@ -156,3 +156,39 @@ def test_multi_tensor_launch_failure_falls_back_bitwise(sr, monkeypatch, capsys)
 
 def test_multi_tensor_probe_compares_bits(sr):
     assert sr._multi_ok(torch.device("cuda")) is True
+
+
+def test_per_weight_failure_keeps_multi_tensor_version_bumps(sr, monkeypatch, capsys):
+    """A per-weight launch failing (the lone fp32-gradient weight, first in the group) after the multi-tensor
+    launch stepped the bf16-gradient weights: those still get their version bump, so autograd sees the write."""
+    monkeypatch.setenv("UNSLOTH_BF16_SR_MULTI_TENSOR", "1")
+    g = torch.Generator().manual_seed(0)
+    params = [
+        torch.nn.Parameter((torch.randn(300, generator = g) * 0.05).to(torch.bfloat16).cuda())
+        for _ in range(3)
+    ]
+    if hasattr(params[0], "grad_dtype"):
+        params[0].grad_dtype = None
+    opt = torch.optim.AdamW(params, lr = 1e-3)
+    sr.enable_bf16_stochastic_rounding(opt, seed = 1, verbose = False)
+    assert sr._triton_ok(params[0].device) and sr._multi_ok(
+        params[0].device
+    )  # probed before the break
+
+    class Broken:
+        def __getitem__(self, grid):
+            def launch(*args, **kwargs):
+                raise RuntimeError("simulated compile failure")
+
+            return launch
+
+    sr._adamw_kernel = Broken()
+    params[0].grad = (torch.randn(300, generator = g) * 1e-3).cuda()  # float32: a bucket of one
+    for p in params[1:]:
+        p.grad = (torch.randn(300, generator = g) * 1e-3).to(torch.bfloat16).cuda()
+    before = [p._version for p in params]
+    opt.step()
+    assert opt.__dict__["_unsloth_sr_multi_tensor_launches"] == 1
+    assert all(p._version > v for p, v in zip(params[1:], before[1:]))
+    assert all(float(opt.state[p]["step"]) == 1 for p in params)
+    assert "failed on" in capsys.readouterr().out

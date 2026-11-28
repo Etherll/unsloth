@@ -1179,10 +1179,11 @@ def _fused_adamw_step(optimizer, group, params, seed):
     multi = _multi_adamw_step(
         optimizer, group, params, states, ts, seed, (decay, 1 - beta1, beta2, 1 - beta2, eps)
     )
+    # Counted up front: a per-weight launch failing below must not skip their version bumps.
+    stepped = [p for p in params if id(p) in multi]
     for i, (p, state, step) in enumerate(zip(params, states, steps)):
         t = ts[i]
         if id(p) in multi:
-            stepped.append(p)
             continue
         bc1 = 1 - beta1**t
         bc2 = 1 - beta2**t
