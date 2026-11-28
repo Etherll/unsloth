@@ -703,6 +703,89 @@ def paired_cost_us(fns: dict, base_name: str) -> dict:
     return {name: (half if name == base_name else us - half) for name, us in t.items()}
 
 
+STEP_CHECK_ENV = "UNSLOTH_DIFFUSION_INT8_CUTLASS_STEP_CHECK"
+# Whole-step check, per arm: settle untimed, then measure (seconds)
+_STEP_SETTLE_S = 1.0
+_STEP_MEASURE_S = 1.0
+_STEP_PAIRS = 3
+# CUTLASS keeps its tiles unless its median round is this much slower than Triton
+_STEP_VETO = 0.01
+
+
+def step_check_enabled() -> bool:
+    raw = (os.environ.get(STEP_CHECK_ENV) or "").strip().lower()
+    return raw not in ("0", "off", "false", "no")
+
+
+def _clock_power(index: Any) -> tuple:
+    """(SM MHz, board W) now, or (None, None) without NVML."""
+    import torch
+
+    try:
+        mhz = float(torch.cuda.clock_rate(index))
+    except Exception:  # noqa: BLE001 - no pynvml / amdsmi
+        mhz = None
+    try:
+        w = float(torch.cuda.power_draw(index)) / 1000.0
+    except Exception:  # noqa: BLE001
+        w = None
+    return mhz, w
+
+
+def time_round_us(
+    fn: Callable,
+    index: Any = None,
+    settle_s: float = _STEP_SETTLE_S,
+    measure_s: float = _STEP_MEASURE_S,
+) -> dict:
+    """``{"us", "mhz", "w"}`` per round of ``fn`` (one step's int8 GEMMs), ``settle_s`` untimed then ~``measure_s`` timed.
+
+    Per-shape races (0.25 s) miss power-cap droop: RTX 6000 Ada, MiniMax-H3-Image 2048^2, tiles won every race yet the
+    render ran 8% slower (SM 1480 -> 1340 MHz)."""
+    import time
+
+    import torch
+
+    start, end = torch.cuda.Event(enable_timing = True), torch.cuda.Event(enable_timing = True)
+    rounds, t0 = 0, time.perf_counter()
+    while True:
+        fn()
+        torch.cuda.synchronize()
+        rounds += 1
+        if time.perf_counter() - t0 >= settle_s and rounds >= 2:
+            break
+    per_round = (time.perf_counter() - t0) / rounds
+    n = max(2, int(measure_s / max(per_round, 1e-6)))
+    start.record()
+    for _ in range(n):
+        fn()
+    end.record()
+    mhz, w = [], []
+    while not end.query():
+        c, p = _clock_power(index)
+        if c is not None:
+            mhz.append(c)
+        if p is not None:
+            w.append(p)
+        time.sleep(0.02)
+    end.synchronize()
+    return {
+        "us": start.elapsed_time(end) * 1000.0 / n,
+        "mhz": round(sum(mhz) / len(mhz)) if mhz else None,
+        "w": round(sum(w) / len(w), 1) if w else None,
+    }
+
+
+def step_verdict(pairs: list) -> dict:
+    """``pairs``: [(CUTLASS us, Triton us)]; keep unless the median ratio exceeds ``1 + _STEP_VETO``."""
+    ratios = sorted(float(c) / float(t) for c, t in pairs if c and t)
+    if not ratios:
+        return {"keep": True, "ratio": None}
+    mid = len(ratios) // 2
+    med = ratios[mid] if len(ratios) % 2 else (ratios[mid - 1] + ratios[mid]) / 2.0
+    return {"keep": med <= 1.0 + _STEP_VETO, "ratio": round(med, 4)}
+
+
 def time_us(
     fns: dict,
     rounds: int = 3,

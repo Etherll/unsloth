@@ -602,7 +602,15 @@ def _run(a: Any, w: Any, xs: Any, ws: Any, bias: Any) -> Any:
     if _CUT_DEFER_KEYS.get(index):
         _defer_note_rows(index, a, w, xs, ws, bias)
     if _CUT_PLAN.get(index):
-        _live_row_race(index, a, w, xs, ws, bias)
+        if index in _CUT_LIVE_LATER:
+            _live_race_later(
+                index, a, w, xs, ws, bias
+            )  # an image load: never a race inside the render
+        else:
+            _live_row_race(index, a, w, xs, ws, bias)
+    mix = _CUT_MIX.get(index)
+    if mix is not None:
+        _count_step_call(mix, a, w, xs, ws, bias)
     tile = _cutlass_tile(index, a, w, xs, ws, bias)
     if tile is not None:
         import torch
@@ -648,7 +656,20 @@ def _cut_forget_card(index: Any) -> None:
     """Drop card ``index``'s in-process plan, races and row records: the paired-rows switch changed, so verdicts
     raced under the other setting must not be reused (the disk cache key splits the same way). Already swapped
     Linears fall back to today's path until this load's plan publishes, as after a failed launch."""
-    for d in (_CUT_PLAN, _CUT_DONE, _CUT_RACES, _CUT_LIVE, _CUT_ROWS, _CUT_ROWS_PENDING, _CUT_CKEY):
+    for d in (
+        _CUT_PLAN,
+        _CUT_DONE,
+        _CUT_RACES,
+        _CUT_LIVE,
+        _CUT_ROWS,
+        _CUT_ROWS_PENDING,
+        _CUT_CKEY,
+        _CUT_MIX,
+        _CUT_STEP,
+        _CUT_STEP_QUEUED,
+        _CUT_STEP_HOOK,
+        _CUT_LIVE_LATER,
+    ):
         d.pop(index, None)
 
 
@@ -1394,8 +1415,21 @@ def _plan_or_defer(
             ready, missed = _cut_misses(index, recs)
     except Exception:  # noqa: BLE001 - anything unreadable races at load, as before
         missed = []
+    if ready or missed:
+        _CUT_LIVE_LATER[index] = {
+            "want": [],
+            "hooked": False,
+            "logger": logger,
+            "owner": defer.current_owner() or 0,
+        }
+        if cut.step_check_enabled():
+            _CUT_MIX.setdefault(index, {})
     if not missed:
-        return _cutlass_plan(index, recs, triton_gemm, logger)
+        plan = _cutlass_plan(index, recs, triton_gemm, logger)
+        if ready:
+            _step_after_plan(index, logger)
+            plan = _CUT_PLAN.get(index) or {}
+        return plan
     if ready:
         _cutlass_plan(index, ready, triton_gemm, logger)
     else:
@@ -1418,7 +1452,7 @@ def _plan_or_defer(
             units,
             logger,
             before = partial(_defer_before, index),
-            after = partial(_defer_after, index, owner),
+            after = partial(_defer_after_then_step, index, owner, logger),
             owner = owner,
         )
         if logger is not None:
@@ -1430,6 +1464,557 @@ def _plan_or_defer(
                 defer.DEFER_ENV,
             )
     return _CUT_PLAN.get(index) or {}
+
+
+# Sustained whole-step check of CUTLASS winners (image loads, deferred); why: ``cut.time_round_us``.
+# index -> {shape key: [large-row calls since load, last row bucket]}, model order
+_CUT_MIX: dict = {}
+_CUT_STEP: dict = {}
+_CUT_STEP_QUEUED: dict = {}
+# a merged Q/K/V plan comes back through ``_step_after_plan``
+_CUT_STEP_HOOK: dict = {}
+_STEP_ROUND_CALLS = 24
+# an edit to the step check re-checks (race verdicts key on ``_RACE_SOURCES`` alone)
+_STEP_SOURCES = {
+    "diffusion_int8_gemm": ("_STEP_ROUND_CALLS", "_step_mix", "_step_operands", "_step_pair"),
+    "diffusion_int8_cutlass": (
+        "_STEP_SETTLE_S",
+        "_STEP_MEASURE_S",
+        "_STEP_PAIRS",
+        "_STEP_VETO",
+        "time_round_us",
+        "step_verdict",
+    ),
+}
+_STEP_KEEP = 32
+
+
+@lru_cache(maxsize = 1)
+def _step_digest() -> str:
+    import hashlib
+    import sys
+
+    from . import diffusion_int8_cutlass as cut
+
+    h = hashlib.sha256(b"step-format=1\n")
+    for module in (sys.modules[__name__], cut):
+        h.update(_code(module.__file__, _STEP_SOURCES[module.__name__.rsplit(".", 1)[-1]]).encode())
+    return h.hexdigest()[:12]
+
+
+def _step_reset(index: int) -> None:
+    """A new load on card ``index``: drop step check state."""
+    for d in (_CUT_MIX, _CUT_STEP, _CUT_STEP_QUEUED, _CUT_STEP_HOOK, _CUT_LIVE_LATER):
+        d.pop(index, None)
+
+
+def _count_step_call(mix: dict, a: Any, w: Any, xs: Any, ws: Any, bias: Any) -> None:
+    from . import diffusion_int8_cutlass as cut
+
+    m = int(a.shape[0])
+    if m < cut._LARGE_M or m >= cut._HUGE_M:
+        return
+    key = _cut_key(w.shape[0], w.shape[1], xs.dtype, ws.dtype, bias is not None)
+    rec = mix.get(key)
+    if rec is None:
+        mix[key] = [1, cut.row_bucket(m)]
+    else:
+        rec[0] += 1
+        rec[1] = cut.row_bucket(m)
+
+
+def _step_mix(index: int) -> list:
+    """[(shape key, row bucket, CUTLASS tile its calls take or None, calls)] of this load's large-row int8 calls, in
+    model order; [] when none of them runs a CUTLASS tile (nothing to check)."""
+    from . import diffusion_int8_cutlass as cut
+
+    calls = _CUT_MIX.get(index)
+    if not calls:
+        return []
+    plan = _CUT_PLAN.get(index) or {}
+    out = []
+    for key, (count, b) in list(calls.items()):
+        entry = plan.get(key)
+        out.append((key, int(b), cut.slot(int(b), entry) if entry else None, int(count)))
+    return out if any(tile is not None for _, _, tile, _ in out) else []
+
+
+def _step_sig(mix: list) -> str:
+    return ";".join(f"{key!r}@{rows}:{tile}" for key, rows, tile, _ in mix)
+
+
+def _step_key(index: int) -> Optional[str]:
+    ckey = _CUT_CKEY.get(index)
+    return f"{ckey}|step={_step_digest()}" if ckey else None
+
+
+def _step_table(index: int) -> dict:
+    key = _step_key(index)
+    got = _cut_cache_read().get(key) if key else None
+    return got if isinstance(got, dict) else {}
+
+
+def _step_stored(index: int, sig: str) -> Optional[dict]:
+    sigs = _step_table(index).get("sigs")
+    hit = sigs.get(sig) if isinstance(sigs, dict) else None
+    return hit if isinstance(hit, dict) and isinstance(hit.get("keep"), bool) else None
+
+
+def _step_store(index: int, mix: list, sig: str, verdict: dict) -> None:
+    """The verdict by ``sig``, and per (shape, row bucket) the tile that lost (read back at load: ``_step_apply``)."""
+    key = _step_key(index)
+    if not key:
+        return
+    table = _cut_cache_read()
+    cur = table.get(key) if isinstance(table.get(key), dict) else {}
+    sigs = cur.get("sigs") if isinstance(cur.get("sigs"), dict) else {}
+    veto = cur.get("veto") if isinstance(cur.get("veto"), dict) else {}
+    sigs.pop(sig, None)
+    sigs[sig] = verdict
+    for k_, b, tile, _ in mix:
+        if tile is None:
+            continue
+        at = veto.get(repr(k_)) if isinstance(veto.get(repr(k_)), dict) else {}
+        if verdict["keep"]:
+            if at.get(str(b)) == tile:
+                at.pop(str(b))
+        else:
+            at[str(b)] = tile
+        if at:
+            veto[repr(k_)] = at
+        else:
+            veto.pop(repr(k_), None)
+    table.pop(key, None)
+    table[key] = {"sigs": dict(list(sigs.items())[-_STEP_KEEP:]), "veto": veto}
+    _cut_cache_write(table)
+
+
+def _step_back(index: int, losers: list) -> None:
+    """Send [(shape key, row bucket)] back to today's path on card ``index``."""
+    plan = _CUT_PLAN.get(index) or {}
+    for key, b in losers:
+        entry = plan.get(key)
+        if entry:
+            entry[int(b)] = None  # ``slot`` reads the bucket's own entry first
+    _CUT_PLAN[index] = {k_: v for k_, v in plan.items() if any(t is not None for t in v.values())}
+
+
+def _step_publish(index: int, mix: list, sig: str, verdict: dict, logger: Any, how: str) -> int:
+    """Apply ``verdict`` to card ``index``'s plan; returns how many calls of the step went back to today's path."""
+    from . import diffusion_int8_cutlass as cut
+
+    _CUT_STEP[index] = dict(verdict, sig = sig, how = how)
+    shapes = sum(1 for _, _, tile, _ in mix if tile is not None)
+    rows = "/".join(str(r) for r in sorted({r for _, r, tile, _ in mix if tile is not None}))
+    mhz, w = verdict.get("mhz") or (), verdict.get("w") or ()
+
+    def med(pairs: Any, i: int) -> Any:
+        vals = sorted(p[i] for p in pairs if p and p[i] is not None)
+        return vals[len(vals) // 2] if vals else "?"
+
+    detail = (
+        f"CUTLASS / Triton {verdict.get('ratio')}, SM {med(mhz, 0)} vs {med(mhz, 1)} MHz, "
+        f"{med(w, 0)} vs {med(w, 1)} W, {how}"
+    )
+    if verdict["keep"]:
+        if logger is not None:
+            logger.info(
+                "diffusion.int8_gemm: %d CUTLASS weight shape(s) on cuda:%d keep the prebuilt GEMM at %s rows "
+                "(sustained whole-step check: %s)",
+                shapes,
+                index,
+                rows,
+                detail,
+            )
+        return 0
+    _step_back(index, [(k_, b) for k_, b, tile, _ in mix if tile is not None])
+    if logger is not None:
+        logger.info(
+            "diffusion.int8_gemm: %d weight shape(s) on cuda:%d go back to the Triton kernel at %s rows: their "
+            "CUTLASS tiles won the per-shape race but ran the sustained whole step slower (%s; %s=0 keeps them)",
+            shapes,
+            index,
+            rows,
+            detail,
+            cut.STEP_CHECK_ENV,
+        )
+    return sum(count for _, _, tile, count in mix if tile is not None)
+
+
+def _step_apply(index: int, logger: Any) -> int:
+    """At load: the (shape, row bucket) tiles a stored whole-step check sent back, back again before the first
+    image. Returns how many (shape, bucket) entries it moved."""
+    from . import diffusion_int8_cutlass as cut
+
+    if not cut.step_check_enabled():
+        return 0
+    veto = _step_table(index).get("veto")
+    if not isinstance(veto, dict) or not veto:
+        return 0
+    plan = _CUT_PLAN.get(index) or {}
+    losers = []
+    for key, entry in plan.items():
+        at = veto.get(repr(key))
+        if not isinstance(at, dict):
+            continue
+        for b, tile in at.items():
+            try:
+                if cut._LARGE_M <= int(b) < cut._HUGE_M and cut.slot(int(b), entry) == tile:
+                    losers.append((key, int(b)))
+            except (TypeError, ValueError):
+                continue
+    if losers:
+        _step_back(index, losers)
+        _CUT_STEP[index] = {
+            "keep": False,
+            "how": "stored",
+            "back": [[repr(k_), b] for k_, b in losers],
+        }
+        if logger is not None:
+            logger.info(
+                "diffusion.int8_gemm: %d weight shape(s) on cuda:%d keep the Triton kernel at %s rows: a stored "
+                "sustained whole-step check found their CUTLASS tiles slower (%s=0 keeps them)",
+                len({k_ for k_, _ in losers}),
+                index,
+                "/".join(str(b) for b in sorted({b for _, b in losers})),
+                cut.STEP_CHECK_ENV,
+            )
+    return len(losers)
+
+
+def _step_operands(index: int, mix: list) -> Optional[list]:
+    """Random operands on card ``index`` for one round of ``mix`` (as the race draws them), or None without room."""
+    import torch
+
+    from . import diffusion_int8_cutlass as cut
+
+    dev = torch.device("cuda", index)
+    need = sum(
+        int(key[0]) * int(key[1]) + rows * int(key[1]) + 4 * rows * int(key[0])
+        for key, rows, _, _ in mix
+    )
+    try:
+        free, _total = torch.cuda.mem_get_info(dev)
+    except Exception:  # noqa: BLE001
+        return None
+    if free < 2.0 * need:
+        return None
+    total = sum(count for _, _, _, count in mix)
+    act = torch.bfloat16
+    g = torch.Generator(device = dev).manual_seed(13)
+    ops = []
+    for key, rows, tile, count in mix:
+        n, k = int(key[0]), int(key[1])
+        xs_dt = getattr(torch, str(key[2]).rsplit(".", 1)[-1])
+        ws_dt = getattr(torch, str(key[3]).rsplit(".", 1)[-1])
+        w = torch.randint(-127, 128, (n, k), generator = g, dtype = torch.int8, device = dev)
+        ws = (torch.rand(n, generator = g, device = dev) * 1e-3 + 1e-5).to(ws_dt)
+        a = torch.randint(-127, 128, (rows, k), generator = g, dtype = torch.int8, device = dev)
+        xs = (torch.rand(rows, generator = g, device = dev) * 0.02 + 1e-4).to(xs_dt)
+        b = (torch.randn(n, generator = g, device = dev) * 0.1).to(act) if key[4] else None
+        if tile is not None and not cut.eligible(a, w, xs, ws, b, act):
+            return None
+        ops.append((a, w, xs, ws, b, tile, max(1, round(count * _STEP_ROUND_CALLS / total))))
+    return ops
+
+
+def _step_pair(index: int, mix: list, cutlass_first: bool) -> Optional[dict]:
+    """One interleaved pair: {"cutlass": ..., "triton": ...} (``cut.time_round_us``) of one round of the step's int8
+    GEMMs in model order, every shape at its recorded rows, on its CUTLASS tile or all on today's path."""
+    import torch
+
+    from . import diffusion_int8_cutlass as cut
+
+    ops = _step_operands(index, mix)
+    if not ops:
+        return None
+    fam, act = _CUT_FAMILY.get(index), torch.bfloat16
+
+    def arm(cutlass: bool):
+        def run() -> None:
+            for a, w, xs, ws, b, tile, reps in ops:
+                for _ in range(reps):
+                    if cutlass and tile is not None:
+                        cut.launch(a, w, xs, ws, b, fam, tile, act)
+                    else:
+                        _launch_or_ref(index, a, w, xs, ws, b)
+
+        return run
+
+    out = {}
+    for name in ("cutlass", "triton") if cutlass_first else ("triton", "cutlass"):
+        out[name] = cut.time_round_us(arm(name == "cutlass"), index)
+    del ops
+    return out
+
+
+def _step_unit(index: int, state: dict, logger: Any) -> Any:
+    """One interleaved pair; the last unit decides and applies. False = graph capture (retried); 1 = tiles sent back."""
+    import torch
+
+    from . import diffusion_int8_cutlass as cut
+    from .diffusion_cuda_graph import hold_device_off_capture
+
+    if state["done"]:
+        return 0
+    mix = _step_mix(index)
+    if not mix:
+        state["done"] = True
+        return 0
+    sig = _step_sig(mix)
+    if sig != state["sig"]:
+        # plan / rows moved since (a live race): start over
+        state.update(sig = sig, pairs = [], mhz = [], w = [])
+        stored = _step_stored(index, sig)
+        if stored is not None:
+            state["done"] = True
+            return int(_step_publish(index, mix, sig, stored, logger, "stored") > 0)
+    state["left"] = state.get("left", cut._STEP_PAIRS) - 1
+    while True:
+        with hold_device_off_capture(index) as safe:
+            if not safe:
+                state["left"] += 1
+                return False
+            with torch.cuda.device(index), _empty_cache_outside_capture():
+                got = _step_pair(index, mix, cutlass_first = len(state["pairs"]) % 2 == 0)
+        if got is None:
+            state["done"] = (
+                True  # no room for the operands: the race verdicts stand, checked again next load
+            )
+            return 0
+        c, t = got["cutlass"], got["triton"]
+        state["pairs"].append((c["us"], t["us"]))
+        state["mhz"].append((c.get("mhz"), t.get("mhz")))
+        state["w"].append((c.get("w"), t.get("w")))
+        # a reset dropped earlier pairs: queued units cannot finish, so this one takes the rest
+        if cut._STEP_PAIRS - len(state["pairs"]) <= max(state["left"], 0):
+            break
+    if len(state["pairs"]) < cut._STEP_PAIRS:
+        return 0
+    state["done"] = True
+    v = cut.step_verdict(state["pairs"])
+    verdict = {
+        "keep": v["keep"],
+        "ratio": v["ratio"],
+        "us": [[round(c_, 1), round(t_, 1)] for c_, t_ in state["pairs"]],
+        "mhz": [list(p) for p in state["mhz"]],
+        "w": [list(p) for p in state["w"]],
+    }
+    _step_store(index, mix, sig, verdict)
+    return int(_step_publish(index, mix, sig, verdict, logger, "measured") > 0)
+
+
+def _step_done(index: int, state: dict) -> int:
+    state["done"] = True
+    _CUT_STEP_QUEUED.pop(index, None)
+    return 0
+
+
+def _queue_step(
+    index: int,
+    logger: Any,
+    owner: Any = None,
+    retries: int = 0,
+) -> bool:
+    """After a render: apply a stored verdict for what ran, else queue ``_STEP_PAIRS`` units (a render waits one pair
+    at most). ``retries`` is unused (``_arm_step_watch`` re-looks every render)."""
+    from functools import partial
+
+    from . import diffusion_int8_cutlass as cut
+    from . import diffusion_int8_cutlass_defer as defer
+
+    if not cut.step_check_enabled() or index not in _CUT_MIX:
+        return False
+    _arm_step_watch(index, logger, owner if owner is not None else (defer.current_owner() or 0))
+    if _CUT_STEP_QUEUED.get(index):
+        return False
+    mix = _step_mix(index)
+    if not mix:
+        return False
+    sig = _step_sig(mix)
+    stored = _step_stored(index, sig)
+    if stored is not None:
+        if _step_publish(index, mix, sig, stored, logger, "stored"):
+            defer.request_refresh()
+        return False
+    _CUT_STEP_QUEUED[index] = True
+    state = {"sig": None, "pairs": [], "mhz": [], "w": [], "done": False, "left": cut._STEP_PAIRS}
+    defer.schedule(
+        index,
+        [partial(_step_unit, index, state, logger) for _ in range(cut._STEP_PAIRS)],
+        None,  # its own log lines (``_step_publish``), not the race's shape tally
+        before = partial(_defer_before, index),
+        after = partial(_step_done, index, state),
+        owner = owner if owner is not None else (defer.current_owner() or 0),
+    )
+    if logger is not None:
+        logger.info(
+            "diffusion.int8_gemm: sustained whole-step check of the CUTLASS winners on cuda:%d runs after this "
+            "image (%s=0 skips it)",
+            index,
+            cut.STEP_CHECK_ENV,
+        )
+    return True
+
+
+def _step_after_plan(index: int, logger: Any) -> None:
+    """A load whose plan came whole from the race cache: the stored whole-step vetoes now (before the first image),
+    and the check of what the first image ran once it ends (``_queue_step``)."""
+    from functools import partial
+
+    from . import diffusion_int8_cutlass_defer as defer
+
+    try:
+        _step_apply(index, logger)
+        _arm_step_watch(index, logger, defer.current_owner() or 0)
+    except Exception:  # noqa: BLE001 - the race verdicts stand
+        pass
+
+
+def _arm_step_watch(index: int, logger: Any, owner: Any) -> None:
+    """Once per load: after every render, a step that now runs a signature with no verdict this load (another
+    resolution's cached buckets, a live race's tiles) gets its own check (``_queue_step``)."""
+    from functools import partial
+
+    from . import diffusion_int8_cutlass_defer as defer
+
+    if _CUT_STEP_HOOK.get(index) is not None:
+        return
+    token = _CUT_STEP_HOOK[index] = object()
+
+    def watch() -> None:
+        if _CUT_STEP_HOOK.get(index) is not token:
+            return  # a later load owns this card
+        defer.after_render(watch, owner)
+        try:
+            mix = _step_mix(index)
+            if mix and _step_sig(mix) != (_CUT_STEP.get(index) or {}).get("sig"):
+                _queue_step(index, logger, owner)
+        except Exception:  # noqa: BLE001 - the race verdicts stand
+            pass
+
+    defer.after_render(watch, owner)
+
+
+# index -> {"want": [(shape key, row bucket)], "hooked", "logger", "owner"}: live races run after the render
+_CUT_LIVE_LATER: dict = {}
+
+
+def _live_race_later(index: Any, a: Any, w: Any, xs: Any, ws: Any, bias: Any) -> None:
+    """Image load: a new row bucket keeps the nearest slot now and races after the render (``_live_units``)."""
+    from . import diffusion_int8_cutlass as cut
+
+    m = int(a.shape[0])
+    if m < cut._LARGE_M or m >= cut._HUGE_M:
+        return
+    later = _CUT_LIVE_LATER.get(index)
+    key = _cut_key(w.shape[0], w.shape[1], xs.dtype, ws.dtype, bias is not None)
+    entry = (_CUT_PLAN.get(index) or {}).get(key)
+    b = cut.row_bucket(m)
+    if later is None or not entry or b in entry or (key, b) in later["want"]:
+        return
+    tried = _CUT_LIVE.get(index) or set()
+    if (key, b) in tried or sum(1 for k_, _b in tried if k_ == key) >= cut._MAX_ROW_RACES:
+        return
+    if not cut.live_race_enabled():
+        return
+    later["want"].append((key, b))
+    if not later["hooked"]:
+        from functools import partial
+
+        from . import diffusion_int8_cutlass_defer as defer
+
+        later["hooked"] = True
+        defer.after_render(partial(_live_units, index), later["owner"])
+
+
+def _live_units(index: int) -> None:
+    """At the end of the render that met new row buckets: queue one deferred race unit per (shape, bucket)."""
+    from functools import partial
+
+    from . import diffusion_int8_cutlass_defer as defer
+
+    later = _CUT_LIVE_LATER.get(index)
+    if not later:
+        return
+    want, later["want"], later["hooked"] = list(later["want"]), [], False
+    if not want:
+        return
+    defer.schedule(
+        index,
+        [partial(_live_unit, index, key, b) for key, b in want],
+        later["logger"],
+        before = partial(_defer_before, index),
+        after = partial(_live_after, index, later["owner"], later["logger"]),
+        owner = later["owner"],
+    )
+
+
+def _live_unit(index: int, key: tuple, b: int) -> Any:
+    """One deferred live race: ``_live_row_race`` on random operands of ``key`` at ``b`` rows (as the load's race
+    draws them), outside capture. False = a capture held it off (retried); 1 = a tile won (graphs re-record)."""
+    from .diffusion_cuda_graph import hold_device_off_capture
+
+    entry = (_CUT_PLAN.get(index) or {}).get(key)
+    if not entry or b in entry or (key, b) in (_CUT_LIVE.get(index) or set()):
+        return 0
+    n, k = int(key[0]), int(key[1])
+
+    with hold_device_off_capture(index) as safe:
+        if not safe:
+            return False  # a capture is recording on this card: no allocation, retried
+        return _live_unit_run(index, key, b, n, k)
+
+
+def _live_unit_run(index: int, key: tuple, b: int, n: int, k: int) -> Any:
+    import torch
+
+    from . import diffusion_int8_cutlass_defer as defer
+
+    with torch.cuda.device(index), _empty_cache_outside_capture():
+        dev = torch.device("cuda", index)
+        g = torch.Generator(device = dev).manual_seed(11)
+        a = torch.randint(-127, 128, (b, k), generator = g, dtype = torch.int8, device = dev)
+        w = torch.randint(-127, 128, (n, k), generator = g, dtype = torch.int8, device = dev)
+        xs = (torch.rand(b, generator = g, device = dev) * 0.02 + 1e-4).to(
+            getattr(torch, str(key[2]).rsplit(".", 1)[-1])
+        )
+        ws = (torch.rand(n, generator = g, device = dev) * 1e-3 + 1e-5).to(
+            getattr(torch, str(key[3]).rsplit(".", 1)[-1])
+        )
+        bias = (
+            (torch.randn(n, generator = g, device = dev) * 0.1).to(torch.bfloat16) if key[4] else None
+        )
+        _live_row_race(index, a, w, xs, ws, bias)
+        del a, w, xs, ws, bias
+    if (key, b) not in (_CUT_LIVE.get(index) or set()):
+        return False  # a capture was recording: the race did not start
+    if ((_CUT_PLAN.get(index) or {}).get(key) or {}).get(b) is not None:
+        return 1
+    # a loss still moves this bucket off the nearest slot the render captured: graphs re-record on Triton
+    defer.request_refresh()
+    return 0
+
+
+def _live_after(index: int, owner: Any, logger: Any) -> int:
+    """After the deferred live races: the stored whole-step vetoes, then the step check of what they published."""
+    try:
+        _step_apply(index, logger)
+        _queue_step(index, logger, owner)
+    except Exception:  # noqa: BLE001 - the race verdicts stand
+        pass
+    return 0
+
+
+def _defer_after_then_step(index: int, owner: Any, logger: Any) -> int:
+    """The deferred race's finalizer (``_defer_after``), then the whole-step check of what it published."""
+    won = _defer_after(index, owner)
+    try:
+        _step_apply(index, logger)
+        _queue_step(index, logger, owner)
+    except Exception:  # noqa: BLE001 - the race verdicts stand
+        pass
+    return won
 
 
 def _defer_note_rows(index: Any, a: Any, w: Any, xs: Any, ws: Any, bias: Any) -> None:
@@ -3412,6 +3997,7 @@ def _swap_on(
     # bf16 cards: the Triton path takes any bias dtype; only the prebuilt kernel needs bf16 bias
     cut_recs = [(m, r) for m, r in recs if f16_card or _card_dtypes_ok(m, r, False)]
     _CUT_TRITON_ON[index] = bool(triton_gemm)
+    _step_reset(index)
     plan = _plan_or_defer(index, cut_recs, triton_gemm, f16_card, logger) if cut_recs else {}
     cut_fused: dict = {}
     if plan:

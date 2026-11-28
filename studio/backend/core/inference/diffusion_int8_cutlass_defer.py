@@ -195,6 +195,8 @@ def schedule(
         if job is None:
             job = _JOBS[(index, owner)] = _Job(index, owner, logger, before, after)
             job.units.append(before)
+        elif after is not job.after:
+            job.after = _chain(job.after, after)
         job.units.extend(units)
         job.n_shapes += len(units)
         if _STATUS["state"] not in ("pending", "running"):
@@ -204,6 +206,16 @@ def schedule(
         _STATUS.update(state = "pending", done_at = None, error = None)
         _STATUS["shapes"] += len(units)
         _COND.notify_all()
+
+
+def _chain(first: Callable, then: Callable) -> Callable:
+    def after() -> Any:
+        try:
+            first()
+        finally:
+            then()
+
+    return after
 
 
 def _starved() -> bool:
@@ -293,9 +305,34 @@ def render_begin(cancel: Any = None) -> bool:
     return refresh
 
 
+# (owner, fn)
+_AFTER_RENDER: list = []
+
+
+def after_render(fn: Callable[[], Any], owner: Any = None) -> None:
+    """Run ``fn()`` once at the next outermost render end, while the render still counts as active."""
+    with _COND:
+        _AFTER_RENDER.append((owner if owner is not None else (current_owner() or 0), fn))
+
+
+def request_refresh() -> None:
+    """The next render re-records its CUDA graphs (a route changed outside a race unit)."""
+    with _COND:
+        _STATE["refresh"] = True
+
+
 def render_end(busy: Optional[Callable[[], bool]] = None) -> None:
     """A render ended: the race may start once idle (``idle_seconds``), or now if ``_starved``."""
     drained = None
+    hooks: list = []
+    with _COND:
+        if _STATE["active"] <= 1 and _AFTER_RENDER:
+            hooks, _AFTER_RENDER[:] = [fn for _o, fn in _AFTER_RENDER], []
+    for fn in hooks:
+        try:
+            fn()
+        except Exception as exc:  # noqa: BLE001 - a hook never fails the render
+            _STATUS["error"] = f"{type(exc).__name__}: {exc}"
     with _COND:
         _STATE["active"] = max(0, _STATE["active"] - 1)
         _STATE["last_end"] = time.perf_counter()
@@ -446,6 +483,7 @@ def cancel(timeout: float = _CANCEL_WAIT_S, owner: Any = None) -> None:
     or finalizer of theirs in flight so no race outlives the weights, and none of theirs publishes afterwards."""
     with _COND:
         mine = lambda job: owner is None or job.owner == owner  # noqa: E731
+        _AFTER_RENDER[:] = [h for h in _AFTER_RENDER if not (owner is None or h[0] == owner)]
         had = False
         for key in [key for key, job in _JOBS.items() if mine(job)]:
             _JOBS.pop(key).cancelled = True
