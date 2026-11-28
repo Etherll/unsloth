@@ -182,3 +182,45 @@ def test_patch_is_idempotent_and_skips_a_bitsandbytes_without_sync_gpu(monkeypat
     before = old.Optimizer8bit.step
     fixes.patch_bitsandbytes_optimizer_step_sync()
     assert old.Optimizer8bit.step is before
+
+
+_COUNTING_STEP = """
+calls = []
+
+def sync_gpu(t):
+    calls.append(t)
+
+class Optimizer8bit:
+    is_paged = False
+
+    def __init__(self, params):
+        self.param_groups = [{"params": params}]
+
+    def step(self, closure=None):
+        for p in self.param_groups[0]["params"]:
+            sync_gpu(p)
+"""
+
+
+def test_bnb_optimizer_sync_env_keeps_every_sync(monkeypatch, tmp_path):
+    """UNSLOTH_BNB_OPTIMIZER_SYNC=1 restores bitsandbytes' per-parameter sync, as unsloth_zoo's guard does.
+    Read at each step, so it also works when set after import. CPU only: the CUDA stream checks are faked."""
+    import torch
+
+    stream = object()
+    monkeypatch.setattr(torch.cuda, "current_stream", lambda device = None: stream)
+    monkeypatch.setattr(torch.cuda, "default_stream", lambda device = None: stream)
+    monkeypatch.delenv("UNSLOTH_BNB_OPTIMIZER_SYNC", raising = False)
+    fixes = _load_fixes()
+    optimizer = _fake_bnb(monkeypatch, tmp_path, _COUNTING_STEP)
+    fixes.patch_bitsandbytes_optimizer_step_sync()
+    params = [types.SimpleNamespace(device = torch.device("cuda", 0)) for _ in range(3)]
+    opt = optimizer.Optimizer8bit(params)
+
+    opt.step()
+    assert optimizer.calls == []  # non-paged on the default stream: skipped
+    for value, want in (("1", 3), ("0", 0), ("", 0)):
+        optimizer.calls.clear()
+        monkeypatch.setenv("UNSLOTH_BNB_OPTIMIZER_SYNC", value)
+        opt.step()
+        assert len(optimizer.calls) == want, value
