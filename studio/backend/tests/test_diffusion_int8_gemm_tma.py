@@ -19,6 +19,8 @@ def _reset():
         g8._DEVICE_TMA,
         g8._UNLISTED_PROBE,
         g8._UNLISTED_OK,
+        # The CUTLASS plan / step-check state too: _run reads it, and another file's load can leave it set.
+        *[v for k, v in vars(g8).items() if k.startswith("_CUT_") and isinstance(v, dict)],
     ):
         d.clear()
     g8._UNLISTED_CARDS.clear()

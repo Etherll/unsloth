@@ -22,17 +22,14 @@ from core.inference import diffusion_int8_gemm as g8
 
 torch = pytest.importorskip("torch")
 
+
+def _cut_dicts():
+    """Every per-device ``_CUT_*`` dict diffusion_int8_gemm keeps, including ones added after this file was written."""
+    return [v for k, v in vars(g8).items() if k.startswith("_CUT_") and isinstance(v, dict)]
+
+
 _DICTS = (
-    g8._CUT_PLAN,
-    g8._CUT_FAMILY,
-    g8._CUT_RACES,
-    g8._CUT_DONE,
-    g8._CUT_ROWS,
-    g8._CUT_ROWS_PENDING,
-    g8._CUT_CKEY,
-    g8._CUT_LIVE,
-    g8._CUT_TRITON_ON,
-    g8._CUT_DEFER_KEYS,
+    *_cut_dicts(),
     cut._PROBED,
 )
 _WINNERS = {512: None, 4096: 1, 4224: 8, 16384: 2}

@@ -525,14 +525,7 @@ def card_sim(p: GpuProfile, model: Any = "profile"):
         return to(self, *a, **k)
 
     dicts = (
-        g8._CUT_PLAN,
-        g8._CUT_FAMILY,
-        g8._CUT_RACES,
-        g8._CUT_DONE,
-        g8._CUT_CKEY,
-        g8._CUT_ROWS,
-        g8._CUT_ROWS_PENDING,
-        g8._CUT_LIVE,
+        *[v for k, v in vars(g8).items() if k.startswith("_CUT_") and isinstance(v, dict)],
         cut._PROBED,
     )
     saved = [dict(d) for d in dicts]

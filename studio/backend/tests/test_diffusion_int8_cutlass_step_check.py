@@ -148,24 +148,11 @@ def _ns(*shape, dtype = torch.int8):
     return t
 
 
-_STATE = (
-    g8._CUT_PLAN,
-    g8._CUT_FAMILY,
-    g8._CUT_RACES,
-    g8._CUT_DONE,
-    g8._CUT_CKEY,
-    g8._CUT_ROWS,
-    g8._CUT_ROWS_PENDING,
-    g8._CUT_LIVE,
-    g8._CUT_TRITON_ON,
-    g8._CUT_DEFER_KEYS,
-    cut._PROBED,
-)
-_NEW_STATE = ("_CUT_MIX", "_CUT_STEP", "_CUT_STEP_QUEUED", "_CUT_STEP_HOOK", "_CUT_LIVE_LATER")
-
-
 def _all_state():
-    return list(_STATE) + [getattr(g8, n) for n in _NEW_STATE if hasattr(g8, n)]
+    """Every per-device ``_CUT_*`` dict diffusion_int8_gemm keeps (also ones added later), and the probe cache."""
+    return [v for k, v in vars(g8).items() if k.startswith("_CUT_") and isinstance(v, dict)] + [
+        cut._PROBED
+    ]
 
 
 @pytest.fixture(autouse = True)
