@@ -227,7 +227,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: g184-stacks-${{ matrix.shard }}
-          path: /tmp/g184_stacks
+          path: |
+            /tmp/g184_stacks
+            /tmp/unsloth_rank_zygote_stats
           if-no-files-found: warn
 
       - name: How the ranks started (forked from the zygote, or spawned again and why)

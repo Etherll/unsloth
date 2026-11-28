@@ -734,6 +734,18 @@ def _worker(rank, world, tmp, case, kwargs):
         _diag.write(f"start {time.time():.1f} case={case} kw={sorted(kwargs)} zyg={os.environ.get('_UNSLOTH_RANK_ZYGOTE_SPEC','-')[:40]}\n")
         _diag.flush()
         faulthandler.dump_traceback_later(90, repeat = True, file = _diag)
+        import socket
+        import subprocess
+        _diag.write(f"tmp={tmp} host={socket.gethostname()} ppid={os.getppid()}\n")
+        for k in sorted(os.environ):
+            if not any(t in k.upper() for t in ("TOKEN", "SECRET", "KEY", "PASS", "AUTH")):
+                _diag.write(f"ENV {k}={os.environ[k][:200]}\n")
+        _diag.flush()
+        _wd_out = os.path.join(os.environ["G184_STACKS"], f"watch_{case}_{world}_r{rank}_{os.getpid()}.txt")
+        _wd = subprocess.Popen(
+            ["sh", "-c", f"sleep 100; {{ echo TMP {tmp}; ls -la {tmp}; getent hosts $(hostname); ss -tanpe; echo; od -c {tmp}/rendezvous | head -200; ls -la /proc/{os.getpid()}/fd; }} > {_wd_out} 2>&1"],
+            start_new_session = True,
+        )
     torch.set_num_threads(2)
     dist.init_process_group(
         "gloo",
@@ -755,6 +767,7 @@ def _worker(rank, world, tmp, case, kwargs):
     if _diag:
         _diag.write(f"destroyed {time.time():.1f}\n")
         _diag.flush()
+        _wd.kill()
 
 
 def _spawn(
@@ -769,6 +782,9 @@ def _spawn(
         ]
         for p in procs:
             p.start()
+        if os.environ.get("G184_STACKS"):
+            with open(os.path.join(os.environ["G184_STACKS"], "spawn_log.txt"), "a") as f:
+                f.write(f"{time.time():.1f} START {case} tmp={tmp} pids={[p.pid for p in procs]} worker={os.environ.get('PYTEST_XDIST_WORKER')}\n")
         deadline = time.monotonic() + 600
         while any(p.is_alive() for p in procs) and time.monotonic() < deadline:
             time.sleep(0.2)
