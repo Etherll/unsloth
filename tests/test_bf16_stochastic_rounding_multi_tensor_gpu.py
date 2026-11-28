@@ -192,3 +192,31 @@ def test_per_weight_failure_keeps_multi_tensor_version_bumps(sr, monkeypatch, ca
     assert all(p._version > v for p, v in zip(params[1:], before[1:]))
     assert all(float(opt.state[p]["step"]) == 1 for p in params)
     assert "failed on" in capsys.readouterr().out
+
+
+def test_multi_tensor_declines_under_a_dispatch_mode(sr, monkeypatch):
+    """Under a TorchDispatchMode (what fake tensors and make_fx use) the address table is never built: the step
+    keeps one launch per weight, and the bits match the per-weight route."""
+    from torch.utils._python_dispatch import TorchDispatchMode
+
+    class Passthrough(TorchDispatchMode):
+        def __torch_dispatch__(
+            self,
+            func,
+            types,
+            args = (),
+            kwargs = None,
+        ):
+            return func(*args, **(kwargs or {}))
+
+    assert sr._tracing() is False
+    with Passthrough():
+        assert sr._tracing() is True
+    single, single_opt = _run(sr, monkeypatch, False, steps = 3)  # weight 0 first steps at step 2
+    monkeypatch.setattr(sr, "_tracing", lambda: True)
+    monkeypatch.setattr(
+        sr, "_multi_launch", lambda *a, **k: pytest.fail("table built under a mode")
+    )
+    multi, multi_opt = _run(sr, monkeypatch, True, steps = 3)
+    assert multi_opt.__dict__.get("_unsloth_sr_multi_tensor_launches", 0) == 0
+    _same(multi, multi_opt, single, single_opt)

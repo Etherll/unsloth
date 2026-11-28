@@ -1091,6 +1091,19 @@ class _Probe:
 _PROBE = _Probe()
 
 
+def _tracing():
+    """A TorchFunctionMode / TorchDispatchMode (fake tensors, make_fx) or a JIT trace is active."""
+    try:
+        if torch._C._is_torch_function_mode_enabled() or torch._C._len_torch_dispatch_stack() > 0:
+            return True
+    except Exception:
+        pass
+    try:
+        return bool(torch.jit.is_tracing())
+    except Exception:
+        return False
+
+
 def _multi_adamw_step(optimizer, group, params, states, ts, seed, group_scalars):
     """Step params (fused-eligible, state created, step counted) in one _adamw_multi_kernel launch per
     (device, gradient dtype). Returns the ids it stepped; the rest take one launch per weight."""
@@ -1101,6 +1114,8 @@ def _multi_adamw_step(optimizer, group, params, states, ts, seed, group_scalars)
             return set()  # host-side tables would replay stale: keep the per-weight launches
     except Exception:
         pass
+    if _tracing():
+        return set()  # raw addresses mean nothing to fake tensors, make_fx or a JIT trace
     lr = _float(group["lr"])
     beta1, beta2 = (_float(b) for b in group["betas"])
     buckets = {}
@@ -1109,6 +1124,9 @@ def _multi_adamw_step(optimizer, group, params, states, ts, seed, group_scalars)
         if local.numel() == 0:
             continue
         g = _local(p.grad)
+        plain = (local, g, _local(state["exp_avg"]), _local(state["exp_avg_sq"]))
+        if not all(type(x) in (torch.Tensor, torch.nn.Parameter) for x in plain):
+            continue  # a tensor subclass (fake, functional) has no real address: one launch per weight
         buckets.setdefault((local.device, g.dtype), []).append((p, state, t))
     done = set()
     for (device, g_dtype), items in buckets.items():
