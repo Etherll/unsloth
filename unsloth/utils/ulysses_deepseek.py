@@ -76,31 +76,42 @@ def _sink_attention_chunk(
     q, kv, block_bias, sinks, q_start, full_seq, window, scaling, dropout_p, training
 ):
     """Sink-softmax attention for query rows from q_start: q [B, H, rows, D], kv [B, 1, full_seq +
-    n_blocks, D] (K == V), block_bias [B, 1, rows, n_blocks]; returns [B, rows, H, D]."""
+    n_blocks, D] (K == V), block_bias [B, 1, rows, n_blocks]; returns [B, rows, H, D]. Only the
+    causal / sliding-window token keys [lo, hi) and the compressed block keys are scored: every
+    other token key is masked to a zero probability, so dropping it gives the same output."""
     batch, _, rows, _ = q.shape
     dtype = q.dtype
+    hi = min(full_seq, q_start + rows)
+    lo = 0 if window is None else min(hi, max(0, q_start - window + 1))
+    width = hi - lo
+    extra = kv.shape[2] - full_seq
+    if lo == 0 and hi == full_seq:
+        keys = kv
+    elif extra > 0:
+        keys = torch.cat([kv[:, :, lo:hi], kv[:, :, full_seq:]], dim = 2)
+    else:
+        keys = kv[:, :, lo:hi]
     q_idx = torch.arange(q_start, q_start + rows, device = q.device)
-    k_idx = torch.arange(full_seq, device = q.device)
+    k_idx = torch.arange(lo, hi, device = q.device)
     diff = q_idx[:, None] - k_idx[None, :]
     keep = diff >= 0
     if window is not None:
         keep = keep & (diff < window)
-    mask = torch.zeros((1, 1, rows, full_seq), dtype = dtype, device = q.device)
-    mask.masked_fill_(~keep.view(1, 1, rows, full_seq), torch.finfo(dtype).min)
-    extra = kv.shape[2] - full_seq
+    mask = torch.zeros((1, 1, rows, width), dtype = dtype, device = q.device)
+    mask.masked_fill_(~keep.view(1, 1, rows, width), torch.finfo(dtype).min)
     if extra > 0:
         if block_bias is not None:
             mask = torch.cat([mask.expand(batch, -1, -1, -1), block_bias.to(dtype)], dim = -1)
         else:
             mask = F.pad(mask, (0, extra), value = 0.0)
 
-    logits = torch.matmul(q, kv.transpose(2, 3)) * scaling + mask
+    logits = torch.matmul(q, keys.transpose(2, 3)) * scaling + mask
     sink = sinks.reshape(1, -1, 1, 1).expand(batch, -1, rows, -1)
     combined = torch.cat([logits, sink], dim = -1)
     combined = combined - combined.max(dim = -1, keepdim = True).values
     probs = F.softmax(combined, dim = -1, dtype = combined.dtype)[..., :-1]
-    probs = F.dropout(probs, p = dropout_p, training = training).to(kv.dtype)
-    return torch.matmul(probs, kv).transpose(1, 2).contiguous()
+    probs = F.dropout(probs, p = dropout_p, training = training).to(keys.dtype)
+    return torch.matmul(probs, keys).transpose(1, 2).contiguous()
 
 
 def _refuse_dropout(dropout_p, training):
@@ -373,21 +384,23 @@ def _v32_global_topk(indexer, hidden_states, q_resid, position_embeddings, group
 
 
 def _sparse_mla_chunk(q, k, v, topk, q_start, scaling, dropout_p, training):
-    """Causal attention restricted to each query's indexer-selected keys. Returns [B, rows, H, Dv]."""
+    """Causal attention restricted to each query's indexer-selected keys. Returns [B, rows, H, Dv].
+    Keys past the chunk's last query are never kept, so only [0, hi) is scored."""
     batch, _, rows, _ = q.shape
-    full_seq = k.shape[2]
+    hi = min(k.shape[2], q_start + rows)
     q_idx = torch.arange(q_start, q_start + rows, device = q.device)
-    k_idx = torch.arange(full_seq, device = q.device)
+    k_idx = torch.arange(hi, device = q.device)
     causal = q_idx[:, None] >= k_idx[None, :]
-    selected = torch.zeros((batch, rows, full_seq), dtype = torch.bool, device = q.device)
-    selected.scatter_(-1, topk.long(), True)
-    keep = (selected & causal.unsqueeze(0)).unsqueeze(1)  # [B, 1, rows, S]
+    # Indices >= hi (future keys the indexer filled in for short rows) land in a dropped column.
+    selected = torch.zeros((batch, rows, hi + 1), dtype = torch.bool, device = q.device)
+    selected.scatter_(-1, topk.long().clamp(max = hi), True)
+    keep = (selected[..., :hi] & causal.unsqueeze(0)).unsqueeze(1)  # [B, 1, rows, hi]
 
-    logits = torch.matmul(q, k.transpose(2, 3)) * scaling
+    logits = torch.matmul(q, k[:, :, :hi].transpose(2, 3)) * scaling
     logits = logits.masked_fill(~keep, torch.finfo(logits.dtype).min)
     probs = F.softmax(logits, dim = -1, dtype = torch.float32).to(q.dtype)
     probs = F.dropout(probs, p = dropout_p, training = training)
-    return torch.matmul(probs, v).transpose(1, 2).contiguous()
+    return torch.matmul(probs, v[:, :, :hi]).transpose(1, 2).contiguous()
 
 
 class _ChunkedSparseMLA(torch.autograd.Function):
