@@ -243,17 +243,8 @@ def _is_dtensor(t):
 
 def _fsdp_calls_grad_hooks():
     """Whether this torch's FSDP2 runs a sharded parameter's post-accumulate-grad hooks once its reduce-scattered
-    gradient is assigned (foreach_reduce, torch 2.5+; torch 2.4's fully_shard does not). Read from the source where
-    it is readable, else by version."""
-    try:
-        try:
-            from torch.distributed.fsdp._fully_shard import _fsdp_collectives as module
-        except ImportError:
-            from torch.distributed._composable.fsdp import _fsdp_collectives as module
-        import inspect
-        return "_post_accumulate_grad_hooks" in inspect.getsource(module.foreach_reduce)
-    except Exception:
-        pass
+    gradient is assigned (foreach_reduce, torch 2.5+; torch 2.4's fully_shard does not). Decided by version, not by
+    reading torch's source: a refactor that moves the hook call into a helper keeps the behaviour."""
     try:
         major, minor = (int(x) for x in torch.__version__.split(".")[:2])
         return (major, minor) >= (2, 5)
@@ -556,6 +547,13 @@ class InBackwardOptimizer(torch.optim.Optimizer):
         self._pending_bytes = 0
         self._queued = set()
 
+    def _abort(self):
+        """An exception ended this step (an OOM in a batch's update, a step hook raising): the weights stepped so
+        far stay stepped, and its bookkeeping is dropped, so the next backward starts clean, as after step().
+        Gradients not stepped yet stay in .grad, as with any torch optimizer whose step raised."""
+        self._known_sq = None
+        self._reset()
+
     def zero_grad(self, set_to_none = True):
         self._reset()
         return self.optimizer.zero_grad(set_to_none = set_to_none)
@@ -566,7 +564,11 @@ class InBackwardOptimizer(torch.optim.Optimizer):
         def hook(p):
             opt = ref()
             if opt is not None and opt._armed and _ACTIVE.get(id(p)) is opt:
-                opt._ready(p)
+                try:
+                    opt._ready(p)
+                except BaseException:
+                    opt._abort()
+                    raise
 
         for group in self.param_groups:
             for p in group["params"]:
@@ -771,7 +773,11 @@ class InBackwardOptimizer(torch.optim.Optimizer):
             opt = ref()
             if opt is not None:
                 opt._queued.discard(task)
-                opt._flush_pending()
+                try:
+                    opt._flush_pending()
+                except BaseException:
+                    opt._abort()
+                    raise
 
         if not _queue_callback(flush_at_end_of_task):
             return False
@@ -892,15 +898,18 @@ class InBackwardOptimizer(torch.optim.Optimizer):
                 ratio = self._prev_total.to(norms.device) / prev_seen.clamp_min(1e-30)
                 total = torch.where(prev_seen > 0, torch.maximum(seen, seen * ratio), seen)
             coef = torch.clamp(max_norm / (total.sqrt() + 1e-6), max = 1.0)
+            per_tensor = False
             try:
                 torch._foreach_mul_(grads, coef)
             except (TypeError, RuntimeError):
+                # Mixed dtypes (or an OOM): retried per tensor below, once the handler and its traceback (which
+                # holds the frames' tensors) are gone, so the in-place retry does not run under that memory.
+                per_tensor = True
+            if per_tensor:
                 for g in grads:
                     g.mul_(coef.to(g.dtype))
 
     def _step_only(self, params):
-        for p in params:
-            self._done.add(id(p))
         with _no_global_step_hooks():
             if self._kind == "bitsandbytes":
                 for p in params:
@@ -908,6 +917,8 @@ class InBackwardOptimizer(torch.optim.Optimizer):
                     self._step_bitsandbytes(gi, pi, p)
             else:
                 self._step_torch(params)
+        # Only once they are stepped: a step that raises leaves no weight marked as stepped.
+        self._done.update(id(p) for p in params)
         self._free_grads(params)
 
     def _free_grads(self, params):
@@ -961,7 +972,17 @@ class InBackwardOptimizer(torch.optim.Optimizer):
 
     def flush(self):
         """Step the weights left for the end: the last batch, reused ones, and gradients that reached .grad
-        without a hook. Every gradient of the step is known by now, so these are clipped with the exact norm."""
+        without a hook. Every gradient of the step is known by now, so these are clipped with the exact norm.
+        An exception aborts the step (see _abort)."""
+        late, deferred = self.late_steps, self.deferred_steps
+        try:
+            self._flush()
+        except BaseException:
+            self.late_steps, self.deferred_steps = late, deferred
+            self._abort()
+            raise
+
+    def _flush(self):
         left = [p for p in self._pending if p.grad is not None and self._locate(p) is not None]
         waiting = {id(p) for p in left}
         self._pending, self._pending_ids, self._pending_bytes = [], set(), 0
@@ -1003,10 +1024,14 @@ class InBackwardOptimizer(torch.optim.Optimizer):
     @torch.no_grad()
     def step(self, closure = None):
         loss = None
-        if closure is not None:
-            with torch.enable_grad():
-                loss = closure()
-        self.flush()
+        try:
+            if closure is not None:
+                with torch.enable_grad():
+                    loss = closure()
+            self.flush()
+        except BaseException:
+            self._abort()  # the previous step's norms stay the reference
+            raise
         self.hook_steps += len(self._done)
         total = self._total_sq()
         if total is not None:
@@ -1369,19 +1394,25 @@ def _usable_bytes(params, world = 1):
 
 def _min_over_ranks(value, device):
     """The smallest value over the ranks: every FSDP2 rank must pick the same tier (an in-backward rank runs
-    all-reduces a standard one never joins, and AdamW and SGD shards would train differently)."""
+    all-reduces a standard one never joins, and AdamW and SGD shards would train differently). A failed all_reduce
+    raises: falling back to this rank's own value would let the ranks pick different tiers and hang later."""
     try:
         import torch.distributed as dist
-
         if not (dist.is_available() and dist.is_initialized()) or dist.get_world_size() <= 1:
             return value
         backend = str(dist.get_backend()).lower()
-        on = device if "nccl" in backend else torch.device("cpu")
-        t = torch.tensor([int(value)], dtype = torch.int64, device = on)
-        dist.all_reduce(t, op = dist.ReduceOp.MIN)
-        return int(t.item())
     except Exception:
         return value
+    on = device if "nccl" in backend else torch.device("cpu")
+    t = torch.tensor([int(value)], dtype = torch.int64, device = on)
+    try:
+        dist.all_reduce(t, op = dist.ReduceOp.MIN)
+    except Exception as exc:
+        raise RuntimeError(
+            "Unsloth: the ranks could not agree on the auto-fit memory budget (all_reduce failed), so they could "
+            "pick different optimizer tiers."
+        ) from exc
+    return int(t.item())
 
 
 def _single_process(trainer):

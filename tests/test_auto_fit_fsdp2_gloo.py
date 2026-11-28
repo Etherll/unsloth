@@ -82,12 +82,19 @@ def test_weights_match_standard_fsdp2_and_single_process(results, case):
     for rank in (0, 1):
         r = _case(results, rank, case)
         if mp:
-            # bfloat16 compute, float32 reduction: bitwise FSDP2's standard step without clipping; with it, the
-            # clip coefficient is rounded differently (float32 norms here, float64 in the harness) and bfloat16
-            # forwards amplify that, so the losses and norms are compared instead.
+            # bfloat16 compute, float32 reduction: bitwise FSDP2's standard step without clipping.
             if clip is None:
                 assert r["inb_vs_std"] == 0.0, r
-            assert r["loss_vs_std"] < 1e-3 and r["norm_vs_std"] < 2e-2, r
+                assert r["loss_vs_std"] == 0.0, r
+                continue
+            # With clipping, the two arms round differently on some CPU kernels (not under ATEN_CPU_CAPABILITY=avx2)
+            # and five bfloat16 steps amplify it: the last loss differed by 4e-4 here and 1.004e-3 on CI, more than
+            # the other clip modes move it, so it tested nothing. The second loss is the first a clipped update
+            # reaches: exact gave 0 to 6.2e-6 on every kernel path tried, clipping with the partial norm 3.8e-5 to
+            # 1.2e-4. The coefficient itself is pinned to TOL by the float32 "exact" case.
+            first = abs(r["inb_stats"]["losses"][1] - r["std_stats"]["losses"][1])
+            assert first < 2e-5, (first, r["inb_stats"]["losses"], r["std_stats"]["losses"])
+            assert r["norm_vs_std"] < 2e-2, r
             continue
         assert r["moved"] > 1e-3, r  # the weights trained, so equality is not trivial
         if clip in (None, "exact"):
@@ -166,3 +173,9 @@ def test_planner_reads_which_fsdp2_groups_stay_whole(results):
 
 def test_ranks_agree_on_the_memory_budget(results):
     assert results[0]["_min_over_ranks"] == results[1]["_min_over_ranks"] == 1000
+
+
+def test_a_failed_budget_agreement_raises(results):
+    assert (
+        results[0]["_min_over_ranks_failure"] == results[1]["_min_over_ranks_failure"] == "raised"
+    )

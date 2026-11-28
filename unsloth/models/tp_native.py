@@ -1827,29 +1827,31 @@ class _ReduceFromTP(torch.autograd.Function):
         return grad, None
 
 
-class _MeanFromTP(torch.autograd.Function):
-    """All-reduce mean forward, identity backward: a replicated block's output made bitwise equal on every tp
-    rank (CUDA scatter / index_add kernels are not deterministic), its gradient already the same everywhere."""
+class _BroadcastFromTP(torch.autograd.Function):
+    """Broadcast forward from the group's first rank, identity backward: a replicated block's output made bitwise
+    equal on every tp rank (CUDA scatter / index_add kernels are not deterministic), its gradient already the same
+    everywhere. In the output's own dtype: one copy of its bytes, not a float32 all-reduce of them."""
 
     @staticmethod
-    def forward(ctx, x, group, size):
-        if x.element_size() >= 4:
-            return _all_reduce(x, group) / size
-        # fp16 / bf16: sum in float32, or tp copies of a large finite value overflow to inf before the divide
-        return (_all_reduce(x.float(), group) / size).to(x.dtype)
+    def forward(ctx, x, group):
+        import torch.distributed._functional_collectives as funcol
+
+        out = funcol.broadcast(x.contiguous(), 0, group)  # src: the rank within the group
+        wait = getattr(out, "wait", None)
+        return wait() if callable(wait) else out
 
     @staticmethod
     def backward(ctx, grad):
-        return grad, None, None
+        return grad, None
 
 
 def _moe_post_hook(module, args, output):
     if module.__dict__.get("_unsloth_tp_gathered"):
         return None  # tp_replica: one rank may run alone
-    group, size = module._unsloth_tp_group, module._unsloth_tp_size
+    group = module._unsloth_tp_group
 
     def sync(y):
-        return _MeanFromTP.apply(y, group, size) if y.is_floating_point() else y
+        return _BroadcastFromTP.apply(y, group) if y.is_floating_point() else y
 
     if isinstance(output, torch.Tensor):
         return sync(output)
@@ -1922,7 +1924,8 @@ def _is_packed_expert(t):
 
 def _packed_expert_problem(p, E, tp):
     """Why the packed stack `p` cannot be cut by expert index over tp, or None. Its codes and every companion
-    tensor (block scales, per-expert global scales) are expert-major; a companion with one leading row is shared."""
+    tensor (block scales, per-expert global scales) are expert-major; a companion with one leading row is shared,
+    and an empty one (a GGUF stack without the file's per-expert scale) has nothing to cut."""
     if p.requires_grad:
         return "a trainable packed expert stack"
     if p.dim() < 3 or p.shape[0] != E or not callable(getattr(p, "_init_kwargs", None)):
@@ -1930,7 +1933,12 @@ def _packed_expert_problem(p, E, tp):
     if tp is not None and (E % tp or E // tp < 2):
         return f"packed experts: {E} experts do not split into at least 2 per rank over {tp}"
     for key, value in p._init_kwargs().items():
-        if isinstance(value, torch.Tensor) and value.dim() and value.shape[0] not in (E, 1):
+        if (
+            isinstance(value, torch.Tensor)
+            and value.dim()
+            and value.numel()
+            and value.shape[0] not in (E, 1)
+        ):
             return f"packed experts: {key} {tuple(value.shape)} is not stacked by expert"
     return None
 
@@ -2846,6 +2854,30 @@ def _tp_projection_forward(self, x, *args, **kwargs):
     return out
 
 
+class _FrozenUpcastLinear(torch.autograd.Function):
+    """F.linear with a frozen weight of another dtype upcast per call; saves the stored weight, not the copy."""
+
+    @staticmethod
+    def forward(ctx, x, weight, bias):
+        ctx.save_for_backward(weight)
+        return F.linear(x, weight.to(x.dtype), bias)
+
+    @staticmethod
+    def backward(ctx, grad):
+        (weight,) = ctx.saved_tensors
+        return grad @ weight.to(grad.dtype), None, None
+
+
+def _mixed_dtype_linear(x, W, bias):
+    """The CPU route keeps frozen projections of a bfloat16 checkpoint in bfloat16 for float32 training (zoo's
+    Bf16StoredLinear upcasts them per call); the sharded forward replaces that module forward, so it upcasts the
+    same way instead of failing on a float32 x bfloat16 matmul."""
+    bias = None if bias is None else bias.to(x.dtype)
+    if W.requires_grad or (bias is not None and bias.requires_grad):
+        return F.linear(x, W.to(x.dtype), bias)
+    return _FrozenUpcastLinear.apply(x, W, bias)
+
+
 def _tp_projection_compute(self, x):
     weight, base = _weight(self)
     W = _fake_quantized(base, _local(weight))
@@ -2870,6 +2902,8 @@ def _tp_projection_compute(self, x):
         if bias is not None:
             out = out + bias.to(out.dtype)
         out = out.to(input_dtype)
+    elif W.dtype != x.dtype and W.is_floating_point() and not torch.is_autocast_enabled():
+        out = _mixed_dtype_linear(x, W, bias)
     else:
         out = F.linear(x, W, bias)
     lora_A = self._modules.get("lora_A")
@@ -6619,6 +6653,8 @@ def tp_trainer_setup(
         True  # the generated TRL trainers skip for_inference()
     )
     _tp_scaler(trainer, dp_size)
+    if not pipeline:  # pipeline parallel forms the router aux loss itself (pp_env)
+        _tp_router_aux(trainer, tp_mesh.size())
     trainer.__dict__["save_model"] = types.MethodType(_tp_trainer_save_model, trainer)
     for name in ("evaluate", "predict") if cp_data is not None and not pipeline else ():
         trainer.__dict__[name] = _refuse_tp_trainer_call(name)
@@ -7171,6 +7207,107 @@ def _tp_trainer_save_model(
 
 def _has_peft_config(model):
     return any(getattr(level, "peft_config", None) for level in _tp_chain(model))
+
+
+def _router_aux_module(model):
+    """The module that owns router_aux_loss_coef (the MoE CausalLM), else None."""
+    if not isinstance(model, torch.nn.Module):
+        return None
+    for module in model.modules():
+        if "router_aux_loss_coef" in vars(module):
+            return module
+    return None
+
+
+def _forward_weights_router_aux(owner):
+    """Does owner's forward (or a module-level `<Class>_forward` it calls, as zoo's compiled forwards do) weight the
+    aux term with zoo's unsloth_ga_scale_aux_loss? Read from the code objects only: this module imports nothing that
+    needs an accelerator (tests load tp_native without the unsloth package)."""
+    todo = [(owner.__dict__.get("forward"), 1), (getattr(type(owner), "forward", None), 1)]
+    seen = []
+    while todo:
+        fn, depth = todo.pop(0)
+        for _ in range(8):
+            fn = getattr(fn, "__func__", fn)
+            code = getattr(fn, "__code__", None)
+            if code is None:
+                break
+            if fn not in seen:
+                seen.append(fn)
+                if "unsloth_ga_scale_aux_loss" in code.co_names:
+                    return True
+                scope = getattr(fn, "__globals__", None) or {}
+                if depth > 0:
+                    todo.extend(
+                        (scope[name], depth - 1)
+                        for name in code.co_names
+                        if name.endswith("_forward") and callable(scope.get(name))
+                    )
+            fn = getattr(fn, "__wrapped__", None)
+    return False
+
+
+def _compute_loss_adds_router_aux(compute_loss):
+    """TRL >= 1.15 SFTTrainer.compute_loss adds router_aux_loss_coef x aux itself, after the loss scale (same test
+    as models/pp_env._compute_loss_adds_router_aux)."""
+    for _ in range(8):
+        names = getattr(getattr(compute_loss, "__code__", None), "co_names", ())
+        if "router_aux_loss_coef" in names and "current_gradient_accumulation_steps" in names:
+            return True
+        compute_loss = getattr(compute_loss, "__wrapped__", None)
+        if compute_loss is None:
+            return False
+    return False
+
+
+def _tp_router_aux_scale(trainer, tp):
+    """1 / tp for a MoE forward that adds router_aux_loss_coef x aux_loss unweighted (the stock transformers
+    forward, zoo's GA scaler absent, a Trainer that does not add the aux loss itself), else 1.0.
+
+    The Trainer multiplies the loss by the world size (dp x tp) and its token count counts every dp replica's
+    tokens tp times, so the token-normalised cross entropy comes out as on dp GPUs. An unweighted aux loss is
+    the same on every tp rank (replicated router inputs) and would be carried tp times. Zoo's scaler weights
+    it by local / num_items_in_batch, which already divides by tp; TRL >= 1.15 adds it after the scaling."""
+    inner = _router_aux_module(getattr(trainer, "model", None))
+    if inner is None or tp <= 1:
+        return 1.0
+    # Without cross-device token averaging the Trainer neither gathers the count nor multiplies the loss by
+    # the world size: nothing is carried tp times.
+    if not getattr(getattr(trainer, "args", None), "average_tokens_across_devices", False):
+        return 1.0
+    if _forward_weights_router_aux(inner):
+        return 1.0
+    if _compute_loss_adds_router_aux(getattr(type(trainer), "compute_loss", None)):
+        return 1.0
+    return 1.0 / tp
+
+
+def _tp_router_aux(trainer, tp):
+    """Inside a training step whose loss the Trainer multiplies by the world size (evaluation is not),
+    run the CausalLM with router_aux_loss_coef x _tp_router_aux_scale. outputs.aux_loss stays unscaled."""
+    scale = _tp_router_aux_scale(trainer, tp)
+    if scale == 1.0:
+        return
+    inner = _router_aux_module(trainer.model)
+    original = trainer.training_step
+
+    def training_step(self, *args, **kwargs):
+        coef = vars(inner).get("router_aux_loss_coef")
+        num_items = kwargs.get("num_items_in_batch", args[2] if len(args) > 2 else None)
+        # Trainer.compute_loss multiplies by the world size only with a count that reaches the loss.
+        scaled = num_items is not None and (
+            getattr(self, "model_accepts_loss_kwargs", False)
+            or getattr(self, "compute_loss_func", None) is not None
+        )
+        if not scaled or isinstance(coef, bool) or not isinstance(coef, (int, float)) or not coef:
+            return original(*args, **kwargs)
+        inner.router_aux_loss_coef = coef * scale
+        try:
+            return original(*args, **kwargs)
+        finally:
+            inner.router_aux_loss_coef = coef
+
+    trainer.__dict__["training_step"] = types.MethodType(training_step, trainer)
 
 
 def _tp_scaler(trainer, dp):

@@ -6677,6 +6677,141 @@ def _patch_grpo_accumulated_loss_head_hooks(source):
     return source
 
 
+def _unsloth_chat_template_end_of_turn_id(processing_class):
+    """The added special token the chat template ends a final assistant turn with, or None.
+
+    Same rule as TRL's later ``get_chat_template_end_of_turn_token_id``: render one dummy turn and take the
+    last non-blank token after the reply (gpt-oss's <|return|>, not its <|end|>), if it is an added token.
+    """
+    try:
+        from transformers import ProcessorMixin
+    except ImportError:
+        ProcessorMixin = ()
+    messages = [
+        {"role": "user", "content": "dummy"},
+        {"role": "assistant", "content": "dummy reply"},
+    ]
+    is_vlm = isinstance(processing_class, ProcessorMixin)
+    if is_vlm:
+        for message in messages:
+            message["content"] = [{"type": "text", "text": message["content"]}]
+    tokenizer = getattr(processing_class, "tokenizer", None) if is_vlm else processing_class
+    if tokenizer is None:
+        return None
+    try:
+        text = processing_class.apply_chat_template(messages, tokenize = False)
+        if not isinstance(text, str):
+            return None
+        index = text.rfind("dummy reply")
+        suffix = text[index + len("dummy reply") :] if index != -1 else ""
+        suffix_ids = tokenizer(suffix, add_special_tokens = False)["input_ids"]
+        token_id = next(
+            (t for t in reversed(suffix_ids) if tokenizer.decode([t]).strip() != ""), None
+        )
+        added = set(tokenizer.get_added_vocab().values())
+    except Exception:
+        # No chat template, or a template that needs more than a plain user / assistant turn.
+        return None
+    return token_id if token_id in added else None
+
+
+def _unsloth_rl_end_of_turn_stop(trainer_file, model, processing_class, train_dataset, args):
+    """GRPO / RLOO on TRL <= 1.19 stop only on the generation_config EOS ids, so a base checkpoint with a
+    user-set chat template (Qwen base: EOS <|endoftext|>, turns end in <|im_end|>) decodes every rollout to
+    max_completion_length. Add the template's end-of-turn id the way newer TRL does: to
+    model.generation_config.eos_token_id, from which TRL 1.15+ builds its HF stop set and completion masks,
+    and to the vLLM stop_token_ids. A TRL that already does this is left to it; one that still stops on
+    tokenizer.eos_token_id alone (< 1.15) is left unchanged, and so is a run with ignore_eos.
+    UNSLOTH_RL_END_OF_TURN_STOP=0 turns it off. Returns the id added, or None."""
+    import os
+    import inspect
+    import importlib
+
+    if os.environ.get("UNSLOTH_RL_END_OF_TURN_STOP", "1") == "0":
+        return None
+    if model is None or processing_class is None or train_dataset is None:
+        return None
+    class_name = {"grpo_trainer": "GRPOTrainer", "rloo_trainer": "RLOOTrainer"}.get(trainer_file)
+    if class_name is None:
+        return None
+    try:
+        trl_module = importlib.import_module(f"trl.trainer.{trainer_file}")
+        if hasattr(trl_module, "get_chat_template_end_of_turn_token_id"):
+            return None
+        # The module's own text: Unsloth rebinds trl_module.GRPOTrainer to its subclass.
+        if "self.eos_token_ids = " not in inspect.getsource(trl_module):
+            return None
+        from trl.data_utils import is_conversational
+
+        if not is_conversational(next(iter(train_dataset))):
+            return None
+    except Exception:
+        return None
+    # ignore_eos (in generation_kwargs or vllm_sampling_params) opts out of every EOS-like stop.
+    user_generation_kwargs = (
+        (getattr(args, "generation_kwargs", None) or {}) if args is not None else {}
+    )
+    vllm_sampling_params = getattr(args, "vllm_sampling_params", None) if args is not None else None
+    if user_generation_kwargs.get("ignore_eos", False) or getattr(
+        vllm_sampling_params, "ignore_eos", False
+    ):
+        return None
+    generation_config = getattr(model, "generation_config", None)
+    if generation_config is None:
+        return None
+    end_of_turn_id = _unsloth_chat_template_end_of_turn_id(processing_class)
+    if end_of_turn_id is None:
+        return None
+    eos_token_ids = generation_config.eos_token_id
+    if eos_token_ids is None:
+        eos_token_ids = []
+    elif isinstance(eos_token_ids, int):
+        eos_token_ids = [eos_token_ids]
+    else:
+        eos_token_ids = list(eos_token_ids)
+    tokenizer = getattr(processing_class, "tokenizer", processing_class)
+    # TRL already stops (HF) and masks on the tokenizer EOS and the in-memory generation_config EOS ids.
+    trl_stops = end_of_turn_id in eos_token_ids or end_of_turn_id == getattr(
+        tokenizer, "eos_token_id", None
+    )
+    if not trl_stops:
+        generation_config.eos_token_id = [*eos_token_ids, end_of_turn_id]
+    vllm_stops = False
+    if args is not None and (
+        getattr(args, "use_vllm", False) or getattr(model, "vllm_engine", None) is not None
+    ):
+        # vLLM stops on its own checkpoint's generation_config.json, which can lack the id even when the
+        # in-memory generation_config has it, so the end-of-turn id is always an explicit vLLM stop.
+        generation_kwargs = dict(user_generation_kwargs)
+        user_stops = list(generation_kwargs.get("stop_token_ids", None) or [])
+        if end_of_turn_id not in user_stops:
+            generation_kwargs["stop_token_ids"] = [*user_stops, end_of_turn_id]
+            args.generation_kwargs = generation_kwargs
+            vllm_stops = True
+    if trl_stops and not vllm_stops:
+        return None
+    print(
+        f"Unsloth: {class_name} also stops rollouts on the chat template's end-of-turn token "
+        f"{tokenizer.decode([end_of_turn_id])!r} (id {end_of_turn_id})."
+    )
+    return end_of_turn_id
+
+
+def rl_trainer_end_of_turn_stop(trainer_file):
+    def process(call_args, extra_args):
+        if not all(
+            name in call_args for name in ("model", "processing_class", "train_dataset", "args")
+        ):
+            return ""
+        return (
+            "_unsloth_eot_processing_class = locals().get('tokenizer', None)\n"
+            "if _unsloth_eot_processing_class is None: _unsloth_eot_processing_class = processing_class\n"
+            f"_unsloth_rl_end_of_turn_stop('{trainer_file}', model, _unsloth_eot_processing_class, train_dataset, args)\n"
+        )
+
+    return process
+
+
 def grpo_update_SamplingParams(
     SamplingParams,
     generation_kwargs,
@@ -6709,6 +6844,10 @@ def grpo_update_SamplingParams(
                 "max_tokens",
                 "logprobs",
             ):
+                if key == "stop_token_ids" and generation_kwargs.get(key):
+                    # Keep the trainer's EOS / end-of-turn stops next to the user's own.
+                    stops = list(overwrited_key or [])
+                    overwrited_key = stops + [t for t in generation_kwargs[key] if t not in stops]
                 generation_kwargs[key] = overwrited_key
     return generation_kwargs
 
@@ -7485,6 +7624,12 @@ RL_PRE_ITEMS["grpo_trainer"].append(grpo_compute_loss_slow)
 RL_PRE_ITEMS["grpo_trainer"].append(inspect.getsource(grpo_update_SamplingParams))
 # TRL 0.22 to 0.27 RLOO builds its vLLM SamplingParams the same way, which patch_functions rewrites to call it.
 RL_PRE_ITEMS["rloo_trainer"].append(inspect.getsource(grpo_update_SamplingParams))
+# TRL <= 1.19 does not stop rollouts on the chat template's end-of-turn token.
+for _eot_trainer_file in ("grpo_trainer", "rloo_trainer"):
+    RL_PRE_ITEMS[_eot_trainer_file].append(inspect.getsource(_unsloth_chat_template_end_of_turn_id))
+    RL_PRE_ITEMS[_eot_trainer_file].append(inspect.getsource(_unsloth_rl_end_of_turn_stop))
+    RL_EXTRA_ARGS[_eot_trainer_file].append(rl_trainer_end_of_turn_stop(_eot_trainer_file))
+del _eot_trainer_file
 RL_PRE_ITEMS["grpo_trainer"].append(inspect.getsource(_get_inference_mode_context_manager))
 # inspect.getsource inlines function bodies but not module imports, so constants the inlined grpo functions use (UNSLOTH_ENABLE_LOGGING) must be redefined in the generated cache.
 RL_PRE_ITEMS["grpo_trainer"].append(

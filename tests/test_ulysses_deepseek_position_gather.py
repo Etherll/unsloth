@@ -1,13 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright 2026-present the Unsloth AI Inc. team. All rights reserved.
 
-"""DeepSeek-V4 Ulysses CP on CPU gloo ranks: the compressor layers all-gather position_ids once per
-step (forward and gradient checkpoint recompute reuse it), and loss / grads are bitwise those of
-gathering in every layer."""
+"""DeepSeek-V4 Ulysses CP on CPU gloo ranks: the compressor layers read the step's full position_ids
+from the CP manager with no collective (forward and gradient checkpoint recompute alike), so ranks
+cannot disagree on issuing one, and loss / grads are bitwise those of gathering in every layer."""
+
+import datetime
+import os
+import tempfile
 
 import pytest
 import torch
 import torch.distributed as dist
+import torch.multiprocessing as mp
 import torch.nn.functional as F
 
 from tests.test_ulysses_deepseek import KINDS, VOCAB, _loss, _manager, _model, _spawn
@@ -81,8 +86,7 @@ def _worker(rank, world, use_reentrant):
             loss, grads, n_gathers, n_calls = _step(model, manager, ids, count, gathers, calls)
             # Forward plus checkpoint recompute of every layer: the Ulysses path provably ran.
             assert n_calls == 2 * layers, n_calls
-            assert n_gathers == 1, n_gathers
-            assert getattr(manager, "_deepseek_full_position_ids", None) is None
+            assert n_gathers == 0, n_gathers
 
         full_position_ids = ud._full_position_ids
         ud._full_position_ids = _gather_every_layer
@@ -101,11 +105,14 @@ def _worker(rank, world, use_reentrant):
 
 
 @pytest.mark.parametrize("use_reentrant", [False, True])
-def test_deepseek_v4_positions_gathered_once_per_step(use_reentrant):
+def test_deepseek_v4_positions_need_no_collective(use_reentrant):
     _spawn(_worker, 2, use_reentrant)
 
 
-def _cache_worker(rank, world):
+def _divergence_worker(rank, world):
+    # Rank 1 writes its position shard in place between two compressor layers (any data-dependent
+    # in-place edit), rank 0 does not. A per-forward cache keyed on the tensor's version would hit on
+    # rank 0 and miss on rank 1: rank 1 alone all-gathers and the ranks deadlock or mismatch.
     manager = _manager(world, rank)
     gathers = []
     all_gather = dist.all_gather
@@ -116,38 +123,91 @@ def _cache_worker(rank, world):
 
     dist.all_gather = counted_gather
     try:
-        inputs = {"input_ids": torch.zeros((1, 8), dtype = torch.long)}
+        inputs = {"input_ids": torch.zeros((2, 8), dtype = torch.long)}
         manager._prepare_inputs(inputs)
         with manager.apply(inputs):
             pos = inputs["position_ids"]
             first = ud._full_position_ids(pos, None)
-            assert torch.equal(first, torch.arange(8).unsqueeze(0))
-            assert ud._full_position_ids(pos, None) is first
-            assert ud._full_position_ids(pos.detach(), None) is first  # reentrant checkpoint alias
-            assert len(gathers) == 1
-            pos.add_(100)  # in-place write: _version moves, so it must re-gather
-            second = ud._full_position_ids(pos, None)
+            if rank == 1:
+                pos.add_(0)
+            second = ud._full_position_ids(pos.detach(), None)
+            third = ud._full_position_ids(pos, None)
+        expected = torch.arange(8).expand(2, -1)
+        for full in (first, second, third):
+            assert torch.equal(full, expected)
+    finally:
+        dist.all_gather = all_gather
+    counts = [None] * world
+    dist.all_gather_object(counts, len(gathers))
+    assert counts == [0] * world, counts
+
+
+def _spawn_with_timeout(fn, world, seconds):
+    if "fork" not in mp.get_all_start_methods():
+        pytest.skip("needs the fork start method")
+    with tempfile.TemporaryDirectory() as d:
+        mp.start_processes(
+            _timeout_entry,
+            args = (world, os.path.join(d, "init"), fn, seconds),
+            nprocs = world,
+            join = True,
+            start_method = "fork",
+        )
+
+
+def _timeout_entry(rank, world, init_file, fn, seconds):
+    torch.set_num_threads(1)
+    dist.init_process_group(
+        "gloo",
+        init_method = f"file://{init_file}",
+        rank = rank,
+        world_size = world,
+        timeout = datetime.timedelta(seconds = seconds),
+    )
+    try:
+        fn(rank, world)
+    finally:
+        dist.destroy_process_group()
+
+
+def test_rank_local_position_writes_issue_no_divergent_collective():
+    _spawn_with_timeout(_divergence_worker, 2, 20)
+
+
+def _fallback_worker(rank, world):
+    manager = _manager(world, rank)
+    gathers = []
+    all_gather = dist.all_gather
+
+    def counted_gather(*args, **kwargs):
+        gathers.append(1)
+        return all_gather(*args, **kwargs)
+
+    dist.all_gather = counted_gather
+    try:
+        local = torch.arange(rank * 4, rank * 4 + 4).unsqueeze(0)
+        # Outside a step there is no manager: gather on every call, on every rank.
+        for _ in range(2):
+            assert torch.equal(ud._full_position_ids(local, None), torch.arange(8).unsqueeze(0))
+        assert len(gathers) == 2
+        inputs = {"input_ids": torch.zeros((1, 8), dtype = torch.long)}
+        manager._prepare_inputs(inputs)
+        with manager.apply(inputs):
+            pos = inputs["position_ids"]
+            assert torch.equal(ud._full_position_ids(pos, None), torch.arange(8).unsqueeze(0))
             assert len(gathers) == 2
-            assert torch.equal(second, torch.arange(8).unsqueeze(0) + 100)
-            other = pos.clone()  # a different tensor (next step) re-gathers
-            ud._full_position_ids(other, None)
+            # A shape the step's positions do not cover (a sub-batch): gather, on every rank alike.
+            sub = torch.cat([pos, pos + 100])
+            want = torch.cat([torch.arange(8), torch.arange(8) + 100]).view(2, 8)
+            assert torch.equal(ud._full_position_ids(sub, None), want)
             assert len(gathers) == 3
-            # Inference mode (inputs sharded before entering it): the gathered tensor has no version counter,
-            # so nothing is cached and every call gathers.
-            fresh = pos.clone()
             with torch.inference_mode():
-                full = ud._full_position_ids(fresh, None)
-                assert torch.equal(full, torch.arange(8).unsqueeze(0) + 100)
-                ud._full_position_ids(fresh, None)
-            assert len(gathers) == 5
-        # Outside the step there is no active manager: gather every call, keep nothing.
-        ud._full_position_ids(pos, None)
-        ud._full_position_ids(pos, None)
-        assert len(gathers) == 7
-        assert manager._deepseek_full_position_ids is None
+                assert torch.equal(ud._full_position_ids(pos, None), torch.arange(8).unsqueeze(0))
+            assert len(gathers) == 3
+        assert manager.full_position_ids is None
     finally:
         dist.all_gather = all_gather
 
 
-def test_full_position_ids_cache_invalidation():
-    _spawn(_cache_worker, 2)
+def test_full_position_ids_fallback_gathers_on_every_rank():
+    _spawn(_fallback_worker, 2)

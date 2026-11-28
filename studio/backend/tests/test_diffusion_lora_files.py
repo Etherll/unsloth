@@ -714,7 +714,12 @@ def test_a_qwen21_file_without_fused_gate_up_still_loads_by_path(tmp_path):
     )
     pipe = _RecordingPipe()
     received = []
-    pipe.load_lora_weights = lambda source, adapter_name = None: received.append(source)
+
+    def load(source, adapter_name = None):
+        received.append(source)
+        pipe.loaded[adapter_name] = {}
+
+    pipe.load_lora_weights = load
     lf.load_adapter(pipe, str(path), "q", "qwen-image-2.1")
     assert received == [str(path)]
 

@@ -266,20 +266,15 @@ def _controls(model, kind, control, monkey):
         real = ud._sink_attention
         monkey(ud, "_sink_attention", lambda q, kv, bb, s, w, *a: real(q, kv, bb, s, None, *a))
     elif control == "wrong_offset":
-        real = ud.ulysses_deepseek_v4_forward
+        real = ud._full_position_ids
 
-        def shard_positions(
-            module,
-            *args,
-            position_ids = None,
-            group = None,
-            **kw,
-        ):
-            return real(
-                module, *args, position_ids = position_ids - position_ids[:, :1], group = group, **kw
-            )
+        def shard_positions(position_ids, group):
+            # The compressor sees every shard's positions restart at 0, as if they were not global.
+            full = real(position_ids, group)
+            local = position_ids.shape[-1]
+            return full - full[:, ::local].repeat_interleave(local, dim = -1)
 
-        monkey(ud, "ulysses_deepseek_v4_forward", shard_positions)
+        monkey(ud, "_full_position_ids", shard_positions)
     elif control == "local_topk":
         real = ud._v32_global_topk
 

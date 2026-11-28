@@ -62,6 +62,39 @@ _H3_COMMUNITY_RENAMES = (
 )
 
 
+# musubi-tuner's kohya names for the same modules: ``lora_unet_`` and the original path with every dot an underscore.
+# H3's own names hold underscores too (qkv_proj, token_refiner, final_layer), so each layout is matched whole.
+_H3_KOHYA_MODULES = tuple(
+    (re.compile(pattern), dotted)
+    for pattern, dotted in (
+        (r"blocks_(\d+)_attn_(qkv|out)_proj", r"blocks.\1.attn.\2_proj"),
+        (r"blocks_(\d+)_mlp_fc([12])", r"blocks.\1.mlp.fc\2"),
+        (r"blocks_(\d+)_adaln_proj_linear", r"blocks.\1.adaln_proj.linear"),
+        (
+            r"token_refiner_blocks_(\d+)_attn_(qkv|out)_proj",
+            r"token_refiner.blocks.\1.attn.\2_proj",
+        ),
+        (r"token_refiner_blocks_(\d+)_mlp_fc([12])", r"token_refiner.blocks.\1.mlp.fc\2"),
+        (r"(video|audio)_patch_proj", r"\1_patch_proj"),
+        (r"condition_proj", r"condition_proj"),
+        (r"time_embedder_proj_(in|out)", r"time_embedder.proj_\1"),
+        (r"final_layer_adaln_proj_linear", r"final_layer.adaln_proj.linear"),
+        (r"final_layer_(video|audio)_out", r"final_layer.\1_out"),
+    )
+)
+
+
+def h3_kohya_module(module: str) -> Optional[str]:
+    """The original dotted H3 module path a kohya ``lora_unet_`` module name spells, else None."""
+    if not module.startswith("lora_unet_"):
+        return None
+    flat = module[len("lora_unet_") :]
+    for pattern, dotted in _H3_KOHYA_MODULES:
+        if pattern.fullmatch(flat):
+            return pattern.sub(dotted, flat)
+    return None
+
+
 # Raw H3 DiT reads fused qkv as [heads, 3, head_dim] (DiffSynth minimax_h3_dit.py); Comfy-Org repack as [3, heads, head_dim].
 _H3_HEAD_DIM = 128
 
@@ -561,7 +594,8 @@ def read_deltas(files: Iterable[tuple[str, float]], *, family: Optional[str] = N
     """``{module path: [(A, B, scale * weight), ...]}`` for ``[(path, weight), ...]`` diffusers / PEFT LoRA files.
     Scale is ``lora_alpha / r`` from the file's adapter config (``/ sqrt(r)`` under rsLoRA), else from ``.alpha``
     keys, else from the Studio trainer sidecar, else 1 (alpha = r, as diffusers reads such a file). ``family``
-    ``minimax-h3`` also maps the community layout (fused qkv, gated fc1) onto the diffusers module names."""
+    ``minimax-h3`` also maps the community layout (fused qkv, gated fc1, and its kohya ``lora_unet_`` spelling) onto the
+    diffusers module names."""
     from safetensors.torch import load_file
 
     out: dict = {}
@@ -581,7 +615,10 @@ def read_deltas(files: Iterable[tuple[str, float]], *, family: Optional[str] = N
             for slot, suffixes in (("a", _A_SUFFIXES), ("b", _B_SUFFIXES), ("alpha", (".alpha",))):
                 hit = next((s for s in suffixes if name.endswith(s)), None)
                 if hit is not None:
-                    slots = parts.setdefault(_diffusers_module_name(name[: -len(hit)]), {})
+                    module = name[: -len(hit)]
+                    if family == _H3_FAMILY:
+                        module = h3_kohya_module(module) or module
+                    slots = parts.setdefault(_diffusers_module_name(module), {})
                     slots[slot] = tensor
                     if slot == "b":
                         # DiffSynth-Studio's PEFT ``.default`` names mean raw-DiT per-head qkv rows.
