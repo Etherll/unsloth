@@ -202,6 +202,62 @@ def test_bitsandbytes_keeps_the_float32_update(sr, name):
     assert abs(kept["sr"] - 1) < 0.1, kept
 
 
+@pytest.mark.parametrize("name", ["AdamW8bit", "AdamW4bit"])
+def test_torchao_low_bit_adamw_rounds_stochastically(sr, name, monkeypatch):
+    # optim="adamw_torch_8bit" / "adamw_torch_4bit": torchao's own step rounds once its flag is set.
+    optim = pytest.importorskip("torchao.optim")
+    cls = getattr(optim, name)
+    g = torch.Generator().manual_seed(0)
+    weights = [torch.randn(64, 128, generator = g) * 0.05]  # >= 4096 elements: quantized states
+
+    def train(mode, rng = 0):
+        dtype = torch.float32 if mode == "fp32" else torch.bfloat16
+        params = [torch.nn.Parameter(w.to(torch.bfloat16).to(dtype)) for w in weights]
+        start = [p.detach().float().clone() for p in params]
+        opt = cls(params, lr = 1e-5, weight_decay = 0.0)
+        assert not opt.bf16_stochastic_round
+        if mode == "sr":
+            assert sr.enable_bf16_stochastic_rounding(opt, verbose = False) == 1
+            assert opt.bf16_stochastic_round
+        torch.manual_seed(rng)  # e.g. what each DDP rank's dropout left behind
+        for step in range(STEPS):
+            grad = torch.randn(64, 128, generator = torch.Generator().manual_seed(100 + step)) * 1e-3
+            params[0].grad = grad.to(dtype)
+            before = torch.get_rng_state()
+            opt.step()
+            if mode == "sr":  # the rounding draws from its own (seed, step) stream
+                assert torch.equal(torch.get_rng_state(), before)
+            opt.zero_grad(set_to_none = True)
+        assert params[0].dtype == dtype
+        return (params[0].detach().float() - start[0]).flatten().double()
+
+    ref = train("fp32")
+    delta = {m: train(m) for m in ("bf16", "sr")}
+    kept = {m: (d @ ref / (ref @ ref)).item() for m, d in delta.items()}
+    changed = {m: (d != 0).double().mean().item() for m, d in delta.items()}
+    print(name, "kept", kept, "changed", changed, "fp32 changed", (ref != 0).double().mean().item())
+    assert kept["bf16"] < 0.5, kept
+    assert abs(kept["sr"] - 1) < 0.15, kept
+    assert changed["sr"] > 2 * changed["bf16"], changed
+    # Replicas whose RNG streams differ still round alike, so DDP weights stay in sync.
+    assert torch.equal(train("sr", rng = 1), delta["sr"])
+    # A weight that stops getting gradients does not freeze the other weights' draws at its step.
+    idle, live = (torch.nn.Parameter(weights[0].to(torch.bfloat16)) for _ in range(2))
+    opt = cls([idle, live], lr = 1e-5, weight_decay = 0.0)
+    seeds, step = [], opt.step
+    opt.step = lambda closure = None: (seeds.append(torch.initial_seed()), step(closure))[1]
+    sr.enable_bf16_stochastic_rounding(opt, verbose = False)
+    for i in range(3):
+        idle.grad = torch.full_like(idle, 1e-3) if i == 0 else None
+        live.grad = torch.full_like(live, 1e-3)
+        opt.step()
+    assert len(set(seeds)) == 3, seeds
+    monkeypatch.setenv("UNSLOTH_BF16_STOCHASTIC_ROUNDING", "0")
+    opt = cls([torch.nn.Parameter(weights[0].to(torch.bfloat16))], lr = 1e-5)
+    assert sr.enable_bf16_stochastic_rounding(opt, verbose = False) == 0
+    assert not opt.bf16_stochastic_round
+
+
 def test_noncontiguous_weights_are_left_to_the_optimizer(sr):
     p = torch.nn.Parameter(torch.randn(4, 4, dtype = torch.bfloat16).T)
     q = torch.nn.Parameter(torch.randn(4, 4, dtype = torch.bfloat16))

@@ -1017,6 +1017,28 @@ def _fused_adamw_step(optimizer, group, params, seed):
     return left
 
 
+def _wrap_torchao(optimizer, tracked, seed):
+    """torchao draws its rounding noise from the default generators inside its compiled step. Draw it from
+    (seed, optimizer step) on a forked RNG instead: DDP replicas round alike and stay in sync, a resume draws
+    what an uninterrupted run would, and the training RNG stream is left as it was."""
+    original = optimizer.step
+    params = [p for group in optimizer.param_groups for p in group["params"] if id(p) in tracked]
+    devices = sorted({p.device.index or 0 for p in params if p.device.type == "cuda"})
+
+    def step(self, closure = None):
+        # The furthest step any weight reached (torchao keeps it on the CPU): a weight left without a gradient
+        # on later steps does not hold the draws back.
+        count = max((_step_of(self, p) for p in params if self.state.get(p)), default = 0)
+        draw = (int(seed) + 0x5EED + count * 2654435761) & 0x7FFFFFFFFFFFFFFF
+        with torch.random.fork_rng(devices = devices):
+            torch.random.default_generator.manual_seed(draw)
+            for index in devices:
+                torch.cuda.default_generators[index].manual_seed(draw)
+            return original(closure)
+
+    optimizer.step = types.MethodType(step, optimizer)
+
+
 def _kind(optimizer):
     try:
         from bitsandbytes.optim.optimizer import Optimizer8bit
@@ -1026,6 +1048,13 @@ def _kind(optimizer):
         pass
     if type(optimizer) in (torch.optim.AdamW, torch.optim.Adam):
         return "torch"
+    # torchao low-bit Adam / AdamW (optim="adamw_torch_8bit" / "adamw_torch_4bit"): its own compiled step
+    # rounds bfloat16 weights stochastically when bf16_stochastic_round is set. It is off by default, and a
+    # torchao without the attribute is left alone.
+    if type(optimizer).__module__.startswith("torchao.") and isinstance(
+        getattr(optimizer, "bf16_stochastic_round", None), bool
+    ):
+        return "torchao"
     return None
 
 
@@ -1060,7 +1089,10 @@ def enable_bf16_stochastic_rounding(
     # A routed weight may first receive a gradient on either side of a checkpoint.
     tracked = {id(p): index for index, p in enumerate(params)}
     optimizer._unsloth_sr_index = tracked
-    if kind == "bitsandbytes":
+    if kind == "torchao":
+        optimizer.bf16_stochastic_round = True
+        _wrap_torchao(optimizer, tracked, seed)
+    elif kind == "bitsandbytes":
         _wrap_bitsandbytes(optimizer, tracked, seed)
     else:
         _wrap_torch(optimizer, tracked, seed)
