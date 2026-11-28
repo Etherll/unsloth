@@ -21,7 +21,8 @@ from typing import Any, Callable, Iterator, Optional, Sequence
 PROMOTE_LB = 1.05
 P95_SLACK = 1.03
 MIN_REPEATS = 3
-RACE_SIZES = (2, 4)
+# 3: a burst of four from idle runs one request, then three batched.
+RACE_SIZES = (2, 3, 4)
 _N_BOOT = 4000
 # One-sided 95% Student t quantiles by degrees of freedom (a df between rows uses the smaller df: more conservative).
 _T95 = (

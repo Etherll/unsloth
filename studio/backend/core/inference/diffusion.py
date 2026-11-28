@@ -5313,6 +5313,21 @@ def _measured_sizes(
         return {}
 
 
+def _seeded_verdict_ok(state: Any, verdict: Optional[dict]) -> bool:
+    """Seeded rows may render at this size: bit-exact replay, or a neighbour-exact win the G2c verdict admits."""
+    from . import diffusion_batch_race
+    from .diffusion_batch_quality import path_of, seeded_quality_ok
+
+    if diffusion_batch_race.seeded_join_ok(verdict):
+        return True
+    return (
+        isinstance(verdict, dict)
+        and bool(verdict.get("promoted"))
+        and bool(verdict.get("neighbour_exact"))
+        and seeded_quality_ok(state, path_of(verdict))
+    )
+
+
 def _note_small_host_hosted_int8(pipe: Any, reason: str, *, picked: bool) -> None:
     from .diffusion_small_host import mark
 
@@ -18574,7 +18589,6 @@ class DiffusionBackend:
         state = self._state
         if state is None:
             return False
-        from . import diffusion_batch_race
         from .image_request_batching import batch_max
 
         admitted = self.coalesce_batch_sizes(width, height, guidance, steps, layout)
@@ -18583,20 +18597,30 @@ class DiffusionBackend:
         if not sizes:
             return False
         measured = _measured_sizes(state, width, height, guidance, steps, layout)
-        from .diffusion_batch_quality import path_of, seeded_quality_ok
+        return all(_seeded_verdict_ok(state, measured.get(k)) for k in sizes)
 
-        def ok(verdict: Optional[dict]) -> bool:
-            if diffusion_batch_race.seeded_join_ok(verdict):
-                return True
-            # Seeded rows may join a neighbour-exact win where this card's G2c verdict admits them.
-            return (
-                isinstance(verdict, dict)
-                and bool(verdict.get("promoted"))
-                and bool(verdict.get("neighbour_exact"))
-                and seeded_quality_ok(state, path_of(verdict))
-            )
+    def coalesce_seeded_sizes(
+        self,
+        width: Any,
+        height: Any,
+        guidance: Optional[float],
+        images: int,
+        steps: Optional[int] = None,
+        layout: Any = None,
+    ) -> frozenset:
+        """Call sizes a seeded request may render at (same per-size rule as coalesce_seeded_ok)."""
+        state = self._state
+        if state is None:
+            return frozenset()
+        from .image_request_batching import batch_max
 
-        return all(ok(measured.get(k)) for k in sizes)
+        admitted = self.coalesce_batch_sizes(width, height, guidance, steps, layout)
+        sizes = set(range(2, batch_max() + 1)) if admitted is None else set(admitted)
+        sizes = {k for k in sizes if k > int(images or 1)}
+        if not sizes:
+            return frozenset()
+        measured = _measured_sizes(state, width, height, guidance, steps, layout)
+        return frozenset(k for k in sizes if _seeded_verdict_ok(state, measured.get(k)))
 
     def batch_race(
         self,
@@ -18605,7 +18629,7 @@ class DiffusionBackend:
         height: int,
         steps: Optional[int] = None,
         guidance: Optional[float] = None,
-        sizes: tuple = (2, 4),
+        sizes: Optional[tuple] = None,
         repeats: int = 5,
         accuracy: bool = True,
     ) -> dict:
@@ -18614,6 +18638,8 @@ class DiffusionBackend:
         from . import diffusion_batch_race
         from .image_request_batching import collecting
 
+        if sizes is None:
+            sizes = diffusion_batch_race.RACE_SIZES
         state = self._state
         if state is None:
             raise diffusion_batch_race.RaceRefused("no image model is loaded")

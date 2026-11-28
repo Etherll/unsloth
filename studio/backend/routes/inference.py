@@ -57037,10 +57037,31 @@ async def _coalesced_image_generate(
             return None
 
     seeded_of = getattr(backend, "coalesce_seeded_ok", None)
+    seeded_sizes_of = getattr(backend, "coalesce_seeded_sizes", None)
+    if seeded_sizes_of is not None:
+        seeded_of = seeded_sizes_of
     seeded_steps = seeded_of is not None and _callable_takes(seeded_of, "steps")
     seeded_layout = seeded_of is not None and _callable_takes(seeded_of, "layout")
 
+    def seeded_sizes() -> frozenset:
+        try:
+            return frozenset(
+                seeded_sizes_of(
+                    generate_kwargs.get("width"),
+                    generate_kwargs.get("height"),
+                    generate_kwargs.get("guidance"),
+                    n,
+                    **({"steps": generate_kwargs.get("steps")} if seeded_steps else {}),
+                    **({"layout": prompt_key} if seeded_layout else {}),
+                )
+                or ()
+            )
+        except Exception:  # noqa: BLE001 -- unknown: a seeded request renders alone
+            return frozenset()
+
     def seeded_ok() -> bool:
+        if seeded_sizes_of is not None:
+            return bool(seeded_sizes())
         if seeded_of is None:
             return False
         try:
@@ -57078,6 +57099,9 @@ async def _coalesced_image_generate(
             on_lead = on_lead,
             wait = wait,
             seeded_ok = seeded_ok,
+            seeded_fits = (
+                (lambda total: total in seeded_sizes()) if seeded_sizes_of is not None else None
+            ),
             # Left out of a fired batch: coalesce again behind the generation running now.
             on_rejoin = arrived_behind.clear,
         )

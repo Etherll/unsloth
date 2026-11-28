@@ -41,6 +41,7 @@ class _Member:
     seeds: list[int]
     future: "asyncio.Future[dict[str, Any]]"
     owner: Hashable = None
+    seeded: bool = False
 
 
 @dataclass
@@ -127,11 +128,19 @@ def _share(exc: BaseException, members: list[_Member], owner: Hashable) -> None:
             member.future.set_exception(type(exc)(*exc.args))
 
 
-def _fitting_prefix(members: list[_Member], fits: Callable[[int], bool]) -> list[_Member]:
-    best, total = 0, 0
+def _fitting_prefix(
+    members: list[_Member],
+    fits: Optional[Callable[[int], bool]],
+    seeded_fits: Optional[Callable[[int], bool]] = None,
+) -> list[_Member]:
+    """Longest prefix whose size ``fits`` (and ``seeded_fits`` once it holds a seeded member)."""
+    best, total, seeded = 0, 0, False
     for index, member in enumerate(members):
         total += len(member.seeds)
-        if fits(total):
+        seeded = seeded or member.seeded
+        if (fits is None or fits(total)) and (
+            not seeded or seeded_fits is None or seeded_fits(total)
+        ):
             best = index + 1
     return members[:best]
 
@@ -144,12 +153,13 @@ async def _render_group(
     salvage: Optional[Callable[[BaseException], Optional[dict[str, Any]]]],
     fits: Optional[Callable[[int], bool]] = None,
     adapter: Any = None,
+    seeded_fits: Optional[Callable[[int], bool]] = None,
 ) -> dict[int, dict[str, Any]]:
     """One call for ``group``; on failure keep finished images and split the rest by member. Sizes respect ``fits``.
     ``adapter`` (diffusion_batch_adapters.BatchAdapter) runs the call and splits it; None = the list call."""
     group = [member for member in group if not member.future.done()]
-    if fits is not None:
-        group = _fitting_prefix(group, fits)
+    if fits is not None or seeded_fits is not None:
+        group = _fitting_prefix(group, fits, seeded_fits)
     if len(group) < 2:
         return {}
     prompts = [member.prompt for member in group for _ in member.seeds]
@@ -192,7 +202,16 @@ async def _render_group(
     middle = (len(rest) + 1) // 2
     for half in (rest[:middle], rest[middle:]):
         done.update(
-            await _render_group(half, run_batch, shared_outcome, splittable, salvage, fits, adapter)
+            await _render_group(
+                half,
+                run_batch,
+                shared_outcome,
+                splittable,
+                salvage,
+                fits,
+                adapter,
+                seeded_fits = seeded_fits,
+            )
         )
     return done
 
@@ -278,11 +297,14 @@ async def _generate_once(
     on_lead: Optional[Callable[[], None]] = None,
     wait: Optional[Callable[[], Awaitable[None]]] = None,
     seeded_ok: Optional[Callable[[], bool]] = None,
+    seeded_fits: Optional[Callable[[int], bool]] = None,
     adapter: Any = None,
 ) -> Optional[dict[str, Any]]:
     """None = render alone. ``check`` raises when a joined member must leave. ``seeded_ok``: an explicitly seeded
-    request may join (a measured neighbour-exact path); the env switch still opts every seeded request in."""
+    request may join; ``seeded_fits``: sizes a batch with a seeded member may fire at (None = any)."""
     cap = batch_max()
+    if seeded_join_enabled():
+        seeded_fits = None
     if cap <= 1 or n >= cap:
         trace.fallback("over the batch cap")
         return None
@@ -297,7 +319,9 @@ async def _generate_once(
     batch = _OPEN.get(key)
     if batch is not None:
         if batch.images + n <= cap:
-            member = _Member(prompt, request_seeds(seed, n), loop.create_future(), owner)
+            member = _Member(
+                prompt, request_seeds(seed, n), loop.create_future(), owner, seed is not None
+            )
             batch.members.append(member)
             batch.images += n
             trace.count("joined")
@@ -317,7 +341,9 @@ async def _generate_once(
         return None
 
     batch = _OPEN[key] = _Batch(key)
-    batch.members.append(_Member(prompt, request_seeds(seed, n), loop.create_future(), owner))
+    batch.members.append(
+        _Member(prompt, request_seeds(seed, n), loop.create_future(), owner, seed is not None)
+    )
     batch.images = n
     trace.count("led")
     left_out: set = set()
@@ -343,8 +369,8 @@ async def _generate_once(
             trace.fallback("blank prompt")
             return None
         members = [member for member in batch.members if member.prompt.strip()]
-        if fits is not None:
-            members = _fitting_prefix(members, fits)
+        if fits is not None or seeded_fits is not None:
+            members = _fitting_prefix(members, fits, seeded_fits)
         taken = {id(member) for member in members} if len(members) > 1 else set()
         left_out = {
             id(member)
@@ -366,7 +392,14 @@ async def _generate_once(
         )
         try:
             done = await _render_group(
-                members, run_batch, shared_outcome, splittable, salvage, fits, adapter
+                members,
+                run_batch,
+                shared_outcome,
+                splittable,
+                salvage,
+                fits,
+                adapter,
+                seeded_fits = seeded_fits,
             )
         except Exception as exc:
             _share(exc, members[1:], owner)
