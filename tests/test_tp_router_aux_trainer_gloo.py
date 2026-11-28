@@ -86,6 +86,9 @@ def _env(extra = None):
     env["UNSLOTH_FORCE_CPU"] = "1"
     # Keep the stock forward's unweighted aux term even where zoo weights it by the token share.
     env["UNSLOTH_CPU_ROUTER_AUX_GA"] = "0"
+    # float32 storage too: on a CPU without native bfloat16 the CPU route would otherwise keep the frozen
+    # projections of this bfloat16 checkpoint in bfloat16, depending on the free RAM.
+    env["UNSLOTH_CPU_FROZEN_BF16"] = "0"
     env["OMP_NUM_THREADS"] = "2"
     env["TOKENIZERS_PARALLELISM"] = "false"
     env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(_ROOT), env.get("PYTHONPATH")]))
@@ -163,3 +166,19 @@ def test_router_aux_loss_under_tp_matches_one_process(world, ga, ref_ga, avg):
         assert res["losses"] == pytest.approx(ref["losses"], rel = 1e-4), (res, ref)
         assert res["grad_norms"] == pytest.approx(ref["grad_norms"], rel = 1e-3), (res, ref)
         assert res["coef_after"] == _COEF  # restored after every training step
+
+
+def test_tp_trainer_with_bf16_stored_frozen_projections_matches_one_process():
+    """UNSLOTH_CPU_FROZEN_BF16=1: frozen projections stay bfloat16 and float32 activations meet them in the
+    sharded forward, which upcasts them per call as the module forward it replaces does."""
+    pytest.importorskip("trl")
+    bf16 = {"UNSLOTH_CPU_FROZEN_BF16": "1"}
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        (ref,) = _launch(1, 2, tmp, bf16)
+        results = _launch(2, 2, tmp, {**bf16, "UNSLOTH_TP_SIZE": "2"})
+    assert not ref["tp"] and len(ref["losses"]) == 2
+    for res in results:
+        assert res["tp"], res
+        assert res["losses"] == pytest.approx(ref["losses"], rel = 1e-4), (res, ref)
+        assert res["grad_norms"] == pytest.approx(ref["grad_norms"], rel = 1e-3), (res, ref)

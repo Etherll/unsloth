@@ -2846,6 +2846,30 @@ def _tp_projection_forward(self, x, *args, **kwargs):
     return out
 
 
+class _FrozenUpcastLinear(torch.autograd.Function):
+    """F.linear with a frozen weight of another dtype upcast per call; saves the stored weight, not the copy."""
+
+    @staticmethod
+    def forward(ctx, x, weight, bias):
+        ctx.save_for_backward(weight)
+        return F.linear(x, weight.to(x.dtype), bias)
+
+    @staticmethod
+    def backward(ctx, grad):
+        (weight,) = ctx.saved_tensors
+        return grad @ weight.to(grad.dtype), None, None
+
+
+def _mixed_dtype_linear(x, W, bias):
+    """The CPU route keeps frozen projections of a bfloat16 checkpoint in bfloat16 for float32 training (zoo's
+    Bf16StoredLinear upcasts them per call); the sharded forward replaces that module forward, so it upcasts the
+    same way instead of failing on a float32 x bfloat16 matmul."""
+    bias = None if bias is None else bias.to(x.dtype)
+    if W.requires_grad or (bias is not None and bias.requires_grad):
+        return F.linear(x, W.to(x.dtype), bias)
+    return _FrozenUpcastLinear.apply(x, W, bias)
+
+
 def _tp_projection_compute(self, x):
     weight, base = _weight(self)
     W = _fake_quantized(base, _local(weight))
@@ -2870,6 +2894,8 @@ def _tp_projection_compute(self, x):
         if bias is not None:
             out = out + bias.to(out.dtype)
         out = out.to(input_dtype)
+    elif W.dtype != x.dtype and W.is_floating_point() and not torch.is_autocast_enabled():
+        out = _mixed_dtype_linear(x, W, bias)
     else:
         out = F.linear(x, W, bias)
     lora_A = self._modules.get("lora_A")
@@ -7175,6 +7201,57 @@ def _has_peft_config(model):
     return any(getattr(level, "peft_config", None) for level in _tp_chain(model))
 
 
+def _router_aux_module(model):
+    """The module that owns router_aux_loss_coef (the MoE CausalLM), else None."""
+    if not isinstance(model, torch.nn.Module):
+        return None
+    for module in model.modules():
+        if "router_aux_loss_coef" in vars(module):
+            return module
+    return None
+
+
+def _forward_weights_router_aux(owner):
+    """Does owner's forward (or a module-level `<Class>_forward` it calls, as zoo's compiled forwards do) weight the
+    aux term with zoo's unsloth_ga_scale_aux_loss? Read from the code objects only: this module imports nothing that
+    needs an accelerator (tests load tp_native without the unsloth package)."""
+    todo = [(owner.__dict__.get("forward"), 1), (getattr(type(owner), "forward", None), 1)]
+    seen = []
+    while todo:
+        fn, depth = todo.pop(0)
+        for _ in range(8):
+            fn = getattr(fn, "__func__", fn)
+            code = getattr(fn, "__code__", None)
+            if code is None:
+                break
+            if fn not in seen:
+                seen.append(fn)
+                if "unsloth_ga_scale_aux_loss" in code.co_names:
+                    return True
+                scope = getattr(fn, "__globals__", None) or {}
+                if depth > 0:
+                    todo.extend(
+                        (scope[name], depth - 1)
+                        for name in code.co_names
+                        if name.endswith("_forward") and callable(scope.get(name))
+                    )
+            fn = getattr(fn, "__wrapped__", None)
+    return False
+
+
+def _compute_loss_adds_router_aux(compute_loss):
+    """TRL >= 1.15 SFTTrainer.compute_loss adds router_aux_loss_coef x aux itself, after the loss scale (same test
+    as models/pp_env._compute_loss_adds_router_aux)."""
+    for _ in range(8):
+        names = getattr(getattr(compute_loss, "__code__", None), "co_names", ())
+        if "router_aux_loss_coef" in names and "current_gradient_accumulation_steps" in names:
+            return True
+        compute_loss = getattr(compute_loss, "__wrapped__", None)
+        if compute_loss is None:
+            return False
+    return False
+
+
 def _tp_router_aux_scale(trainer, tp):
     """1 / tp for a MoE forward that adds router_aux_loss_coef x aux_loss unweighted (the stock transformers
     forward, zoo's GA scaler absent, a Trainer that does not add the aux loss itself), else 1.0.
@@ -7183,17 +7260,14 @@ def _tp_router_aux_scale(trainer, tp):
     tokens tp times, so the token-normalised cross entropy comes out as on dp GPUs. An unweighted aux loss is
     the same on every tp rank (replicated router inputs) and would be carried tp times. Zoo's scaler weights
     it by local / num_items_in_batch, which already divides by tp; TRL >= 1.15 adds it after the scaling."""
-    from ..context_parallel import _causal_lm, _forward_functions
-    from .pp_env import _compute_loss_adds_router_aux
-
-    inner = _causal_lm(getattr(trainer, "model", None))
+    inner = _router_aux_module(getattr(trainer, "model", None))
     if inner is None or tp <= 1:
         return 1.0
     # Without cross-device token averaging the Trainer neither gathers the count nor multiplies the loss by
     # the world size: nothing is carried tp times.
     if not getattr(getattr(trainer, "args", None), "average_tokens_across_devices", False):
         return 1.0
-    if any("unsloth_ga_scale_aux_loss" in fn.__code__.co_names for fn in _forward_functions(inner)):
+    if _forward_weights_router_aux(inner):
         return 1.0
     if _compute_loss_adds_router_aux(getattr(type(trainer), "compute_loss", None)):
         return 1.0
@@ -7203,12 +7277,10 @@ def _tp_router_aux_scale(trainer, tp):
 def _tp_router_aux(trainer, tp):
     """Inside a training step whose loss the Trainer multiplies by the world size (evaluation is not),
     run the CausalLM with router_aux_loss_coef x _tp_router_aux_scale. outputs.aux_loss stays unscaled."""
-    from ..context_parallel import _causal_lm
-
     scale = _tp_router_aux_scale(trainer, tp)
     if scale == 1.0:
         return
-    inner = _causal_lm(trainer.model)
+    inner = _router_aux_module(trainer.model)
     original = trainer.training_step
 
     def training_step(self, *args, **kwargs):
