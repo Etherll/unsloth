@@ -1182,7 +1182,7 @@ class ContextParallelManager:
     def _ulysses_shard(self, inputs: dict) -> None:
         # Contiguous shards; packed_seq_lengths stays global.
         rank = self.mesh.get_local_rank()
-        self.full_position_ids = inputs.get("position_ids")  # for _rope_over_full_positions
+        self.full_position_ids = inputs.get("position_ids")  # RoPE / DeepSeek compressor positions
         self._note_caller_padding(inputs.get("attention_mask"))
         real = self._real_tokens(inputs.get("input_ids"))
         if real is not None:
@@ -1215,8 +1215,6 @@ class ContextParallelManager:
             _ACTIVE_MANAGER = previous
             self.packed_seq_lengths = None
             self.full_position_ids = None
-            # ulysses_deepseek: this step's gathered positions.
-            self._deepseek_full_position_ids = None
 
     @contextlib.contextmanager
     def apply(self, inputs: dict) -> Iterator[None]:

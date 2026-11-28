@@ -222,48 +222,31 @@ def _sink_attention(q, kv, block_bias, sinks, window, scaling, dropout_p, traini
     return outs[0] if len(outs) == 1 else torch.cat(outs, dim = 1)
 
 
-def _position_key(position_ids, group):
-    # Under inference mode the gathered tensor is an inference tensor (no version counter): gather every call.
-    if torch.is_inference_mode_enabled():
-        return None
-    try:
-        version = position_ids._version
-    except RuntimeError:  # inference tensors carry no version counter
-        return None
-    return (
-        position_ids.data_ptr(),
-        version,
-        tuple(position_ids.shape),
-        position_ids.stride(),
-        position_ids.dtype,
-        position_ids.device,
-        id(group),
-    )
-
-
-def _full_position_ids(position_ids, group):
-    """All-gather the local position shard once per step: every compressor layer, and its gradient
-    checkpoint recompute, sees the same positions. Cached on the active CP manager, which drops it
-    when the step's scope exits. The cache holds the local tensor, so its storage cannot be reused
-    within the step, and an in-place write bumps _version, so neither gives a stale hit. Hits are
-    rank-consistent: every rank passes the same layers the same positions object (or a detached
-    alias of it), so all ranks gather on the same calls."""
-    from ..context_parallel import get_cp_manager
-
-    manager = get_cp_manager()
-    key = _position_key(position_ids, group)
-    cached = getattr(manager, "_deepseek_full_position_ids", None)
-    if key is not None and cached is not None and cached[0] == key:
-        full, version = cached[2], cached[3]
-        if full._version == version:
-            return full
+def _gather_position_ids(position_ids, group):
     pos_local = position_ids.contiguous()
     pos_list = [torch.empty_like(pos_local) for _ in range(dist.get_world_size(group))]
     dist.all_gather(pos_list, pos_local, group = group)
-    full = torch.cat(pos_list, dim = -1)
-    if manager is not None and key is not None:
-        manager._deepseek_full_position_ids = (key, position_ids, full, full._version)
-    return full
+    return torch.cat(pos_list, dim = -1)
+
+
+def _full_position_ids(position_ids, group):
+    """Full-sequence positions for the compressor. The CP manager keeps the step's unsharded
+    position_ids from before it shards the batch, so every compressor layer, and its gradient
+    checkpoint recompute, reads them with no collective. Only the shapes, which every rank in the
+    group shares, pick that route over an all-gather, so ranks never disagree on issuing one."""
+    from ..context_parallel import get_cp_manager
+
+    manager = get_cp_manager()
+    full = getattr(manager, "full_position_ids", None)
+    if (
+        isinstance(full, torch.Tensor)
+        and position_ids.ndim == 2
+        and full.shape
+        == (position_ids.shape[0], position_ids.shape[1] * dist.get_world_size(group))
+        and full.dtype == position_ids.dtype
+    ):
+        return full.to(position_ids.device)
+    return _gather_position_ids(position_ids, group)
 
 
 def ulysses_deepseek_v4_forward(
