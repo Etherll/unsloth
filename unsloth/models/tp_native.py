@@ -1922,7 +1922,8 @@ def _is_packed_expert(t):
 
 def _packed_expert_problem(p, E, tp):
     """Why the packed stack `p` cannot be cut by expert index over tp, or None. Its codes and every companion
-    tensor (block scales, per-expert global scales) are expert-major; a companion with one leading row is shared."""
+    tensor (block scales, per-expert global scales) are expert-major; a companion with one leading row is shared,
+    and an empty one (a GGUF stack without the file's per-expert scale) has nothing to cut."""
     if p.requires_grad:
         return "a trainable packed expert stack"
     if p.dim() < 3 or p.shape[0] != E or not callable(getattr(p, "_init_kwargs", None)):
@@ -1930,7 +1931,12 @@ def _packed_expert_problem(p, E, tp):
     if tp is not None and (E % tp or E // tp < 2):
         return f"packed experts: {E} experts do not split into at least 2 per rank over {tp}"
     for key, value in p._init_kwargs().items():
-        if isinstance(value, torch.Tensor) and value.dim() and value.shape[0] not in (E, 1):
+        if (
+            isinstance(value, torch.Tensor)
+            and value.dim()
+            and value.numel()
+            and value.shape[0] not in (E, 1)
+        ):
             return f"packed experts: {key} {tuple(value.shape)} is not stacked by expert"
     return None
 

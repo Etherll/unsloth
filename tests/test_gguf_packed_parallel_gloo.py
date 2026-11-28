@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright 2026-present the Unsloth AI Inc. team. All rights reserved.
 
-"""`gguf_packed = True` models under DDP, native FSDP2 and pipeline parallel, gloo world of 2 on the CPU: the
+"""`gguf_packed = True` models under DDP, native FSDP2, pipeline parallel and (MoE) expert parallel, gloo world
+of 2 on the CPU: the
 packed weights (UnslothGGUFLinear uint8 blocks, GgufExpertParam expert stacks) stay packed and run, and the loss
 and LoRA gradients of one step match the same model in one process.
 
@@ -91,6 +92,11 @@ def _moe_backend():
         return mu.forward_moe_backend(self, hidden_states, top_k_index, top_k_weights)
 
     mod.Qwen3MoeExperts.forward = forward
+    try:  # the Qwen3.6 (qwen35moe) GGUF file case
+        from transformers.models.qwen3_5_moe import modeling_qwen3_5_moe as mod35
+        mod35.Qwen3_5MoeExperts.forward = forward
+    except ImportError:
+        pass
 
 
 def _blocks(type_name, lead, rows, cols, seed):
@@ -173,6 +179,16 @@ def _build_new(kind, path):
     if kind == "llama":
         model = _llama_from_gguf(path)
         lora = LoraConfig(r = 4, lora_alpha = 8, target_modules = "all-linear", init_lora_weights = False)
+    elif kind == "moe_file":
+        _moe_backend()
+        model = _llama_from_gguf(path)  # the packed loader, here on a qwen35moe GGUF
+        lora = LoraConfig(
+            r = 4,
+            lora_alpha = 8,
+            target_modules = ["q_proj", "o_proj", "in_proj_qkv", "out_proj"],
+            target_parameters = ["mlp.experts.gate_up_proj", "mlp.experts.down_proj"],
+            init_lora_weights = False,
+        )
     else:
         _moe_backend()
         model = _packed_moe()
@@ -353,6 +369,44 @@ def _run_fsdp2(kind, path, rank, world, rows, n):
     return model, float(value), got, census + (sharded,), before, after
 
 
+def _run_ep(kind, path, rank, world, rows, n):
+    """Expert parallel: each rank keeps its half of every packed GGUF expert stack (still packed), DDP over the
+    rest; expert gradients are gathered back to the full stack for the comparison."""
+    import torch.distributed as dist
+    from torch.distributed.device_mesh import init_device_mesh
+    from torch.nn.parallel import DistributedDataParallel
+    from unsloth_models_loader import load_models_module
+
+    epn = load_models_module("ep_native")
+    tpn = load_models_module("tp_native")
+    model = _build(kind, path)
+    mesh = init_device_mesh("cpu", (world,), mesh_dim_names = ("ep",))["ep"]
+    epn.apply_expert_parallel(model, mesh)
+    blocks = tpn.moe_blocks_with_experts(model)
+    shards = [b.__dict__.get("_unsloth_tp_expert_shard") for b in blocks]
+    census = _packed_census(model)
+    wrapped = DistributedDataParallel(model)
+    before = _count_packed_calls()
+    loss = _sum_loss(wrapped, *rows[rank]) * world / n
+    loss.backward()
+    epn.ep_sync_expert_grads(model)
+    after = _count_packed_calls()
+    value = loss.detach() / world
+    dist.all_reduce(value)
+    group = epn._mesh(model).get_group()
+    got = {
+        _clean(k): (epn._gather_expert(p, group, p.grad) if getattr(p, epn._EP, None) else p.grad)
+        .detach()
+        .clone()
+        for k, p in model.named_parameters()
+        if p.grad is not None
+    }
+    sharded = sum(s is not None for s in shards)
+    Expert = _gp().gguf_expert_param_class()
+    local_experts = sorted({int(p.shape[0]) for p in model.parameters() if isinstance(p, Expert)})
+    return model, float(value), got, census + (sharded, len(blocks), local_experts), before, after
+
+
 def _run_pp(kind, path, rank, world):
     from torch.distributed.device_mesh import init_device_mesh
     from unsloth_models_loader import load_models_module
@@ -386,7 +440,7 @@ def _run_pp(kind, path, rank, world):
 def _case_routes(rank, world, tmp, kind, path, routes):
     import torch.distributed as dist
 
-    if kind == "moe":
+    if kind in ("moe", "moe_file"):
         _moe_backend()
     out = {}
     rows, n, want_loss, want = _data_parallel_reference(kind, path, world)
@@ -400,7 +454,7 @@ def _case_routes(rank, world, tmp, kind, path, routes):
                 cmp = _compare(got, want_pp)
                 out[route] = dict(loss = (loss, ref_loss), **cmp)
             else:
-                run = _run_ddp if route == "ddp" else _run_fsdp2
+                run = {"ddp": _run_ddp, "fsdp2": _run_fsdp2, "ep": _run_ep}[route]
                 _, loss, got, census, before, after = run(kind, path, rank, world, rows, n)
                 out[route] = dict(loss = (loss, want_loss), **_compare(got, want))
             out[route].update(
@@ -522,9 +576,17 @@ def _check(results, routes, kind):
             r = res[route]
             assert "error" not in r, (rank, route, r["error"] if "error" in r else r)
             got, want = r["loss"]
-            assert got == pytest.approx(want, rel = 1e-5, abs = 1e-6), (rank, route, r["loss"])
+            # Packed expert stacks compute in bf16 (W4A16, never float32), and expert parallel regroups each
+            # expert's rows over both ranks: bf16-level agreement there, float32-level everywhere else.
+            loose = route == "ep"
+            assert got == pytest.approx(want, rel = 1e-4 if loose else 1e-5, abs = 1e-6), (
+                rank,
+                route,
+                r["loss"],
+            )
             assert not r["missing"] and r["n"] > 0, (rank, route, r["missing"])
-            assert r["maxdiff"] <= 1e-4 * max(r["scale"], 1e-3) + 1e-7, (
+            tol = 3e-2 if loose else 1e-4
+            assert r["maxdiff"] <= tol * max(r["scale"], 1e-3) + 1e-7, (
                 rank,
                 route,
                 r["worst"],
@@ -539,7 +601,7 @@ def _check(results, routes, kind):
                 r["census"],
                 r["linear_calls"],
             )
-            if kind == "moe":
+            if kind in ("moe", "moe_file"):
                 assert stacks > 0 and r["expert_calls"] > 0, (
                     rank,
                     route,
@@ -549,6 +611,11 @@ def _check(results, routes, kind):
                 assert r["lora_expert_grads"] > 0, (rank, route)
             if route == "fsdp2":
                 assert r["census"][2] > 0, (rank, "nothing sharded")
+            if route == "ep":
+                # Every MoE block is cut by expert (4 experts, 2 per rank) and its stacks stay packed.
+                _, _, sharded, blocks, local_experts = r["census"]
+                assert sharded == blocks > 0 and local_experts == [2], (rank, r["census"])
+                assert r["lora_expert_grads"] > 0, (rank, route)
 
 
 def test_packed_gguf_llama_from_the_loader_matches_one_process(tmp_path):
@@ -565,7 +632,23 @@ def test_packed_gguf_llama_from_the_loader_matches_one_process(tmp_path):
 
 def test_packed_gguf_linears_and_expert_stacks_match_one_process():
     _requirements("moe")
-    routes = _routes()
+    routes = _routes() + ("ep",)
     with tempfile.TemporaryDirectory() as tmp:
         results = _spawn("_case_routes", tmp, kind = "moe", path = None, routes = routes)
     _check(results, routes, "moe")
+
+
+def test_packed_gguf_moe_file_under_expert_parallel_matches_one_process(tmp_path):
+    """A Qwen3.6 (qwen35moe) GGUF written here, loaded packed, then cut by expert: every packed GGUF stack has an
+    empty per-expert scale companion, which expert parallel used to refuse."""
+    _requirements("moe")
+    pytest.importorskip("transformers.models.qwen3_5_moe")
+    pytest.importorskip("gguf")
+    from test_gguf_packed_moe_export import _write_qwen35moe_gguf
+
+    path = tmp_path / "tiny-moe.gguf"
+    _write_qwen35moe_gguf(path)
+    routes = ("ddp", "ep")
+    with tempfile.TemporaryDirectory() as tmp:
+        results = _spawn("_case_routes", tmp, kind = "moe_file", path = str(path), routes = routes)
+    _check(results, routes, "moe_file")
