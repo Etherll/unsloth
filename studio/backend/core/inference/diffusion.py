@@ -353,6 +353,7 @@ from .diffusion_speed import (
     family_compiles_regionally,
     fp16_compile_explicit_only,
     fp16_unet_offloaded,
+    unset_speed_on_rocm,
     fused_qkv_added_bytes,
     fresh_compile_count,
     restore_unfused_projections,
@@ -12766,6 +12767,20 @@ class DiffusionBackend:
                         and compile_eligible(target, is_gguf = False, family = fam, probe = False)
                         and not fp16_compile_explicit_only(target)
                     )
+                    # Unset speed that will never compile on ROCm: `eager` keeps TunableOp / MIOpen db / weight pitch.
+                    promoted = unset_speed_on_rocm(
+                        speed_mode,
+                        effective_speed,
+                        target,
+                        deferred = speed_deferred,
+                        quantized = transformer_quant_engaged is not None or comfy_compile,
+                    )
+                    if promoted != effective_speed:
+                        logger.info(
+                            "diffusion.speed: speed_mode=%s (unset, and this ROCm load does not compile)",
+                            promoted,
+                        )
+                        effective_speed = promoted
                     # Speed optims run before placement: snapshot the global backend flags for unload restore.
                     backend_flags_before = snapshot_backend_flags()
                     # Pick the attention kernel BEFORE compile: auto upgrades to cuDNN fused attention on NVIDIA (~1.18x)

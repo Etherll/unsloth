@@ -427,6 +427,39 @@ def fp16_compile_explicit_only(target: Any) -> bool:
     return _is_float16(getattr(target, "dtype", None))
 
 
+# 0 keeps an unset speed mode `off` on a ROCm load that will never compile (no ROCm eager levers).
+ROCM_AUTO_EAGER_ENV = "UNSLOTH_DIFFUSION_ROCM_AUTO_EAGER"
+
+
+def rocm_auto_eager(target: Any) -> bool:
+    """Unset speed on a dense never-compiling ROCm load runs `eager`, not `off`: `off` drops TunableOp, the MIOpen db
+    and the weight pitch. Only on TunableOp's ``TUNED_ARCHES``; never raises."""
+    if getattr(target, "backend", None) != "rocm":
+        return False
+    if (os.environ.get(ROCM_AUTO_EAGER_ENV) or "").strip().lower() in ("0", "off", "false", "no"):
+        return False
+    try:
+        from . import diffusion_rocm_tunableop as rocm_tunableop  # noqa: PLC0415 - ROCm only
+        return rocm_tunableop._arch(getattr(target, "ordinal", None)) in rocm_tunableop.TUNED_ARCHES
+    except Exception:  # noqa: BLE001 - unknown arch keeps `off`
+        return False
+
+
+def unset_speed_on_rocm(
+    speed_mode: Optional[str], effective_speed: str, target: Any, *, deferred: bool, quantized: bool
+) -> str:
+    """Unset `off` with no deferred compile and no quantized denoiser becomes `eager` where ``rocm_auto_eager`` allows."""
+    if (
+        speed_mode is None
+        and effective_speed == SPEED_OFF
+        and not deferred
+        and not quantized
+        and rocm_auto_eager(target)
+    ):
+        return SPEED_EAGER
+    return effective_speed
+
+
 def family_compiles_regionally(family: Any) -> bool:
     """False only for an EMPTY ``_repeated_blocks`` Studio cannot supply; unknown reads True."""
     if getattr(family, "denoiser_attr", "transformer") != "transformer":
