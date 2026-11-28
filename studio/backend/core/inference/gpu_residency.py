@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import sys
 from contextvars import ContextVar
 from types import SimpleNamespace
 from typing import Any, Iterable, Optional
@@ -119,15 +120,36 @@ def media_unallocated_mib() -> dict[int, int]:
     """{GPU: MiB} of media not yet allocated: idle headroom or a loading model. Never raises."""
     try:
         held: dict[int, int] = {}
+        idle: dict[int, int] = {}
         for owner, need in _media_records().items():
             loading = _media_busy(owner)[0]
             for gpu, mib in need.items():
-                unallocated = int(mib) if loading else int(getattr(need, "headroom_mib", 0))
-                held[gpu] = held.get(gpu, 0) + unallocated
+                if loading:
+                    held[gpu] = held.get(gpu, 0) + int(mib)
+                else:
+                    idle[gpu] = idle.get(gpu, 0) + int(getattr(need, "headroom_mib", 0))
+        for gpu, mib in idle.items():
+            held[gpu] = held.get(gpu, 0) + mib - idle_cache_credit_mib(gpu, mib)
         return held
     except Exception as exc:  # noqa: BLE001
         logger.warning("gpu_residency: could not price the resident media models: %s", exc)
         return {}
+
+
+def idle_cache_credit_mib(gpu: int, idle_headroom_mib: int) -> int:
+    """MiB of idle headroom on physical ``gpu`` already cached by this process's allocator (so NVML counts it used).
+    CUDA graph pools are not credited (only their graphs reuse them). 0 if unreadable; never raises."""
+    if idle_headroom_mib <= 0:
+        return 0
+    torch = sys.modules.get("torch")
+    try:
+        if torch is None or not torch.cuda.is_initialized():
+            return 0
+        from core.inference.diffusion_memory import cuda_reusable_cache_bytes
+        cached_mib = cuda_reusable_cache_bytes(_ordinal_for_physical(gpu)) // (1024 * 1024)
+    except Exception:  # noqa: BLE001
+        return 0
+    return max(0, min(int(idle_headroom_mib), int(cached_mib)))
 
 
 def _media_engine(owner: str) -> Any:
@@ -610,12 +632,13 @@ def can_load_alongside(owner: str, need_mib: Optional[dict]) -> tuple[bool, dict
         if row.get("unified"):
             return False, {"reason": "unified_memory", "gpu": gpu}
         free = row["free_mib"]
-        # An idle resident's generation headroom is not allocated yet; it will be when it generates.
-        free -= sum(
-            int(need[gpu]) if name in loading else getattr(need, "headroom_mib", 0)
-            for name, need in records.items()
-            if name != owner and gpu in need
+        others = [(name, need) for name, need in records.items() if name != owner and gpu in need]
+        free -= sum(int(need[gpu]) for name, need in others if name in loading)
+        # Idle headroom is unallocated, minus what the allocator already caches (counted used in free_mib).
+        idle = sum(
+            int(getattr(need, "headroom_mib", 0)) for name, need in others if name not in loading
         )
+        free -= idle - (0 if row.get("metal") else idle_cache_credit_mib(gpu, idle))
         if row.get("metal"):
             free -= _mlx_chat_unallocated_mib() or 0
         free += getattr(need_mib, "credit_mib", 0)
