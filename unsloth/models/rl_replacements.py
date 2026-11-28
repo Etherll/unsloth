@@ -6724,8 +6724,8 @@ def _unsloth_rl_end_of_turn_stop(trainer_file, model, processing_class, train_da
     tokenizer.eos_token_id alone (< 1.15) is left unchanged, and so is a run with ignore_eos.
     UNSLOTH_RL_END_OF_TURN_STOP=0 turns it off. Returns the id added, or None."""
     import os
+    import sys
     import inspect
-    import importlib
 
     if os.environ.get("UNSLOTH_RL_END_OF_TURN_STOP", "1") == "0":
         return None
@@ -6735,7 +6735,14 @@ def _unsloth_rl_end_of_turn_stop(trainer_file, model, processing_class, train_da
     if class_name is None:
         return None
     try:
-        trl_module = importlib.import_module(f"trl.trainer.{trainer_file}")
+        # Written out, not import_module(f"trl.trainer.{trainer_file}"): only these two modules are ever read.
+        # sys.modules, as import_module returns, rather than the package attribute.
+        if trainer_file == "grpo_trainer":
+            import trl.trainer.grpo_trainer
+            trl_module = sys.modules["trl.trainer.grpo_trainer"]
+        else:
+            import trl.trainer.rloo_trainer
+            trl_module = sys.modules["trl.trainer.rloo_trainer"]
         if hasattr(trl_module, "get_chat_template_end_of_turn_token_id"):
             return None
         # The module's own text: Unsloth rebinds trl_module.GRPOTrainer to its subclass.
