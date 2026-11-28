@@ -16,11 +16,16 @@ H3_DIT_RESIDENT_ENV = "UNSLOTH_H3_DIT_RESIDENT"
 
 # Decimal GB each H3 render phase needs on top of the resident set (B200 peaks).
 H3_STREAM_WINDOW_GB = 1.5
-#   per million pixel-frames
-H3_ACTIVATION_GB_PER_MPIXEL_FRAME = 0.08
+#   per million pixel-frames; measured peak reserved <= 0.039 (INT8, G4, up to 1344x768x192), 0.045 with slack
+H3_ACTIVATION_GB_PER_MPIXEL_FRAME = 0.03
+#   picker tier keeps the old charge (new one validated only for residency + guard), so 12 GB cards keep GGUF
+H3_PICKER_ACTIVATION_GB_PER_MPIXEL_FRAME = 0.08
 #   fraction of the activations: 1-2 GB MLP buffers fragment the caching allocator (OOM at 1344x768x124 without it)
 H3_FRAGMENTATION_FRACTION = 0.5
+#   VAE decode floor; it also grows with the clip (measured 6.6 GB at 864x480x124, 11.35 at 1344x768x192)
 H3_VAE_DECODE_GB = 6.0
+H3_VAE_DECODE_BASE_GB = 5.2
+H3_VAE_DECODE_GB_PER_MPIXEL_FRAME = 0.035
 H3_PHASE_OVERHEAD_GB = 1.8
 #   top-level group: 0.81 GB int8
 H3_TOP_LEVEL_GB = 1.0
@@ -43,16 +48,27 @@ def h3_phase_need_gb(
     te_streamed_gb: float,
     fragmentation: bool = True,
     top_gb: float = 0.0,
+    activation_gb_per_mpixel_frame: Optional[float] = None,
 ) -> float:
     """Device GB a request needs beyond the resident set: its largest phase. ``fragmentation`` is slack only the
     residency plan keeps; the refusal floor leaves it out so residency never refuses what the streamed tier admitted."""
-    activations = H3_ACTIVATION_GB_PER_MPIXEL_FRAME * width * height * num_frames / 1_000_000
+    volume = width * height * num_frames / 1_000_000
+    per = (
+        H3_ACTIVATION_GB_PER_MPIXEL_FRAME
+        if activation_gb_per_mpixel_frame is None
+        else float(activation_gb_per_mpixel_frame)
+    )
+    activations = per * volume
     slack = H3_FRAGMENTATION_FRACTION if fragmentation else 0.0
     denoise = H3_STREAM_WINDOW_GB + top_gb + activations * (1.0 + slack)
     from .video_minimax_h3_sol_vae import sol_decode_need_gb
 
     # 0.0 unless UNSLOTH_H3_SOL_VAE=1: Sol's weights + one whole-clip decode peak
-    decode = max(H3_VAE_DECODE_GB, sol_decode_need_gb(width, height, num_frames))
+    decode = max(
+        H3_VAE_DECODE_GB,
+        H3_VAE_DECODE_BASE_GB + H3_VAE_DECODE_GB_PER_MPIXEL_FRAME * volume,
+        sol_decode_need_gb(width, height, num_frames),
+    )
     return max(te_streamed_gb, denoise, decode) + H3_PHASE_OVERHEAD_GB
 
 

@@ -92,6 +92,7 @@ def estimate_h3_diffusers_vram_gb(
     transformer_pinned: bool = False,
     transformer_streamed: bool = False,
     text_encoder_streamed: bool = False,
+    activation_gb_per_mpixel_frame: Optional[float] = None,
 ) -> float:
     """Measured VRAM floor for H3 Diffusers; unset sizes keep released bf16 floor; streamed transformer means no two large components are ever resident together."""
     volume_mpixel_frames = width * height * num_frames / 1_000_000
@@ -108,6 +109,7 @@ def estimate_h3_diffusers_vram_gb(
                 te_streamed_gb = H3_TE_STREAMED_GB,
                 fragmentation = False,
                 top_gb = H3_TOP_LEVEL_GB,
+                activation_gb_per_mpixel_frame = activation_gb_per_mpixel_frame,
             )
     if transformer_streamed:
         text_encoder = (
@@ -279,6 +281,7 @@ H3_DIFFUSERS_CATALOG_TIER_RAM_GIB = 80.0
 
 def _h3_streamed_default_request_gpu_gib() -> float:
     from .video_families import detect_video_family
+    from .video_minimax_h3_residency import H3_PICKER_ACTIVATION_GB_PER_MPIXEL_FRAME
 
     fam = detect_video_family("MiniMaxAI/MiniMax-H3")
     width, height = fam.resolution_presets[0]
@@ -288,6 +291,7 @@ def _h3_streamed_default_request_gpu_gib() -> float:
         fam.default_num_frames,
         transformer_streamed = True,
         text_encoder_streamed = True,
+        activation_gb_per_mpixel_frame = H3_PICKER_ACTIVATION_GB_PER_MPIXEL_FRAME,
     )
     # Total VRAM in GiB, rounded up to half a GiB.
     return math.ceil(floor_gb * 1e9 / 2**30 * 2) / 2

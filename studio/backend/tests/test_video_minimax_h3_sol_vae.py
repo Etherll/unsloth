@@ -282,7 +282,10 @@ def test_switch_off_leaves_the_stock_decode_and_the_planner_alone(weights, caplo
     denoise = R.H3_STREAM_WINDOW_GB + R.H3_ACTIVATION_GB_PER_MPIXEL_FRAME * vol * (
         1 + R.H3_FRAGMENTATION_FRACTION
     )
-    assert off[1] == pytest.approx(max(3.0, denoise, R.H3_VAE_DECODE_GB) + R.H3_PHASE_OVERHEAD_GB)
+    decode = max(
+        R.H3_VAE_DECODE_GB, R.H3_VAE_DECODE_BASE_GB + R.H3_VAE_DECODE_GB_PER_MPIXEL_FRAME * vol
+    )
+    assert off[1] == pytest.approx(max(3.0, denoise, decode) + R.H3_PHASE_OVERHEAD_GB)
     monkeypatch.setenv(S.SOL_VAE_ENV, "0")
     assert S.install_h3_sol_vae(vae, device = "cpu", dtype = torch.float32) is False
     monkeypatch.setenv(S.SOL_VAE_ENV, "1")

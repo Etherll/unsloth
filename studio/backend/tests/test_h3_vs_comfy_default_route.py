@@ -213,8 +213,7 @@ def test_the_guard_prices_a_streamed_conditioner_at_the_streamed_set_floor(monke
 
 
 def test_the_vram_tier_admits_only_cards_that_render_the_default_request(monkeypatch):
-    """The picker's VRAM tier is the generate guard's floor for the page's default request (first preset, default
-    length), so the row it selects is never refused on the first render. A 12 GB card keeps GGUF as its default."""
+    """The picker's tier covers the guard's floor for the default request; it keeps the old charge, so 12 GB keeps GGUF."""
     monkeypatch.delenv("UNSLOTH_H3_DIFFUSERS_WIDE_TIERS", raising = False)
     monkeypatch.delenv("UNSLOTH_H3_TE_STREAM", raising = False)
     from core.inference.video_families import detect_video_family
@@ -222,21 +221,28 @@ def test_the_vram_tier_admits_only_cards_that_render_the_default_request(monkeyp
         estimate_h3_diffusers_vram_gb,
         h3_diffusers_fit_tiers,
     )
+    from core.inference.video_minimax_h3_residency import H3_PICKER_ACTIVATION_GB_PER_MPIXEL_FRAME
 
     fam = detect_video_family("MiniMaxAI/MiniMax-H3")
     width, height = fam.resolution_presets[0]
-    floor_gib = (
-        estimate_h3_diffusers_vram_gb(
-            width,
-            height,
-            fam.default_num_frames,
-            transformer_streamed = True,
-            text_encoder_streamed = True,
+
+    def floor_gib(**kw):
+        return (
+            estimate_h3_diffusers_vram_gb(
+                width,
+                height,
+                fam.default_num_frames,
+                transformer_streamed = True,
+                text_encoder_streamed = True,
+                **kw,
+            )
+            * 1e9
+            / 2**30
         )
-        * 1e9
-        / 2**30
-    )
+
+    picker = floor_gib(activation_gb_per_mpixel_frame = H3_PICKER_ACTIVATION_GB_PER_MPIXEL_FRAME)
     (tier,) = h3_diffusers_fit_tiers()
-    assert floor_gib <= tier["gpu_gb"] < floor_gib + 0.5
+    assert floor_gib() <= tier["gpu_gb"]
+    assert picker <= tier["gpu_gb"] < picker + 0.5
     assert tier["gpu_gb"] > 12.0
     assert tier["gpu_gb"] <= 15.99

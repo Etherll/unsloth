@@ -64,7 +64,7 @@ def test_the_floor_still_grows_with_the_clip():
         )
 
     assert floor(1344, 768, 345) > floor(1344, 768, 124) > floor(960, 544, 124)
-    assert floor(1344, 768, 345) > 24.0
+    assert floor(1344, 768, 345) > 19.0
 
 
 def test_the_conditioner_stream_kill_switch(monkeypatch):
@@ -228,8 +228,10 @@ def test_the_phase_need_leaves_room_on_a_12gb_card():
 
     floor = h3_phase_need_gb(960, 544, 124, te_streamed_gb = H3_TE_STREAMED_GB, fragmentation = False)
     assert floor < 11.0
-    assert h3_phase_need_gb(1344, 768, 345, te_streamed_gb = H3_TE_STREAMED_GB) > 24.0
-    assert h3_phase_need_gb(1344, 768, 124, te_streamed_gb = H3_TE_STREAMED_GB) > h3_phase_need_gb(
+    assert h3_phase_need_gb(1344, 768, 345, te_streamed_gb = H3_TE_STREAMED_GB) > h3_phase_need_gb(
+        1344, 768, 124, te_streamed_gb = H3_TE_STREAMED_GB
+    )
+    assert h3_phase_need_gb(1344, 768, 124, te_streamed_gb = H3_TE_STREAMED_GB) >= h3_phase_need_gb(
         1344, 768, 124, te_streamed_gb = H3_TE_STREAMED_GB, fragmentation = False
     )
 
