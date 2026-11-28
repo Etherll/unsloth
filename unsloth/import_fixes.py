@@ -6450,7 +6450,8 @@ def patch_bitsandbytes_paged_optimizer_resume():
 
 def patch_bitsandbytes_optimizer_step_sync():
     """Skip Optimizer8bit.step's per-parameter sync_gpu for non-paged optimizers on the default stream.
-    Paged state needs it to order prefetch (bnb 41a9c708); non-paged it only stalls the host, output bit-identical."""
+    Paged state needs it to order prefetch (bnb 41a9c708); non-paged it only stalls the host, output bit-identical.
+    UNSLOTH_BNB_OPTIMIZER_SYNC=1 (read at each step, as unsloth_zoo's guard does) keeps every sync."""
     if "bitsandbytes" not in sys.modules:
         return
     try:
@@ -6489,7 +6490,11 @@ def patch_bitsandbytes_optimizer_step_sync():
 
     @functools.wraps(step)
     def _unsloth_step(self, *args, **kwargs):
-        token = skip.set(not getattr(self, "is_paged", False) and _on_default_streams(self))
+        token = skip.set(
+            os.environ.get("UNSLOTH_BNB_OPTIMIZER_SYNC", "0") != "1"
+            and not getattr(self, "is_paged", False)
+            and _on_default_streams(self)
+        )
         try:
             return step(self, *args, **kwargs)
         finally:
