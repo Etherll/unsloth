@@ -1480,6 +1480,28 @@ def test_a_batch_that_raises_inside_backward_leaves_a_clean_retry(af, batch_byte
     assert all(not torch.equal(b, p) for b, p in zip(before, model.parameters()))
 
 
+def test_a_stepping_pass_that_raises_drops_the_measured_norm(af):
+    """A measured step whose stepping pass raises (an OOM in the forward, before any hook ran) ends that step:
+    the next step clips with its own norm, not the norm the aborted step's measuring pass kept."""
+    a = torch.nn.Parameter(torch.zeros(4))
+    wrapper = af.InBackwardOptimizer(
+        torch.optim.SGD([a], lr = 1.0), max_grad_norm = 1.0, clip = "estimate", batch_bytes = 1 << 30
+    )
+    with wrapper.measuring():
+        (a * torch.tensor([60.0, 80.0, 0.0, 0.0])).sum().backward()  # norm 100
+    assert wrapper._known_sq is not None
+    with pytest.raises(RuntimeError, match = "injected"):
+        with wrapper.armed():
+            raise RuntimeError("CUDA out of memory. (injected)")
+    assert wrapper._known_sq is None
+    assert torch.equal(a.detach(), torch.zeros(4))  # nothing was stepped
+    ga = torch.tensor([3.0, 4.0, 0.0, 0.0])  # norm 5
+    with wrapper.armed():
+        (a * ga).sum().backward()  # one batch: the whole step, clipped by its own norm
+    assert torch.allclose(a.detach(), -ga / (5.0 + 1e-6), atol = 1e-7)
+    wrapper.step()
+
+
 def test_a_real_second_gradient_is_still_reported(af):
     """Two backwards before one step still raise (in the hook, or at step() when one armed region sees the
     modules twice), and the step after that error is clean."""

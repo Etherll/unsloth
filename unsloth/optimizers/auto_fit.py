@@ -658,8 +658,9 @@ class InBackwardOptimizer(torch.optim.Optimizer):
         try:
             yield self
         except BaseException:
-            # The weights stepped so far stay stepped; the next step starts clean.
-            self._reset()
+            # The weights stepped so far stay stepped; the next step starts clean, without this step's
+            # measured norm (see _abort).
+            self._abort()
             raise
         finally:
             self._armed = previous
