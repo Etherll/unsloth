@@ -241,9 +241,10 @@ def _foreign_layer(module: Any) -> Optional[str]:
 
 def per_call_scaled(module: Any) -> Optional[str]:
     """A layer whose activation global scale comes from each call's amax: a doubled batch shares one scale across both
-    branches, so it is not the same computation. ComfyUI's dynamic NVFP4 linear and torchao's NVFP4 tensor do this;
-    Studio's own NVFP4 linear freezes its activation scale (``a_gsf``), and per-row scaling (Studio's fp8 / int8) is
-    per token, so both are unaffected."""
+    branches, so it is not the same computation. ComfyUI's dynamic NVFP4 linear and torchao's NVFP4 tensor do this, as
+    does a torchao ``Float8Tensor`` / ``Int8Tensor`` whose activation granularity is ``PerTensor``. Studio's own NVFP4
+    linear freezes its activation scale (``a_gsf``), and per-row scaling (Studio's fp8 / int8) is per token, so both
+    are unaffected."""
     for name, sub in module.named_modules():
         cls = type(sub).__name__
         upper = cls.upper()
@@ -252,8 +253,13 @@ def per_call_scaled(module: Any) -> Optional[str]:
         if "NVFP4" in upper and "a_gsf" not in sub._buffers and "input_scale" not in sub._buffers:
             return f"{name}: {cls} (no frozen activation scale)"
         for pname, p in sub.named_parameters(recurse = False):
-            if type(p).__name__ == "NVFP4Tensor":
+            kind = type(p).__name__
+            if kind == "NVFP4Tensor":
                 return f"{name}.{pname}: NVFP4Tensor"
+            if kind in ("Float8Tensor", "Int8Tensor"):
+                act = getattr(p, "act_quant_kwargs", None)
+                if type(getattr(act, "granularity", None)).__name__ == "PerTensor":
+                    return f"{name}.{pname}: {kind} (PerTensor activation scale)"
     return None
 
 

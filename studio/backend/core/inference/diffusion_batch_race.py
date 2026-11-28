@@ -222,6 +222,13 @@ def topology(state: Any) -> str:
         count = 0
     pipe = getattr(state, "pipe", None)
     parts = [f"cards{count}"]
+    # A tensor-parallel denoiser (diffusion_tp2) runs every block on both cards: a one-card verdict says nothing of it.
+    tp = getattr(getattr(pipe, "transformer", None), "_unsloth_tp2", None)
+    if tp is None:
+        tp = getattr(pipe, "_unsloth_tp2", None)
+    if tp is not None:
+        devices = tp.get("devices") if isinstance(tp, dict) else None
+        parts.append("tp2:" + ",".join(str(d) for d in devices or ()) if devices else "tp2")
     try:
         from . import diffusion_multigpu as mg
 

@@ -4770,8 +4770,11 @@ def read_lora_deltas(loras: Sequence[tuple], into: Optional[dict] = None) -> dic
     """``{diffusers module path: [(A, B, scale * weight), ...]}`` for ``[(path, weight), ...]`` LoRA files in the
     diffusers / PEFT layout (``<module>.lora_A.weight`` + ``lora_B``, or ``lora_down`` / ``lora_up`` + ``.alpha``).
     The scale is ``lora_alpha / r`` from the file's adapter config (``/ sqrt(r)`` under rsLoRA), else ``alpha / r``
-    from an ``.alpha`` key, else 1 (alpha = r, as diffusers reads a file without either)."""
+    from an ``.alpha`` key, else 1 (alpha = r, as diffusers reads a file without either). Kohya ``lora_unet_`` names
+    read as the native module they spell."""
     from safetensors.torch import load_file
+
+    from .video_lora import h3_kohya_module
 
     out = into if into is not None else {}
     for path, weight in loras:
@@ -4793,7 +4796,9 @@ def read_lora_deltas(loras: Sequence[tuple], into: Optional[dict] = None) -> dic
             ):
                 hit = next((sfx for sfx in suffixes if name.endswith(sfx)), None)
                 if hit is not None:
-                    parts.setdefault(name[: -len(hit)], {})[slot] = tensor
+                    module = name[: -len(hit)]
+                    # musubi-tuner's kohya spelling of the native names: the same module, read as its dotted path
+                    parts.setdefault(h3_kohya_module(module) or module, {})[slot] = tensor
                     break
         if not parts:
             raise ValueError(f"{Path(str(path)).name} holds no LoRA weights this loader recognises")

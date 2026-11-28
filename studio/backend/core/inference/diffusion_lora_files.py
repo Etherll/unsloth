@@ -266,7 +266,8 @@ def normalize_lora(
     for stem, alpha in alphas.items():
         a = renamed.get(stem + ".lora_A.weight")
         if a is not None:
-            scales[stem] = float(alpha) / int(a.shape[0])
+            rank = int(a.shape[0])
+            scales[stem] = (float(alpha) or rank) / rank  # kohya reads alpha 0 as alpha = rank
     # DoRA too: its norm reads W + scaling * B @ A, so scaling folded into B at scaling 1 is the same layer.
     if metadata is not None:
         for key, a in renamed.items():
@@ -487,11 +488,63 @@ def _qwen21_split_gate_up(state: dict) -> dict:
     return out
 
 
+def _module_names(root: Any) -> set:
+    return {n for n, _ in root.named_modules(remove_duplicate = False) if n}
+
+
+def _qwen21_kohya_rename(pipe: Any, raw: dict) -> Optional[dict]:
+    """musubi-tuner / kohya ``lora_unet_`` keys as ``diffusion_model.`` dotted ones, when diffusers' own split of the
+    underscores misses a layer (``img_mlp_gate_layer`` becomes ``img_mlp.gate.layer``); None when it maps every one.
+    Each flattened name is looked up whole among this model's module paths, so no underscore is guessed."""
+    if not any(k.startswith("lora_unet_") for k in raw):
+        return None
+    import torch
+
+    try:
+        from diffusers.loaders.lora_conversion_utils import (
+            _convert_non_diffusers_qwen_lora_to_diffusers,
+        )
+    except ImportError:
+        return None
+
+    names = _module_names(pipe.transformer)
+    # Names only: the converter reads a rank from each down weight and an alpha's value, nothing else.
+    probe = {
+        k: torch.ones(()) if k.endswith(".alpha") else torch.zeros(1, 1)
+        for k in raw
+        if k.startswith("lora_unet_")
+    }
+    try:
+        mapped = _convert_non_diffusers_qwen_lora_to_diffusers(probe)
+        stems = {k[len("transformer.") :].rsplit(".lora_", 1)[0] for k in mapped}
+        if stems <= names:
+            return None
+    except Exception:  # noqa: BLE001 - its converter refuses the names: resolve them here
+        pass
+    flat: dict = {}
+    for module in names:
+        flat.setdefault(module.replace(".", "_"), set()).add(module)
+    out: dict = {}
+    for key, value in raw.items():
+        if not key.startswith("lora_unet_"):
+            out[key] = value
+            continue
+        stem, _, suffix = key[len("lora_unet_") :].partition(".")
+        hits = flat.get(stem, ())
+        if len(hits) != 1:
+            raise ValueError(f"LoRA key {key} names no single layer of this Qwen-Image-2.1 model")
+        out[f"diffusion_model.{next(iter(hits))}.{suffix}"] = value
+    return out
+
+
 def _load_qwen21(pipe: Any, path: str, name: str) -> None:
-    """A file with no fused ``gate_up`` loads by path as before; one with it loads rewritten, refused if nothing lands."""
+    """A file with no fused ``gate_up`` loads by path as before (kohya names diffusers mis-splits renamed first); one
+    with it loads rewritten. Either is refused if nothing lands."""
     raw = read_lora_file(path)
     if not any(_QWEN21_GATE_UP_KEY.search(k) for k in raw):
-        _load_lora_weights(pipe, path, name)
+        renamed = _qwen21_kohya_rename(pipe, raw)
+        _load_lora_weights(pipe, path if renamed is None else renamed, name)
+        _require_loaded(pipe, name)
         return
     metadata = None
     if (os.environ.get(REWRITE_METADATA_ENV) or "").strip().lower() not in (
@@ -861,6 +914,13 @@ def _adapter_loaded(pipe: Any, name: str) -> bool:
     return any(name in names for names in (pipe.get_list_adapters() or {}).values())
 
 
+def _require_loaded(pipe: Any, name: str) -> None:
+    """diffusers drops keys outside the components it loads into without an error: refuse a file that attached
+    nothing. A pipeline that cannot list its adapters is taken at its word."""
+    if callable(getattr(pipe, "get_list_adapters", None)) and not _adapter_loaded(pipe, name):
+        raise ValueError(f"{name}: none of its LoRA keys name a layer of this model")
+
+
 def _ideogram4_renames(keys: list) -> dict:
     """``key -> diffusion_model. key`` for an Ideogram 4 file naming the checkpoint modules another way: musubi-tuner's
     ``lora_unet_layers_0_attention_qkv.lora_down.weight``, or a ``transformer.`` prefix on the fused names (its
@@ -944,20 +1004,256 @@ def _restore_requires_grad(pipe: Any) -> None:
             param.requires_grad_(flag)
 
 
+def _rewrite_metadata(path: str) -> Optional[dict]:
+    if (os.environ.get(REWRITE_METADATA_ENV) or "").strip().lower() in ("0", "off", "false", "no"):
+        return None
+    return read_lora_metadata(path)
+
+
+def check_alphas(path: str, name: str) -> None:
+    """Refuse a negative or non-finite ``.alpha`` before diffusers' converters see it: they split ``alpha / rank``
+    by halving until it settles, which never ends for a negative value (a hung worker). A zero alpha is kohya's
+    "alpha = rank" and is filled in by ``_fill_missing_alphas``."""
+    import math
+
+    from safetensors import safe_open
+
+    try:
+        handle = safe_open(str(path), framework = "pt")
+    except Exception:  # noqa: BLE001 - not a safetensors file: diffusers' loader reports it as before
+        return
+    with handle:
+        for key in handle.keys():
+            if not key.endswith(".alpha"):
+                continue
+            values = handle.get_tensor(key).float().flatten().tolist()
+            bad = next((v for v in values if not (math.isfinite(v) and v >= 0)), None)
+            if not values or bad is not None:
+                raise ValueError(
+                    f"{name}: {key} is {bad if values else 'empty'}; a LoRA alpha must be a positive number "
+                    "(the adapter is scaled by alpha / rank)"
+                )
+
+
+def _fill_missing_alphas(path: str) -> Optional[dict]:
+    """The file with ``alpha = rank`` (scale 1, the kohya default) on every ``lora_down`` module that has none or a
+    zero one (kohya reads 0 as the rank), else None. Some diffusers converters (FLUX.1's mixture layout) index ``.alpha`` and raise KeyError without it; the
+    others already read a missing alpha as the rank, so the tensors they build are the same."""
+    import torch
+
+    from safetensors import safe_open
+
+    try:
+        with safe_open(str(path), framework = "pt") as handle:
+            keys = list(handle.keys())
+            has_metadata = _METADATA_KEY in (handle.metadata() or {})
+            zero = {
+                k
+                for k in keys
+                if k.endswith(".alpha") and not handle.get_tensor(k).float().abs().max().item() > 0
+            }
+    except Exception:  # noqa: BLE001 - not a safetensors file: diffusers' loader reports it as before
+        return None
+    present = set(keys) - zero
+    stems = [
+        k[: -len(".lora_down.weight")]
+        for k in keys
+        if k.endswith(".lora_down.weight")
+        and k[: -len(".lora_down.weight")] + ".alpha" not in present
+    ]
+    if not stems or has_metadata:
+        return None
+    state = read_lora_file(path)
+    for stem in stems:
+        state[stem + ".alpha"] = torch.tensor(float(state[stem + ".lora_down.weight"].shape[0]))
+    return state
+
+
+FLUX3_FAMILIES = ("flux.3-klein", "flux.3-klein-base")
+# The FLUX.3 checkpoint's own module names (what BFL-layout and kohya trainers save) -> diffusers', as diffusers'
+# single-file converter renames the weights. Its LoRA converter renames only the block projections.
+_FLUX3_EXACT = {
+    "time_in.in_layer": "timestep_embedder.linear_1",
+    "time_in.out_layer": "timestep_embedder.linear_2",
+    "ref_time_in.in_layer": "target_timestep_embedder.linear_1",
+    "ref_time_in.out_layer": "target_timestep_embedder.linear_2",
+    "final_layer.image.linear": "proj_out",
+    "final_layer.image.adaLN_modulation.1": "norm_out.linear",
+}
+# The checkpoint's final adaLN rows are [shift; scale], diffusers' norm_out [scale; shift].
+_FLUX3_SWAPPED = "final_layer.image.adaLN_modulation.1"
+_FLUX3_PREFIXES = (
+    ("emb_in.", "x_embedders."),
+    ("txt_in.", "context_embedder."),
+    ("content_mode_blocks.", "mode_blocks."),
+    ("single_blocks.", "single_transformer_blocks."),
+)
+_FLUX3_LEAVES = (
+    ("q_proj", "attn.to_q"),
+    ("k_proj", "attn.to_k"),
+    ("v_proj", "attn.to_v"),
+    ("attn_out", "attn.to_out.0"),
+    ("mlp_in", "ff.linear_in"),
+    ("mlp_out", "ff.linear_out"),
+)
+_LORA_SUFFIXES = (
+    "lora_A.weight",
+    "lora_B.weight",
+    "lora_B.bias",
+    "lora_down.weight",
+    "lora_up.weight",
+    "alpha",
+)
+
+
+def flux3_module_name(stem: str) -> tuple[str, bool]:
+    """``(diffusers module, rows swapped)`` for a FLUX.3 checkpoint module path; a diffusers path maps to itself."""
+    if stem in _FLUX3_EXACT:
+        return _FLUX3_EXACT[stem], stem == _FLUX3_SWAPPED
+    name = stem
+    for old, new in _FLUX3_PREFIXES:
+        if name == old[:-1]:
+            name = new[:-1]
+            break
+        if name.startswith(old):
+            name = new + name[len(old) :]
+            break
+    if name.endswith(".lin"):
+        name = name[: -len(".lin")] + ".linear"
+    for old, new in _FLUX3_LEAVES:
+        if name.endswith("." + old):
+            name = name[: -len(old)] + new
+            break
+    return name, False
+
+
+def _flux3_kohya_stem(flat: str, names: set) -> tuple[str, bool]:
+    """The one module, of every way to put dots back into a kohya name, this model has."""
+    tokens = flat.split("_")
+    if len(tokens) > 16:
+        raise ValueError(f"LoRA key {flat} names no layer of this FLUX.3 model")
+    found = set()
+    for mask in range(1 << (len(tokens) - 1)):
+        path = tokens[0] + "".join(
+            ("." if mask >> i & 1 else "_") + token for i, token in enumerate(tokens[1:])
+        )
+        target = flux3_module_name(path)
+        if target[0] in names:
+            found.add(target)
+    if len(found) != 1:
+        raise ValueError(f"LoRA key {flat} names no single layer of this FLUX.3 model")
+    return next(iter(found))
+
+
+def _flux3_split(key: str) -> Optional[tuple[str, str, str]]:
+    """``(layout, module, suffix)`` of a FLUX.3 LoRA key, else None (left to diffusers)."""
+    suffix = next((s for s in _LORA_SUFFIXES if key.endswith("." + s)), None)
+    if suffix is None:
+        return None
+    stem = key[: -len(suffix) - 1]
+    for prefix, layout in (
+        ("lora_unet_", "kohya"),
+        ("model.diffusion_model.", "bfl"),
+        ("diffusion_model.", "bfl"),
+        ("transformer.", "diffusers"),
+    ):
+        if stem.startswith(prefix):
+            return layout, stem[len(prefix) :], suffix
+    return None
+
+
+def _flux3_native_lora(pipe: Any, raw: dict, path: str) -> Optional[dict]:
+    """A FLUX.3 file in BFL / kohya layout as diffusers-named ``lora_A`` / ``lora_B`` (``.alpha`` folded, norm_out rows
+    swapped), or None when diffusers' own loader already reads it whole: diffusers-named, or BFL names its converter
+    renames onto this model with no ``lora_down`` / ``.alpha`` / norm_out among them."""
+    import torch
+
+    split = {key: _flux3_split(key) for key in raw}
+    if any(v is None for v in split.values()):
+        return None  # DoRA scales, full deltas, unknown prefixes: diffusers' loader reports them as before
+    names = _module_names(pipe.transformer)
+
+    def plain_bfl(module: str) -> bool:
+        target, swap = flux3_module_name(module)
+        if swap or target not in names:
+            return False
+        try:
+            from diffusers.loaders.lora_conversion_utils import (
+                _convert_non_diffusers_flux3_lora_to_diffusers,
+            )
+        except ImportError:
+            return False
+        (converted,) = _convert_non_diffusers_flux3_lora_to_diffusers(
+            {f"diffusion_model.{module}.lora_A.weight": None}
+        )
+        return converted == f"transformer.{target}.lora_A.weight"
+
+    if all(
+        suffix in ("lora_A.weight", "lora_B.weight", "lora_B.bias")
+        and (layout == "diffusers" or plain_bfl(module))
+        for layout, module, suffix in split.values()
+    ):
+        return None
+    renamed: dict = {}
+    swapped: set = set()
+    resolved: dict = {}
+    for key, (layout, module, suffix) in split.items():
+        if (layout, module) not in resolved:
+            if layout == "kohya":
+                target = _flux3_kohya_stem(module, names)
+            else:
+                target = flux3_module_name(module)
+                if target[0] not in names:
+                    raise ValueError(f"LoRA key {key} names no layer of this FLUX.3 model")
+            resolved[(layout, module)] = target
+        target, swap = resolved[(layout, module)]
+        if swap:
+            swapped.add(target)
+        out_key = f"transformer.{target}.{suffix}"
+        if out_key in renamed:
+            raise ValueError(f"LoRA key {key} names a layer another key already adapts ({target})")
+        renamed[out_key] = raw[key]
+    normalized = normalize_lora(renamed, FLUX3_FAMILIES[0], _rewrite_metadata(path))
+    for target in swapped:
+        for key in (f"transformer.{target}.lora_B.weight", f"transformer.{target}.lora_B.bias"):
+            t = normalized.get(key)
+            if t is not None:
+                shift, scale = t.chunk(2, dim = 0)
+                normalized[key] = torch.cat((scale, shift), dim = 0).contiguous()
+    return normalized
+
+
+def _load_flux3(pipe: Any, path: str, name: str) -> None:
+    try:
+        raw = read_lora_file(path)
+    except Exception:  # noqa: BLE001 - not a safetensors file: diffusers' loader reports it as before
+        raw = None
+    native = None if raw is None else _flux3_native_lora(pipe, raw, path)
+    _load_lora_weights(pipe, path if native is None else native, name)
+    _require_loaded(pipe, name)
+
+
 def load_adapter(pipe: Any, path: str, name: str, family: Optional[str]) -> None:
     """One file under ``name``: plain LoRA via ``pipe.load_lora_weights``, LoKR modules as ``KronLinear`` slots."""
     from .diffusion_lora_addmm import install as _install_lora_addmm
 
     _install_lora_addmm()  # unfolded adapters add their delta in the B GEMM's epilogue
     _remember_requires_grad(pipe)
+    if family not in NORMALIZED_FAMILIES:
+        check_alphas(path, name)  # the normalised families fold alpha themselves
     if family == IDEOGRAM4_FAMILY:
         _load_ideogram4(pipe, path, name)
         return
     if family == QWEN21_FAMILY:
         _load_qwen21(pipe, path, name)
         return
+    if family in FLUX3_FAMILIES:
+        _load_flux3(pipe, path, name)
+        return
     if family not in NORMALIZED_FAMILIES:
-        _load_lora_weights(pipe, path, name)
+        filled = _fill_missing_alphas(path)
+        _load_lora_weights(pipe, path if filled is None else filled, name)
+        _require_loaded(pipe, name)
         return
     raw = read_lora_file(path)
     dotted = _dotted_kohya_keys(pipe, raw, family)
