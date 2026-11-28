@@ -775,7 +775,8 @@ class ParallelLayout:
             torch.cuda.set_device(int(os.environ.get("LOCAL_RANK", "0")))
         if not dist.is_initialized():
             # What the Trainer's accelerate state would create; it reuses an existing group.
-            dist.init_process_group("nccl" if cuda else "gloo")
+            from .nccl_env import init_default_process_group
+            init_default_process_group("nccl" if cuda else "gloo")
         if dist.get_world_size() != self.world:
             raise RuntimeError(
                 f"Unsloth: {self.env_vars} read WORLD_SIZE={self.world}, but the process group has "

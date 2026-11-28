@@ -805,10 +805,12 @@ def _ensure_process_group(
         backend = "nccl" if device.type == "cuda" and dist.is_nccl_available() else "gloo"
     if device.type == "cuda":
         torch.cuda.set_device(device)
-    kwargs = {"backend": backend}
+    kwargs = {}
     if timeout is not None:
         kwargs["timeout"] = timeout
-    dist.init_process_group(**kwargs)
+    from ..nccl_env import init_default_process_group
+
+    init_default_process_group(backend, device = device, **kwargs)
     return dist
 
 

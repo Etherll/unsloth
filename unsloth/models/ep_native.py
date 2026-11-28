@@ -93,7 +93,8 @@ def ep_env_mesh():
             torch.cuda.set_device(int(os.environ.get("LOCAL_RANK", "0")))
         if not dist.is_initialized():
             # As parallel_env.ParallelLayout.mesh (torchrun's environment); the Trainer's accelerate reuses it.
-            dist.init_process_group("nccl" if cuda else "gloo")
+            from ..nccl_env import init_default_process_group
+            init_default_process_group("nccl" if cuda else "gloo")
         ep, world = ep_env_size(), dist.get_world_size()
         if world % ep:
             raise ValueError(f"Unsloth: {_EP_ENV}={ep} must divide WORLD_SIZE = {world}.")
