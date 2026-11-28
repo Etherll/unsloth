@@ -166,3 +166,27 @@ def test_other_vae_classes_untouched(rocm):
         pass
 
     assert H._install_rocm_single_frame_encoder(OtherVAE(_convs())) == 0
+
+
+@pytest.mark.parametrize("int8_env", [None, "1"])
+def test_rocm_fast_path_takes_decoder_levers_only(rocm, monkeypatch, int8_env):
+    # ROCm: no INT8 decoder (no libdevice.rint on HIP, even when forced) and no fused encoder: encode keeps the lowering
+    if int8_env is None:
+        monkeypatch.delenv(H.H3_VAE_INT8_ENV, raising = False)
+    else:
+        monkeypatch.setenv(H.H3_VAE_INT8_ENV, int8_env)
+    calls = []
+    monkeypatch.setattr(H, "cuda_fast_path_available", lambda vae = None: True)
+    for name in (
+        "_install_encoder",
+        "_install_int8_decoder",
+        "_install_decoder",
+        "_install_tile_batch",
+    ):
+        monkeypatch.setattr(H, name, lambda vae, *a, _n = name, **k: calls.append(_n) or 1)
+    vae = AutoencoderKLMiniMaxH3(_convs())
+    got = H.apply_h3_vae_speedups(vae, speed_mode = "default", workflow = "i2v", consumer_gpu = True)
+    assert got[0] == H.LEVER_ROCM_SINGLE_FRAME_ENCODER
+    assert H.LEVER_FUSED_DECODER in got and H.LEVER_TILE_BATCH in got
+    assert not {H.LEVER_INT8_DECODER, H.LEVER_FUSED_ENCODER, H.LEVER_FP16_ENCODER} & set(got)
+    assert calls == ["_install_decoder", "_install_tile_batch"]

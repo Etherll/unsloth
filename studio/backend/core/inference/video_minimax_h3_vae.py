@@ -4,7 +4,9 @@
 """Faster MiniMax-H3 video VAE encode/decode: Triton GroupNorm/SiLU/pad, RMSNorm/rope/SwiGLU fusions
 and tile batching around Diffusers' own matmuls/convs; UNSLOTH_H3_VAE_FAST=0 disables all;
 int8_decoder runs on the default / max tiers (UNSLOTH_H3_VAE_INT8=0 keeps it float, =1 adds it to eager);
-CUDA+Triton only; ROCm and MPS take only the exact single-frame encoder lowering, else stock."""
+CUDA or ROCm + Triton; ROCm and MPS also take the exact single-frame encoder lowering, else stock. HIP has no
+round-to-nearest multiply / add intrinsics, so there the two rounding kernels use plain multiply / add launched with
+enable_fp_fusion=False (no fma contraction: the same rounding), and the INT8 decoder stays off (no libdevice.rint)."""
 
 from __future__ import annotations
 
@@ -35,6 +37,8 @@ LEVER_TILE_BATCH = "tile_batch"
 LEVER_CANVAS = "canvas"
 LEVER_INT8_DECODER = "int8_decoder"
 LEVER_FP16_ACCUM = "fp16_accum"
+# not taken on ROCm (apply_h3_vae_speedups): no libdevice.rint for INT8; encode keeps the single-frame lowering
+_HIP_SKIPPED_LEVERS = frozenset({LEVER_INT8_DECODER, LEVER_FUSED_ENCODER, LEVER_FP16_ENCODER})
 # ROCm: T = 1 causal Conv3d runs as Conv2d of its last tap (other taps see only zero pad; exact, not bitwise).
 LEVER_ROCM_SINGLE_FRAME_ENCODER = "rocm_single_frame_encoder"
 H3_ROCM_SINGLE_FRAME_ENV = "UNSLOTH_H3_ROCM_SINGLE_FRAME_ENCODER"
@@ -42,6 +46,7 @@ H3_ROCM_SINGLE_FRAME_ENV = "UNSLOTH_H3_ROCM_SINGLE_FRAME_ENCODER"
 LEVER_MPS_SINGLE_FRAME_ENCODER = "mps_single_frame_encoder"
 H3_MPS_SINGLE_FRAME_ENV = "UNSLOTH_H3_MPS_SINGLE_FRAME_ENCODER"
 H3_VAE_LEVER_CALLS_ATTR = "_unsloth_h3_vae_lever_calls"
+
 
 _TILE_BATCH_MAX = 4
 _TILE_BATCH_BYTES_PER_TILE = 256 * 2**20
@@ -101,6 +106,27 @@ def _kernels() -> Optional[types.SimpleNamespace]:
         return None
     # Triton <= 3.2 resolves string annotations against module globals, not this function's locals
     globals().update(triton = triton, tl = tl, libdevice = libdevice)
+    if _hip():
+        # the launches pass enable_fp_fusion=False, so a plain multiply / add rounds like eager
+
+        @triton.jit
+        def _mul_rn(a, b):
+            return a * b
+
+        @triton.jit
+        def _add_rn(a, b):
+            return a + b
+    else:
+
+        @triton.jit
+        def _mul_rn(a, b):
+            return libdevice.mul_rn(a, b)
+
+        @triton.jit
+        def _add_rn(a, b):
+            return libdevice.add_rn(a, b)
+
+    globals().update(_mul_rn = _mul_rn, _add_rn = _add_rn)
 
     @triton.jit(do_not_specialize = ["T", "HW", "W", "n_chunks"])
     def _gn_partials(
@@ -336,7 +362,7 @@ def _kernels() -> Optional[types.SimpleNamespace]:
             o = tl.load(o_ptr + row * N + cols, mask = mask, other = 0.0).to(tl.float32)
             s = tl.load(s_ptr + cols, mask = mask, other = 0.0).to(tl.float32)
             # the reference's separate multiply and add, each rounded (no fma contraction)
-            h = libdevice.add_rn(h, libdevice.mul_rn(o, s))
+            h = _add_rn(h, _mul_rn(o, s))
             tl.store(h_ptr + row * N + cols, h.to(h_ptr.dtype.element_ty), mask = mask)
         ms = tl.sum(h * h, axis = 0) / N
         w = tl.load(w_ptr + cols, mask = mask, other = 0.0).to(tl.float32)
@@ -376,9 +402,9 @@ def _kernels() -> Optional[types.SimpleNamespace]:
         sin = tl.load(sin_ptr + cs_off, mask = cs_m, other = 0.0).to(tl.float32)
         # mul_rn / add_rn: without them the compiler contracts into one fma and skips eager's rounding.
         xps = tl.where((d < half)[None, :], -xpn, xpn)
-        a = libdevice.mul_rn(xn, cos).to(dt).to(tl.float32)
-        bb = libdevice.mul_rn(xps, sin).to(dt).to(tl.float32)
-        y = tl.where(rot[None, :], libdevice.add_rn(a, bb), xn)
+        a = _mul_rn(xn, cos).to(dt).to(tl.float32)
+        bb = _mul_rn(xps, sin).to(dt).to(tl.float32)
+        y = tl.where(rot[None, :], _add_rn(a, bb), xn)
         tl.store(x_ptr + base + d[None, :], y.to(dt), mask = rmask[:, None])
 
     @triton.jit
@@ -441,6 +467,29 @@ def _kernels() -> Optional[types.SimpleNamespace]:
         quant_rows = _quant_rows,
         dequant_epilogue = _dequant_epilogue,
     )
+
+
+@lru_cache(maxsize = 1)
+def _hip() -> bool:
+    try:
+        import torch
+    except Exception:  # noqa: BLE001
+        return False
+    return is_rocm_torch(torch)
+
+
+def _on_rocm() -> bool:
+    """Uncached ROCm check for the lever plan (``_hip`` is cached for the kernels)."""
+    try:
+        import torch
+    except Exception:  # noqa: BLE001
+        return False
+    return bool(is_rocm_torch(torch))
+
+
+def _no_fp_fusion() -> dict:
+    """Launch options for kernels whose rounding must match eager: HIP relies on the compiler not contracting."""
+    return {"enable_fp_fusion": False} if _hip() else {}
 
 
 def _next_pow2(n: int) -> int:
@@ -822,6 +871,7 @@ def _add_rmsnorm(h: Any, o: Any, scale: Any, norm: Any, out_dtype: Any) -> Any:
         HAS_RES = o is not None,
         BLOCK_N = _next_pow2(n_cols),
         num_warps = 8,
+        **_no_fp_fusion(),
     )
     return normed.view(*h.shape[:-1], n_cols)
 
@@ -862,6 +912,7 @@ def _qk_norm_rope_(x: Any, cos: Any, sin: Any, heads: int, eps: float) -> None:
         ROT = cos.shape[-1],
         BLOCK = block,
         num_warps = 4,
+        **_no_fp_fusion(),
     )
 
 
@@ -1618,7 +1669,7 @@ def cuda_fast_path_available(vae: Any = None) -> bool:
         import torch
     except Exception:  # noqa: BLE001
         return False
-    if not torch.cuda.is_available() or is_rocm_torch(torch):
+    if not torch.cuda.is_available():
         return False
     if vae is not None:
         try:
@@ -1672,10 +1723,25 @@ def apply_h3_vae_speedups(
             consumer_gpu = False
     planned = plan_h3_vae_levers(speed_mode, workflow = workflow, consumer_gpu = consumer_gpu)
     engaged: list[str] = []
+    on_rocm = _on_rocm()
+    if planned and on_rocm:
+        # ROCm: decoder levers only. No libdevice.rint for the INT8 decoder, and the encoder keeps the exact
+        # single-frame lowering (#19849) rather than the fused encoder.
+        planned = tuple(l for l in planned if l not in _HIP_SKIPPED_LEVERS)
+        try:
+            lever, wrapped = _install_single_frame_encoder(vae)
+            if wrapped > 0:
+                engaged.append(lever)
+        except Exception as exc:  # noqa: BLE001 - optimisation only
+            if logger is not None:
+                logger.warning(
+                    "video.h3_vae_fast: single_frame_encoder failed, keeping the stock path: %s",
+                    exc,
+                )
     if not planned or not cuda_fast_path_available(vae):
         # not bitwise, so off when the plan is empty (speed_mode="off")
         try:
-            if planned:
+            if planned and not on_rocm:
                 lever, wrapped = _install_single_frame_encoder(vae)
                 if wrapped > 0:
                     engaged.append(lever)

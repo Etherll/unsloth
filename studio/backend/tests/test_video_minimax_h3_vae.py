@@ -21,6 +21,8 @@ from core.inference.diffusion_vae_canvas import CANVAS_ENV
 _CUDA_TORCH_VERSION = TorchVersion(str(torch.__version__).split("+")[0] + "+cu130")
 
 CUDA = torch.cuda.is_available() and not getattr(torch.version, "hip", None)
+# a ROCm GPU host: the real gate takes the Triton decoder levers there
+ROCM_GPU = torch.cuda.is_available() and H._on_rocm()
 needs_cuda = pytest.mark.skipif(
     not CUDA or H._kernels() is None or not H._triton_version_ok(),
     reason = "needs an NVIDIA GPU with a Triton the kernels are verified on",
@@ -114,7 +116,9 @@ def test_apply_is_a_no_op_off_cuda(monkeypatch):
     assert H.apply_h3_vae_speedups(None, speed_mode = "max") == ()
 
 
-@pytest.mark.skipif(CUDA, reason = "checks the real gate on a host without an NVIDIA GPU")
+@pytest.mark.skipif(
+    CUDA or ROCM_GPU, reason = "checks the real gate on a host without an NVIDIA or ROCm GPU"
+)
 @pytest.mark.parametrize("tier", ["eager", "default", "max"])
 def test_without_cuda_the_real_gate_leaves_the_stock_vae_untouched(tier):
     vae = _tiny_vae()
@@ -500,6 +504,7 @@ def test_int8_decoder_replaces_block_linears_and_stays_close():
 
 def test_apply_skips_when_already_applied(monkeypatch):
     monkeypatch.setattr(H, "cuda_fast_path_available", lambda vae = None: True)
+    monkeypatch.setattr(H, "_on_rocm", lambda: False)
     vae = _tiny_vae()
     engaged = H.apply_h3_vae_speedups(
         vae, speed_mode = "default", workflow = "fl2va", consumer_gpu = True
@@ -1496,3 +1501,22 @@ def test_cold_tile_decode_compiles_fullgraph_in_one_graph(monkeypatch):
         ref = vae._decode_clip(z)
     assert counter.frame_count == 1
     assert torch.equal(got, ref)
+
+
+def test_the_fast_path_runs_on_rocm(monkeypatch):
+    # ROCm takes the Triton path; its rounding kernels launch without fp fusion instead of using mul_rn / add_rn
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.version, "hip", "7.14", raising = False)
+    monkeypatch.setattr(H, "_kernels", lambda: object())
+    monkeypatch.setattr(H, "_triton_jit_toolchain_ok", lambda: True)
+    monkeypatch.setattr(H, "_triton_version_ok", lambda: True)
+    H._hip.cache_clear()
+    try:
+
+        class AutoencoderKLMiniMaxH3:
+            pass
+
+        assert H.cuda_fast_path_available(AutoencoderKLMiniMaxH3())
+        assert H._no_fp_fusion() == {"enable_fp_fusion": False}
+    finally:
+        H._hip.cache_clear()
