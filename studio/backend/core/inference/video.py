@@ -19029,6 +19029,11 @@ class VideoBackend:
                 reset_nvfp4_state()
             except Exception:  # noqa: BLE001 - teardown is best effort
                 pass
+            # Last: a load replacing this model tears it down while a reference to the old pipe can survive, which
+            # kept its pinned / host copies and VRAM held through the new load's sizing.
+            from .video_teardown import release_pipe_references
+
+            release_pipe_references(getattr(state, "pipe", None))
             del state
             try:
                 clear_gpu_cache()
