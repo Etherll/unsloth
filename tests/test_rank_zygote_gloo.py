@@ -141,10 +141,8 @@ def _drive(tmp, cases):
     report = {}
     for name, (env, import_first, *group_first) in cases.items():
         if env.get("MASTER_PORT") == "0":
-            import socket
-            with socket.socket() as probe:
-                probe.bind(("127.0.0.1", 0))
-                env = {**env, "MASTER_PORT": str(probe.getsockname()[1])}
+            from _rendezvous_port import free_port  # tests/ is on the driver's path
+            env = {**env, "MASTER_PORT": str(free_port())}
         outs = [os.path.join(tmp, f"{name}_{r}.json") for r in range(2)]
         procs = [
             ctx.Process(

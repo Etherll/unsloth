@@ -25,8 +25,9 @@ on:
       - 'tests/test_gc_skip_auto.py'
       - 'tests/test_native_resume_old_torch.py'
       - 'tests/test_ulysses_hybrid.py'
-      # test_gguf_packed_parallel_gloo.py imports its GGUF writer and reference blocks from here.
+      # test_gguf_packed_parallel_gloo.py imports GGUF writers and reference blocks from these two.
       - 'tests/test_gguf_packed_lora.py'
+      - 'tests/test_gguf_packed_moe_export.py'
       - 'tests/_*.py'
       - 'tests/_shared/**'
       - 'tests/conftest.py'
@@ -51,8 +52,9 @@ on:
       - 'tests/test_gc_skip_auto.py'
       - 'tests/test_native_resume_old_torch.py'
       - 'tests/test_ulysses_hybrid.py'
-      # test_gguf_packed_parallel_gloo.py imports its GGUF writer and reference blocks from here.
+      # test_gguf_packed_parallel_gloo.py imports GGUF writers and reference blocks from these two.
       - 'tests/test_gguf_packed_lora.py'
+      - 'tests/test_gguf_packed_moe_export.py'
       - 'tests/_*.py'
       - 'tests/_shared/**'
       - 'tests/conftest.py'
